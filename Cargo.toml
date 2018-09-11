@@ -1,0 +1,8 @@
+[package]
+name = "thrust"
+version = "0.1.0"
+authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
+
+[dependencies]
+bio = "*"
+rust-htslib = "*"
