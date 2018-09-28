@@ -8,8 +8,7 @@ use bio::alphabets;
 use bio::data_structures::bwt::{bwt, less, Occ};
 use bio::data_structures::fmindex::{FMIndex, FMIndexable};
 use bio::data_structures::suffix_array::suffix_array;
-use bio::io::fasta;
-use bio::io::fastq;
+use bio::io::{fasta, fastq};
 use clap::{App, Arg};
 
 fn main() {
@@ -40,10 +39,10 @@ fn main() {
     {
         let record = record.unwrap();
 
-        debug!("Convert reference to uppercase");
+        debug!("Convert reference to uppercase letters");
         ref_seq.extend(record.seq().to_ascii_uppercase().iter().cloned());
 
-        debug!("Add sentinel to reference");
+        debug!("Add sentinel character to reference");
         ref_seq.extend_from_slice(b"$");
 
         // Handle on HT-sequencing reads in FASTQ format
@@ -80,10 +79,10 @@ fn main() {
         debug!("Drop source sequence");
         drop(ref_seq);
 
-        debug!("Generate less");
+        debug!("Generate \"C\" table");
         let less = less(&bwt, &rank_alphabet);
 
-        debug!("Generate OCC");
+        debug!("Generate \"Occ\" table");
         let occ = Occ::new(&bwt, 3, &rank_alphabet);
 
         debug!("Generate FM index");
