@@ -8,11 +8,13 @@ use bio::io::fasta;
 use bio::io::fastq;
 
 fn main() {
-
     // Handle on reference FASTA
     // TODO: Would this iterator only return one result?
     let mut ref_seq = vec![];
-    for record in fasta::Reader::from_file("example/chr22.fa").unwrap().records() {
+    for record in fasta::Reader::from_file("example/chr22.fa")
+        .unwrap()
+        .records()
+    {
         let record = record.unwrap();
         ref_seq.extend(record.seq().iter().cloned());
         println!("Add sentinel to reference");
@@ -20,7 +22,8 @@ fn main() {
 
         // Handle on HT-sequencing reads in FASTQ format
         // TODO: Load reads in batches to memory to be able to process them in parallel
-        let reads_fq_reader = fastq::Reader::from_file("example/simulated_reads/test.bwa.read1.fastq").unwrap();
+        let reads_fq_reader =
+            fastq::Reader::from_file("example/simulated_reads/test.bwa.read1.fastq").unwrap();
 
         // Create an FM-Index for the reference genome
         // TODO: Use FMD-index instead, to not have to search two indices
@@ -49,9 +52,8 @@ fn main() {
         println!("Map reads");
         let interval_calculators = reads_fq_reader
             .records()
-            .map(|pattern| {
-                fmindex.backward_search(pattern.unwrap().seq().iter())
-            }).collect::<Vec<_>>();
+            .map(|pattern| fmindex.backward_search(pattern.unwrap().seq().iter()))
+            .collect::<Vec<_>>();
 
         // Loop through the results, extracting the positions array for each pattern
         for interval_calculator in interval_calculators {
