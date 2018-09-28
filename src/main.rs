@@ -39,9 +39,9 @@ fn main() {
         .records()
     {
         let record = record.unwrap();
-        ref_seq.extend(record.seq().iter().cloned());
 
         debug!("Convert reference to uppercase");
+        ref_seq.extend(record.seq().to_ascii_uppercase().iter().cloned());
 
         debug!("Add sentinel to reference");
         ref_seq.extend_from_slice(b"$");
@@ -92,8 +92,10 @@ fn main() {
         debug!("Map reads");
         let interval_calculators = reads_fq_reader
             .records()
-            .map(|pattern| fmindex.backward_search(pattern.unwrap().seq().iter()))
-            .collect::<Vec<_>>();
+            .map(|pattern| {
+                let pattern = pattern.unwrap().seq().to_ascii_uppercase();
+                fmindex.backward_search(rank_transform.transform(&pattern).iter())
+            }).collect::<Vec<_>>();
 
         debug!("Print results");
         // Loop through the results, extracting the positions array for each pattern
