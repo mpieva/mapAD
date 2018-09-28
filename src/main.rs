@@ -24,7 +24,6 @@ fn main() {
         ).arg(
             Arg::with_name("reference")
                 .required(true)
-                .short("r")
                 .long("reference")
                 .help("FASTA file containing the genome we are about to map against")
                 .value_name("FILE"),
