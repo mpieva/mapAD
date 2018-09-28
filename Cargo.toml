@@ -6,4 +6,6 @@ authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 [dependencies]
 bio = "*"
 clap = "*"
+log = "*"
 rust-htslib = "*"
+simple_logger = "*"

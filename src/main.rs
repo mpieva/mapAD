@@ -1,5 +1,8 @@
 extern crate bio;
 extern crate clap;
+#[macro_use]
+extern crate log;
+extern crate simple_logger;
 
 use bio::alphabets;
 use bio::data_structures::bwt::{bwt, less, Occ};
@@ -10,6 +13,8 @@ use bio::io::fastq;
 use clap::{App, Arg};
 
 fn main() {
+    simple_logger::init().unwrap();
+
     let matches = App::new("Thrust")
         .about("An ancient aware short-read mapper")
         .arg(
@@ -35,7 +40,10 @@ fn main() {
     {
         let record = record.unwrap();
         ref_seq.extend(record.seq().iter().cloned());
-        println!("Add sentinel to reference");
+
+        debug!("Convert reference to uppercase");
+
+        debug!("Add sentinel to reference");
         ref_seq.extend_from_slice(b"$");
 
         // Handle on HT-sequencing reads in FASTQ format
@@ -43,36 +51,38 @@ fn main() {
         let reads_fq_reader =
             fastq::Reader::from_file("example/simulated_reads/test.bwa.read1.fastq").unwrap();
 
+        debug!("Rank-transform input sequence");
         // Create an FM-Index for the reference genome
         // TODO: Use FMD-index instead, to not have to search two indices
         // TODO: Read about FMD index
         // TODO: It's perhaps worth to do a rank transform (memory reduction by 10* (?))
         let alphabet = alphabets::dna::n_alphabet();
 
-        println!("Generate suffix array");
+        debug!("Generate suffix array");
         let sa = suffix_array(&ref_seq);
 
-        println!("Generate BWT");
+        debug!("Generate BWT");
         let bwt = bwt(&ref_seq, &sa);
 
-        println!("Drop source sequence");
+        debug!("Drop source sequence");
         drop(ref_seq);
 
-        println!("Generate less");
         let less = less(&bwt, &alphabet);
+        debug!("Generate less");
 
-        println!("Generate OCC");
         let occ = Occ::new(&bwt, 18, &alphabet);
+        debug!("Generate OCC");
 
-        println!("Generate FM index");
+        debug!("Generate FM index");
         let fmindex = FMIndex::new(&bwt, &less, &occ);
 
-        println!("Map reads");
+        debug!("Map reads");
         let interval_calculators = reads_fq_reader
             .records()
             .map(|pattern| fmindex.backward_search(pattern.unwrap().seq().iter()))
             .collect::<Vec<_>>();
 
+        debug!("Print results");
         // Loop through the results, extracting the positions array for each pattern
         for interval_calculator in interval_calculators {
             let positions = interval_calculator.occ(&sa);
