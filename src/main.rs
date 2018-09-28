@@ -56,7 +56,20 @@ fn main() {
         // TODO: Use FMD-index instead, to not have to search two indices
         // TODO: Read about FMD index
         // TODO: It's perhaps worth to do a rank transform (memory reduction by 10* (?))
-        let alphabet = alphabets::dna::n_alphabet();
+        let symbols = b"$ACGTN";
+        let rank_symbols = symbols
+            .iter()
+            .enumerate()
+            .map(|(i, _v)| i as u8)
+            .collect::<Vec<_>>();
+
+        // Define two alphabets, one with actual chars and
+        // another one containing its corresponding ranks
+        let bwt_alphabet = alphabets::Alphabet::new(symbols.iter());
+        let rank_alphabet = alphabets::Alphabet::new(&rank_symbols);
+
+        let rank_transform = alphabets::RankTransform::new(&bwt_alphabet);
+        let ref_seq = rank_transform.transform(&ref_seq);
 
         debug!("Generate suffix array");
         let sa = suffix_array(&ref_seq);
@@ -67,11 +80,11 @@ fn main() {
         debug!("Drop source sequence");
         drop(ref_seq);
 
-        let less = less(&bwt, &alphabet);
         debug!("Generate less");
+        let less = less(&bwt, &rank_alphabet);
 
-        let occ = Occ::new(&bwt, 18, &alphabet);
         debug!("Generate OCC");
+        let occ = Occ::new(&bwt, 3, &rank_alphabet);
 
         debug!("Generate FM index");
         let fmindex = FMIndex::new(&bwt, &less, &occ);
