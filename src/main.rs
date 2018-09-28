@@ -1,4 +1,5 @@
 extern crate bio;
+extern crate clap;
 
 use bio::alphabets;
 use bio::data_structures::bwt::{bwt, less, Occ};
@@ -6,12 +7,29 @@ use bio::data_structures::fmindex::{FMIndex, FMIndexable};
 use bio::data_structures::suffix_array::suffix_array;
 use bio::io::fasta;
 use bio::io::fastq;
+use clap::{App, Arg};
 
 fn main() {
+    let matches = App::new("Thrust")
+        .about("An ancient aware short-read mapper")
+        .arg(
+            Arg::with_name("v")
+                .short("v")
+                .multiple(true)
+                .help("Sets the level of verbosity"),
+        ).arg(
+            Arg::with_name("reference")
+                .required(true)
+                .short("r")
+                .long("reference")
+                .help("FASTA file containing the genome we are about to map against")
+                .value_name("FILE"),
+        ).get_matches();
+
     // Handle on reference FASTA
     // TODO: Would this iterator only return one result?
     let mut ref_seq = vec![];
-    for record in fasta::Reader::from_file("example/chr22.fa")
+    for record in fasta::Reader::from_file(matches.value_of("reference").unwrap())
         .unwrap()
         .records()
     {
