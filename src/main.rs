@@ -26,7 +26,7 @@ fn main() {
                 .required(true)
                 .long("reference")
                 .help("FASTA file containing the genome we are about to map against")
-                .value_name("FILE"),
+                .value_name("FASTA file"),
         ).arg(
             Arg::with_name("reads")
                 .required(true)
@@ -51,14 +51,13 @@ fn main() {
         ref_seq.extend_from_slice(b"$");
 
         // Handle on HT-sequencing reads in FASTQ format
-        // TODO: Load reads in batches to memory to be able to process them in parallel
+        // TODO: Load reads in batches to memory
+        // in order to be able to process them in parallel
         let reads_fq_reader = fastq::Reader::from_file(matches.value_of("reads").unwrap()).unwrap();
 
         debug!("Rank-transform input sequence");
         // Create an FM-Index for the reference genome
-        // TODO: Use FMD-index instead, to not have to search two indices
-        // TODO: Read about FMD index
-        // TODO: It's perhaps worth to do a rank transform (memory reduction by 10* (?))
+        // TODO: Use FMD-index instead
         let symbols = b"$ACGTN";
         let rank_symbols = symbols
             .iter()
