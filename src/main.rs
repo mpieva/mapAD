@@ -55,8 +55,6 @@ fn main() {
         let reads_fq_reader = fastq::Reader::from_file(matches.value_of("reads").unwrap()).unwrap();
 
         debug!("Rank-transform input sequence");
-        // Create an FM-Index for the reference genome
-        // TODO: Use FMD-index instead
         let symbols = b"$ACGTN";
         let rank_symbols = symbols
             .iter()
@@ -87,6 +85,7 @@ fn main() {
         debug!("Generate \"Occ\" table");
         let occ = Occ::new(&bwt, 3, &rank_alphabet);
 
+        // TODO: Use FMD-index instead
         debug!("Generate FM index");
         let fmindex = FMIndex::new(&bwt, &less, &occ);
 
