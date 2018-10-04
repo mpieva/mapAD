@@ -37,7 +37,6 @@ fn main() {
 
     // Handle on reference FASTA
     // TODO: Would this iterator only return one result?
-    let mut ref_seq = vec![];
     for record in fasta::Reader::from_file(matches.value_of("reference").unwrap())
         .unwrap()
         .records()
@@ -45,7 +44,7 @@ fn main() {
         let record = record.unwrap();
 
         debug!("Convert reference to uppercase letters");
-        ref_seq.extend(record.seq().to_ascii_uppercase().iter().cloned());
+        let mut ref_seq = record.seq().to_ascii_uppercase();
 
         debug!("Add sentinel character to reference");
         ref_seq.extend_from_slice(b"$");
