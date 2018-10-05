@@ -41,10 +41,8 @@ fn main() {
         .unwrap()
         .records()
     {
-        let record = record.unwrap();
-
         debug!("Convert reference to uppercase letters");
-        let mut ref_seq = record.seq().to_ascii_uppercase();
+        let mut ref_seq = record.unwrap().seq().to_ascii_uppercase();
 
         debug!("Add sentinel character to reference");
         ref_seq.extend_from_slice(b"$");
