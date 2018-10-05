@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "thrust"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bio 0.22.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
