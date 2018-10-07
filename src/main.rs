@@ -6,7 +6,7 @@ extern crate simple_logger;
 
 use bio::alphabets;
 use bio::data_structures::bwt::{bwt, less, Occ};
-use bio::data_structures::fmindex::{FMIndex, FMIndexable};
+use bio::data_structures::fmindex::{FMIndex, FMDIndex, FMIndexable};
 use bio::data_structures::suffix_array::suffix_array;
 use bio::io::{fasta, fastq};
 use clap::{App, Arg};
@@ -44,7 +44,11 @@ fn main() {
         debug!("Convert reference to uppercase letters");
         let mut ref_seq = record.unwrap().seq().to_ascii_uppercase();
 
-        debug!("Add sentinel character to reference");
+        debug!("Add reverse complement and sentinels to reference");
+        let ref_seq_rev_compl = alphabets::dna::revcomp(&ref_seq);
+        ref_seq.extend_from_slice(b"$");
+        ref_seq.extend_from_slice(&ref_seq_rev_compl);
+        drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
         // Handle on HT-sequencing reads in FASTQ format
