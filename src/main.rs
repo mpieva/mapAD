@@ -85,7 +85,7 @@ fn main() {
         let less = less(&bwt, &rank_alphabet);
 
         debug!("Generate \"Occ\" table");
-        let occ = Occ::new(&bwt, 3, &rank_alphabet);
+        let occ = Occ::new(&bwt, 128, &rank_alphabet);
 
         debug!("Generate FM-index");
         let fm_index = FMIndex::new(
