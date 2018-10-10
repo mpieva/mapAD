@@ -51,9 +51,7 @@ fn main() {
         drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
-        // Handle on HT-sequencing reads in FASTQ format
-        // TODO: Load reads in batches to memory
-        // in order to be able to process them in parallel
+        // TODO: Load reads in batches to memory to be able to process them in parallel
         let reads_fq_reader = fastq::Reader::from_file(matches.value_of("reads").unwrap()).unwrap();
 
         debug!("Rank-transform input sequence");
@@ -73,10 +71,10 @@ fn main() {
         let ref_seq = rank_transform.transform(&ref_seq);
 
         debug!("Generate suffix array");
-        let sa = suffix_array(&ref_seq);
+        let suffix_array = suffix_array(&ref_seq);
 
         debug!("Generate BWT");
-        let bwt = bwt(&ref_seq, &sa);
+        let bwt = bwt(&ref_seq, &suffix_array);
 
         debug!("Drop source sequence");
         drop(ref_seq);
@@ -109,7 +107,7 @@ fn main() {
         debug!("Print results");
         // Loop through the results, extracting the positions array for each pattern
         for interval_calculator in interval_calculators {
-            let positions = interval_calculator.occ(&sa);
+            let positions = interval_calculator.occ(&suffix_array);
             println!("{:#?}", positions);
         }
 
