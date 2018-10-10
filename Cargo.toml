@@ -10,8 +10,11 @@ rust-htslib = "*"
 simple_logger = "*"
 
 [dependencies.bio]
-version = "*"
+version = "0.22.1-alpha.0"
 features = ["simd-accel"]  # This should speed up Occ queries
+
+[patch.crates-io]
+bio = { path = "../rust-bio" }
 
 [profile.release]
 lto = true
