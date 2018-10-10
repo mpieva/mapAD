@@ -56,7 +56,21 @@ fn main() {
         // in order to be able to process them in parallel
         let reads_fq_reader = fastq::Reader::from_file(matches.value_of("reads").unwrap()).unwrap();
 
-        let alphabet = alphabets::dna::n_alphabet();
+        debug!("Rank-transform input sequence");
+        let symbols = b"$ACGTN";
+        let rank_symbols = symbols
+            .iter()
+            .enumerate()
+            .map(|(i, _v)| i as u8)
+            .collect::<Vec<_>>();
+
+        // Define two alphabets, one with actual chars and
+        // another one containing its corresponding ranks
+        let bwt_alphabet = alphabets::Alphabet::new(symbols.iter());
+        let rank_alphabet = alphabets::Alphabet::new(&rank_symbols);
+
+        let rank_transform = alphabets::RankTransform::new(&bwt_alphabet);
+        let ref_seq = rank_transform.transform(&ref_seq);
 
         debug!("Generate suffix array");
         let sa = suffix_array(&ref_seq);
@@ -68,22 +82,21 @@ fn main() {
         drop(ref_seq);
 
         debug!("Generate \"C\" table");
-        let less = less(&bwt, &alphabet);
+        let less = less(&bwt, &rank_alphabet);
 
         debug!("Generate \"Occ\" table");
-        let occ = Occ::new(&bwt, 3, &alphabet);
+        let occ = Occ::new(&bwt, 3, &rank_alphabet);
 
+        // TODO: Use FMD-index instead
         debug!("Generate FM index");
-        let fm_index = FMIndex::new(&bwt, &less, &occ);
-
-        debug!("Generate FMD index");
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmindex = FMIndex::new(&bwt, &less, &occ);
 
         debug!("Map reads");
         let interval_calculators = reads_fq_reader
             .records()
             .map(|pattern| {
-                fmd_index.backward_search(pattern.unwrap().seq().to_ascii_uppercase().iter())
+                let pattern = pattern.unwrap().seq().to_ascii_uppercase();
+                fmindex.backward_search(rank_transform.transform(&pattern).iter())
             }).collect::<Vec<_>>();
 
         debug!("Print results");
