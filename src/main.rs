@@ -87,16 +87,23 @@ fn main() {
         debug!("Generate \"Occ\" table");
         let occ = Occ::new(&bwt, 3, &rank_alphabet);
 
-        // TODO: Use FMD-index instead
-        debug!("Generate FM index");
-        let fmindex = FMIndex::new(&bwt, &less, &occ);
+        debug!("Generate FM-index");
+        let fm_index = FMIndex::new(
+            &bwt,
+            &less,
+            &occ,
+            alphabets::RankTransform::new(&bwt_alphabet),
+        );
+
+        debug!("Generate FMD-index");
+        let fmd_index = FMDIndex::from(fm_index);
 
         debug!("Map reads");
         let interval_calculators = reads_fq_reader
             .records()
             .map(|pattern| {
                 let pattern = pattern.unwrap().seq().to_ascii_uppercase();
-                fmindex.backward_search(rank_transform.transform(&pattern).iter())
+                fmd_index.backward_search(rank_transform.transform(&pattern).iter())
             }).collect::<Vec<_>>();
 
         debug!("Print results");
