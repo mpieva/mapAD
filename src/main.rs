@@ -106,8 +106,11 @@ fn main() {
         let interval_calculators = reads_fq_reader
             .records()
             .map(|pattern| {
-                let pattern = pattern.unwrap().seq().to_ascii_uppercase();
-                fmd_index.backward_search(rank_transform.transform(&pattern).iter())
+                fmd_index.backward_search(
+                    rank_transform
+                        .transform(&pattern.unwrap().seq().to_ascii_uppercase())
+                        .iter(),
+                )
             }).collect::<Vec<_>>();
 
         debug!("Print results");
