@@ -6,7 +6,7 @@ extern crate simple_logger;
 
 use bio::alphabets;
 use bio::data_structures::bwt::{bwt, less, Occ};
-use bio::data_structures::fmindex::{FMIndex, FMDIndex, FMIndexable};
+use bio::data_structures::fmindex::{FMDIndex, FMIndex, FMIndexable};
 use bio::data_structures::suffix_array::suffix_array;
 use bio::io::{fasta, fastq};
 use clap::{App, Arg};
