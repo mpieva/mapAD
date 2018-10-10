@@ -8,6 +8,7 @@ clap = "*"
 log = "*"
 rust-htslib = "*"
 simple_logger = "*"
+bincode = "*"
 
 [dependencies.bio]
 version = "0.22.1-alpha.0"

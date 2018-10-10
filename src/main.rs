@@ -1,3 +1,4 @@
+extern crate bincode;
 extern crate bio;
 extern crate clap;
 #[macro_use]
@@ -95,6 +96,11 @@ fn main() {
 
         debug!("Generate FMD-index");
         let fmd_index = FMDIndex::from(fm_index);
+
+        debug!("Serialize index files");
+        // TODO: Actually save this to disk
+        let serialized_suffix_array = bincode::serialize(&suffix_array).unwrap();
+        let serialized_fmd_index = bincode::serialize(&fmd_index).unwrap();
 
         debug!("Map reads");
         let interval_calculators = reads_fq_reader
