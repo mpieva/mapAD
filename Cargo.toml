@@ -4,8 +4,14 @@ version = "0.0.0"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 
 [dependencies]
-bio = "*"
 clap = "*"
 log = "*"
 rust-htslib = "*"
 simple_logger = "*"
+
+[dependencies.bio]
+version = "*"
+features = ["simd-accel"]  # This should speed up Occ queries
+
+[profile.release]
+lto = true
