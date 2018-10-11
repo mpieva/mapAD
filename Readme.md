@@ -13,13 +13,19 @@ As of now, it's not quite clear whether or not to prefer a rather simple approac
 the ancient DNA damage problem over a more complex error model. 
 
 ### To do
-- [x] Switch to the FM**D**-index
+- [x] Use FM**D**-index
 - [x] Search both strands
 - [ ] Save reference index to disk
+- [ ] Make SIMD vectorization easily configurable at compile time (as feature)
+- [ ] Introduce subcommands {index, map}
 - [ ] Inexact matching
-- [ ] Incorporation of an ancient DNA damage model (Briggs et al. (2007), Skoglund et al. (2014), Peyregne (unpublished))
+- [ ] Incorporation of one or more of the ancient DNA damage models 
+  - [ ] simply ignore C-T deaminations
+  - [ ] Briggs et al. (2007)
+  - [ ] Skoglund et al. (2014)
+  - [ ] Peyrégne (unpublished)
 - [ ] Mapping quality estimation
 - [ ] Multithreading
 - [ ] BAM-IO
-- [ ] Cluster-enabled version
+- [ ] _Cluster-enabled version_
 - [ ] _Paired-end sequencing_
