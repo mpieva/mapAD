@@ -17,6 +17,7 @@ the ancient DNA damage problem over a more complex error model.
 - [x] Search both strands
 - [x] Introduce subcommands {index, map}
 - [x] Save reference index to disk
+- [x] Refactor crate/mod structure
 - [ ] Make SIMD vectorization easily configurable at compile time (as "feature")
 - [ ] Inexact matching
 - [ ] Incorporation of one or more of the ancient DNA damage models 
