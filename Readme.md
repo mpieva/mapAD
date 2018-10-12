@@ -15,9 +15,9 @@ the ancient DNA damage problem over a more complex error model.
 ### To do
 - [x] Use FM**D**-index
 - [x] Search both strands
-- [ ] Save reference index to disk
-- [ ] Make SIMD vectorization easily configurable at compile time (as feature)
-- [ ] Introduce subcommands {index, map}
+- [x] Introduce subcommands {index, map}
+- [x] Save reference index to disk
+- [ ] Make SIMD vectorization easily configurable at compile time (as "feature")
 - [ ] Inexact matching
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations
