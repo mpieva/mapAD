@@ -9,8 +9,6 @@ use bio::alphabets::Alphabet;
 use clap::{App, AppSettings, Arg, SubCommand};
 
 fn main() {
-    simple_logger::init().unwrap();
-
     let matches = App::new("Thrust")
         .about("An aDNA aware short-read mapper")
         .setting(AppSettings::SubcommandRequiredElseHelp)
@@ -51,6 +49,13 @@ fn main() {
                         .value_name("FASTQ file"),
                 ),
         ).get_matches();
+
+    simple_logger::init_with_level(match matches.occurrences_of("v") {
+        0 => log::Level::Warn,
+        1 => log::Level::Info,
+        2 => log::Level::Debug,
+        3 | _ => log::Level::Trace,
+    }).unwrap();
 
     debug!("Rank-transform alphabet");
     let symbols = b"$ACGTN";
