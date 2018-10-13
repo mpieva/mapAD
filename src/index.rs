@@ -49,12 +49,12 @@ pub fn run(
         debug!("Generate \"Occ\" table");
         let occ = Occ::new(&bwt, 128, &rank_alphabet);
 
-        debug!("Save \"C\" table to disk");
-        let mut f_less = File::create("reference.less")?;
-        serialize_into(f_less, &less)?;
         debug!("Save BWT to disk");
         let mut f_bwt = File::create("reference.bwt")?;
         serialize_into(f_bwt, &bwt)?;
+        debug!("Save \"C\" table to disk");
+        let mut f_less = File::create("reference.less")?;
+        serialize_into(f_less, &less)?;
         debug!("Save \"Occ\" table to disk");
         let mut f_occ = File::create("reference.occ")?;
         serialize_into(f_occ, &occ)?;
