@@ -6,13 +6,14 @@ extern crate simple_logger;
 extern crate thrust;
 
 use bio::alphabets::Alphabet;
-use clap::{App, Arg, SubCommand};
+use clap::{App, AppSettings, Arg, SubCommand};
 
 fn main() {
     simple_logger::init().unwrap();
 
     let matches = App::new("Thrust")
         .about("An aDNA aware short-read mapper")
+        .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
             Arg::with_name("v")
                 .short("v")
