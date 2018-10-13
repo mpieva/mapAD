@@ -17,6 +17,7 @@ fn main() {
         .arg(
             Arg::with_name("v")
                 .short("v")
+                .global(true)
                 .multiple(true)
                 .help("Sets the level of verbosity"),
         ).subcommand(
