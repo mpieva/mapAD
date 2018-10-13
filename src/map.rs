@@ -26,11 +26,13 @@ fn calculate_intervals(
     reads_path: &str,
     bwt_alphabet: &alphabets::Alphabet,
 ) -> Result<Vec<Interval>, Box<Error>> {
-    debug!("Load FMD-index files");
+    debug!("Load \"C\" table");
     let f_less = File::open("reference.less")?;
     let less: Vec<usize> = deserialize_from(f_less)?;
+    debug!("Load BWT");
     let f_bwt = File::open("reference.bwt")?;
     let bwt: Vec<u8> = deserialize_from(f_bwt)?;
+    debug!("Load \"Occ\" table");
     let f_occ = File::open("reference.occ")?;
     let occ: Occ = deserialize_from(f_occ)?;
 
