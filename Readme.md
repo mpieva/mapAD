@@ -26,6 +26,7 @@ Holding that index in memory during the mapping works fine on a 8G laptop. Index
 - [x] Refactor crate/mod structure
 - [ ] Make SIMD vectorization easily configurable at compile time (as "feature")
 - [ ] Inexact matching
+- [ ] It will likely be necessary to use two FM-indices again for forward- and backward strand (C-T/G-A)
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations
   - [ ] Briggs et al. (2007)
