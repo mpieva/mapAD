@@ -65,7 +65,7 @@ fn main() {
 
     match matches.subcommand() {
         ("index", Some(index_matches)) => {
-            if let Err(e) = thrust::indexer::run(
+            if let Err(e) = thrust::index::run(
                 index_matches.value_of("reference").unwrap(),
                 &bwt_alphabet,
                 &rank_alphabet,
@@ -74,8 +74,7 @@ fn main() {
             }
         }
         ("map", Some(map_matches)) => {
-            if let Err(e) =
-                thrust::mapper::run(map_matches.value_of("reads").unwrap(), &bwt_alphabet)
+            if let Err(e) = thrust::map::run(map_matches.value_of("reads").unwrap(), &bwt_alphabet)
             {
                 println!("Application error: {}", e);
             }
