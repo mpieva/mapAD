@@ -10,7 +10,13 @@ The first versions will basically be re-implementations of BWA (FM-index with ba
 the search space). Improved algorithms and error models will be incorporated step by step as needed. 
 
 As of now, it's not quite clear whether or not to prefer a rather simple approach (as used in bisulfite sequencing) to 
-the ancient DNA damage problem over a more complex error model. 
+the ancient DNA damage problem over a more complex error model.
+
+### Performance/ Hardware Requirements
+First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 12G of RAM 
+(can certainly be improved,  but it's not an high-priority issue). 
+Holding that index in memory during the mapping works fine on a 8G laptop. Indexing hg19 has a runtime of about 
+20 minutes on fast machines. Most of the time is spent on writing/reading and (de-)serializing of index files.  
 
 ### To do
 - [x] Use FM**D**-index
