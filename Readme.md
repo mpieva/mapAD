@@ -6,7 +6,7 @@ This is another attempt to write a _fast_ experimental ancient DNA damage aware 
 an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
 project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
 
-The first versions will basically be re-implementations of BWA (FM-index with backtracking and lower-bound pruning of 
+The first versions will basically be (slightly improved) re-implementations of BWA (FM-index with backtracking and lower-bound pruning of 
 the search space). Improved algorithms and error models will be incorporated step by step as needed. 
 
 As of now, it's not quite clear whether or not to prefer a rather simple approach (as used in bisulfite sequencing) to 
