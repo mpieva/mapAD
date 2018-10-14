@@ -12,13 +12,33 @@ the search space). Improved algorithms and error models will be incorporated ste
 As of now, it's not quite clear whether or not to prefer a rather simple approach (as used in bisulfite sequencing) to 
 the ancient DNA damage problem over a more complex error model.
 
-### Performance/ Hardware Requirements
+## Build and Install
+
+Rust must be installed to build from source, see: https://www.rust-lang.org/
+
+`git clone repository`
+
+`cd thrust`
+
+`cargo build --release`
+
+Or build with explicit SSE support:
+
+`cargo build --release --features simd-accel`
+
+or even with AVX support:
+
+`RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
+
+## Performance/ Hardware Requirements
+
 First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 12G of RAM 
 (can certainly be improved,  but it's not an high-priority issue). 
 Holding that index in memory during the mapping works fine on a 8G laptop. Indexing hg19 has a runtime of about 
 20 minutes on fast machines. Most of the time is spent on writing/reading and (de-)serializing of index files.  
 
-### To do
+## To do
+
 - [x] Use FM**D**-index
 - [x] Search both strands
 - [x] Introduce subcommands {index, map}
