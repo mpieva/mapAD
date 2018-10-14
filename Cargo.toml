@@ -4,6 +4,7 @@ version = "0.0.0"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 
 [features]
+avx-accel = ["bio/avx-accel"]
 simd-accel = ["bio/simd-accel"]
 
 [dependencies]
