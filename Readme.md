@@ -24,7 +24,7 @@ Holding that index in memory during the mapping works fine on a 8G laptop. Index
 - [x] Introduce subcommands {index, map}
 - [x] Save reference index to disk
 - [x] Refactor crate/mod structure
-- [ ] Make SIMD vectorization easily configurable at compile time (as "feature")
+- [x] Make SIMD vectorization easily configurable at compile time (as "feature")
 - [ ] Inexact matching
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations
