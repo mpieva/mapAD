@@ -40,13 +40,6 @@ or even with AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD 
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
 
-## Performance/ Hardware Requirements
-
-First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 12G of RAM 
-(can certainly be improved,  but it's not an high-priority issue). 
-Holding that index in memory during the mapping works fine on a 8G laptop. Indexing hg19 has a runtime of about 
-20 minutes on fast machines. Most of the time is spent on writing/reading and (de-)serializing of index files.  
-
 ## To do
 
 - [x] Use FM**D**-index
@@ -66,3 +59,10 @@ Holding that index in memory during the mapping works fine on a 8G laptop. Index
 - [ ] BAM-IO
 - [ ] _Cluster-enabled version_
 - [ ] _Paired-end sequencing_
+
+## Performance/ Hardware Requirements
+
+First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 12G of RAM 
+(can certainly be improved,  but it's not an high-priority issue). 
+Holding that index in memory during the mapping works fine on a 8G laptop. Indexing hg19 has a runtime of about 
+20 minutes on fast machines. Most of the time is spent on writing/reading and (de-)serializing of index files.
