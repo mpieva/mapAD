@@ -25,18 +25,18 @@ Rust must be installed to build from source, see: https://www.rust-lang.org/.
 
     `cd thrust`
 
-3. Build it:
+3. Build:
 
     `cargo build --release`
 
 ###### Optional
-Replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
+The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
 
-To build explicitly with SIMD support (should be available on most CPUs):
+To build explicitly with SIMD support (should be available on most CPUs) use:
 
 `cargo build --release --features simd-accel`
 
-or even with AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones):
+for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use:
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
 
