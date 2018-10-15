@@ -14,19 +14,29 @@ the ancient DNA damage problem over a more complex error model.
 
 ## Build and Install
 
-Rust must be installed to build from source, see: https://www.rust-lang.org/
+Besides Rust, no additional dependencies are needed to compile. 
+Rust must be installed to build from source, see: https://www.rust-lang.org/.
 
-`git clone repository`
+1. Git clone or simply download a release zip file:
 
-`cd thrust`
+    `git clone repository/thrust.git`
 
-`cargo build --release`
+2. Enter the downloaded directory:
 
-Or build with explicit SSE support:
+    `cd thrust`
+
+3. Build it:
+
+    `cargo build --release`
+
+###### Optional
+Replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
+
+To build explicitly with SIMD support (should be available on most CPUs):
 
 `cargo build --release --features simd-accel`
 
-or even with AVX support:
+or even with AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones):
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
 
