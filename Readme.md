@@ -48,7 +48,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Save reference index to disk
 - [x] Refactor crate/mod structure
 - [x] Make SIMD vectorization easily configurable at compile time (as "feature")
-- [ ] Compress index files for hopefully faster IO (libflate)
+- [x] Compress index files for hopefully faster IO (libflate)
 - [ ] Inexact matching
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations
