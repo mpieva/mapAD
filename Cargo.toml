@@ -14,6 +14,7 @@ rust-htslib = "*"
 simple_logger = "*"
 bincode = "*"
 bio = "0.22.1-alpha.0"
+libflate = "*"
 
 [patch.crates-io]
 bio = { path = "../rust-bio" }

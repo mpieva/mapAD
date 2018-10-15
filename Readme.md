@@ -25,18 +25,18 @@ Rust must be installed to build from source, see: https://www.rust-lang.org/.
 
     `cd thrust`
 
-3. Build it:
+3. Build:
 
     `cargo build --release`
 
 ###### Optional
-Replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
+The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
 
-To build explicitly with SIMD support (should be available on most CPUs):
+To build explicitly with SIMD support (should be available on most CPUs) use:
 
 `cargo build --release --features simd-accel`
 
-or even with AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones):
+for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use:
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
 
@@ -48,7 +48,7 @@ or even with AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD 
 - [x] Save reference index to disk
 - [x] Refactor crate/mod structure
 - [x] Make SIMD vectorization easily configurable at compile time (as "feature")
-- [ ] Compress index files for hopefully faster IO (libflate)
+- [x] Compress index files for hopefully faster IO (libflate)
 - [ ] Inexact matching
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations

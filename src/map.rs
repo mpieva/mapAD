@@ -3,6 +3,7 @@ use bio::alphabets;
 use bio::data_structures::bwt::Occ;
 use bio::data_structures::fmindex::{FMDIndex, FMIndex, FMIndexable, Interval};
 use bio::io::fastq;
+use libflate::deflate::Decoder;
 use std::error::Error;
 use std::fs::File;
 
@@ -11,7 +12,8 @@ pub fn run(reads_path: &str, bwt_alphabet: &alphabets::Alphabet) -> Result<(), B
 
     debug!("Load suffix array");
     let f_suffix_array = File::open("reference.sar")?;
-    let suffix_array: Vec<usize> = deserialize_from(f_suffix_array)?;
+    let d_suffix_array = Decoder::new(f_suffix_array);
+    let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
 
     debug!("Print results");
     // Loop through the results, extracting the positions array for each pattern
@@ -28,13 +30,16 @@ fn calculate_intervals(
 ) -> Result<Vec<Interval>, Box<Error>> {
     debug!("Load BWT");
     let f_bwt = File::open("reference.bwt")?;
-    let bwt: Vec<u8> = deserialize_from(f_bwt)?;
+    let d_bwt = Decoder::new(f_bwt);
+    let bwt: Vec<u8> = deserialize_from(d_bwt)?;
     debug!("Load \"C\" table");
     let f_less = File::open("reference.less")?;
-    let less: Vec<usize> = deserialize_from(f_less)?;
+    let d_less = Decoder::new(f_less);
+    let less: Vec<usize> = deserialize_from(d_less)?;
     debug!("Load \"Occ\" table");
     let f_occ = File::open("reference.occ")?;
-    let occ: Occ = deserialize_from(f_occ)?;
+    let d_occ = Decoder::new(f_occ);
+    let occ: Occ = deserialize_from(d_occ)?;
 
     debug!("Reconstruct FMD-index");
     let rank_transform = alphabets::RankTransform::new(&bwt_alphabet);
