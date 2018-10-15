@@ -58,12 +58,12 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [ ] Mapping quality estimation
 - [ ] Multithreading
 - [ ] BAM-IO
+- [ ] Fix suffix array sampling in rust-bio
 - [ ] _Cluster-enabled version_
 - [ ] _Paired-end sequencing_
 
 ## Performance/ Hardware Requirements
 
-First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 12G of RAM 
-(can certainly be improved,  but it's not an high-priority issue). 
-Holding that index in memory during the mapping works fine on a 8G laptop. Indexing hg19 has a runtime of about 
-20 minutes on fast machines. Most of the time is spent on writing/reading and (de-)serializing of index files.
+First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 160GB of RAM 
+(can certainly be improved by sampling the suffix array to k=32). As long as rust-bio does not have a working suffix 
+array sampling implementation, whole-genome mapping is utopic. As of now, tests are performed on chr22. 

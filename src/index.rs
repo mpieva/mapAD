@@ -13,6 +13,7 @@ pub fn run(
     bwt_alphabet: &alphabets::Alphabet,
     rank_alphabet: &alphabets::Alphabet,
 ) -> Result<(), Box<Error>> {
+    debug!("Read input reference sequence");
     let mut ref_seq = Vec::from_iter(
         fasta::Reader::from_file(reference_path)
             .unwrap()
@@ -27,6 +28,7 @@ pub fn run(
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
 
+    debug!("Rank-transform reference sequence");
     let rank_transform = alphabets::RankTransform::new(&bwt_alphabet);
     let ref_seq = rank_transform.transform(&ref_seq);
 
