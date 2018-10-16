@@ -56,9 +56,10 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
   - [ ] Skoglund et al. (2014)
   - [ ] Peyrégne (unpublished)
 - [ ] Mapping quality estimation
+- [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
+- [ ] Fix suffix array sampling in rust-bio
 - [ ] Multithreading
 - [ ] BAM-IO
-- [ ] Fix suffix array sampling in rust-bio
 - [ ] _Cluster-enabled version_
 - [ ] _Paired-end sequencing_
 
