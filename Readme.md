@@ -15,7 +15,11 @@ the ancient DNA damage problem over a more complex error model.
 ## Build and Install
 
 Besides Rust, no additional dependencies are needed to compile. 
-Rust must be installed to build from source, see: https://www.rust-lang.org/.
+Rust must be installed to build from source, see: https://rust-lang.org .
+
+0. Install Rust (locally to the current user's home directory):
+
+    `curl https://sh.rustup.rs -sSf | sh`
 
 1. Git clone or simply download a release zip file:
 
@@ -28,6 +32,14 @@ Rust must be installed to build from source, see: https://www.rust-lang.org/.
 3. Build:
 
     `cargo build --release`
+    
+    The resulting binary file `thrust` is now in the subfolder `./target/release/`.
+
+4. Run!
+
+    `./target/release/thrust index --reference ./example/chr22.fa`
+    
+    `./target/release/thrust map --reads ./example/simulated_reads/test.bwa.1.fa`
 
 ###### Optional
 The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
