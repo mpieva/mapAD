@@ -7,8 +7,8 @@ use libflate::deflate::Decoder;
 use std::error::Error;
 use std::fs::File;
 
-pub fn run(reads_path: &str, bwt_alphabet: &alphabets::Alphabet) -> Result<(), Box<Error>> {
-    let intervals = calculate_intervals(reads_path, bwt_alphabet)?;
+pub fn run(reads_path: &str) -> Result<(), Box<Error>> {
+    let intervals = calculate_intervals(reads_path)?;
 
     debug!("Load suffix array");
     let f_suffix_array = File::open("reference.sar")?;
@@ -24,10 +24,7 @@ pub fn run(reads_path: &str, bwt_alphabet: &alphabets::Alphabet) -> Result<(), B
     Ok(())
 }
 
-fn calculate_intervals(
-    reads_path: &str,
-    bwt_alphabet: &alphabets::Alphabet,
-) -> Result<Vec<Interval>, Box<Error>> {
+fn calculate_intervals(reads_path: &str) -> Result<Vec<Interval>, Box<Error>> {
     debug!("Load BWT");
     let f_bwt = File::open("reference.bwt")?;
     let d_bwt = Decoder::new(f_bwt);
@@ -42,13 +39,7 @@ fn calculate_intervals(
     let occ: Occ = deserialize_from(d_occ)?;
 
     debug!("Reconstruct FMD-index");
-    let rank_transform = alphabets::RankTransform::new(&bwt_alphabet);
-    let fm_index = FMIndex::new(
-        &bwt,
-        &less,
-        &occ,
-        alphabets::RankTransform::new(&bwt_alphabet),
-    );
+    let fm_index = FMIndex::new(&bwt, &less, &occ);
     let fmd_index = FMDIndex::from(fm_index);
 
     debug!("Map reads");
@@ -57,11 +48,7 @@ fn calculate_intervals(
     let interval_calculators = reads_fq_reader
         .records()
         .map(|pattern| {
-            fmd_index.backward_search(
-                rank_transform
-                    .transform(&pattern.unwrap().seq().to_ascii_uppercase())
-                    .iter(),
-            )
+            fmd_index.backward_search(pattern.unwrap().seq().to_ascii_uppercase().iter())
         }).collect::<Vec<_>>();
     Ok(interval_calculators)
 }

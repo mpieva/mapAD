@@ -13,11 +13,8 @@ log = "*"
 rust-htslib = "*"
 simple_logger = "*"
 bincode = "*"
-bio = "0.22.1-alpha.0"
+bio = "*"
 libflate = "*"
-
-[patch.crates-io]
-bio = { path = "../rust-bio" }
 
 [profile.release]
 lto = true

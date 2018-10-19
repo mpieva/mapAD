@@ -57,32 +57,14 @@ fn main() {
         3 | _ => log::Level::Trace,
     }).unwrap();
 
-    debug!("Rank-transform alphabet");
-    let symbols = b"$ACGTN";
-    let rank_symbols = symbols
-        .iter()
-        .enumerate()
-        .map(|(i, _v)| i as u8)
-        .collect::<Vec<_>>();
-
-    // Define two alphabets, one with actual chars and
-    // another one containing its corresponding ranks
-    let bwt_alphabet = Alphabet::new(symbols.iter());
-    let rank_alphabet = Alphabet::new(&rank_symbols);
-
     match matches.subcommand() {
         ("index", Some(index_matches)) => {
-            if let Err(e) = thrust::index::run(
-                index_matches.value_of("reference").unwrap(),
-                &bwt_alphabet,
-                &rank_alphabet,
-            ) {
+            if let Err(e) = thrust::index::run(index_matches.value_of("reference").unwrap()) {
                 println!("Application error: {}", e);
             }
         }
         ("map", Some(map_matches)) => {
-            if let Err(e) = thrust::map::run(map_matches.value_of("reads").unwrap(), &bwt_alphabet)
-            {
+            if let Err(e) = thrust::map::run(map_matches.value_of("reads").unwrap()) {
                 println!("Application error: {}", e);
             }
         }

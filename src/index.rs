@@ -8,11 +8,9 @@ use std::error::Error;
 use std::fs::File;
 use std::iter::FromIterator;
 
-pub fn run(
-    reference_path: &str,
-    bwt_alphabet: &alphabets::Alphabet,
-    rank_alphabet: &alphabets::Alphabet,
-) -> Result<(), Box<Error>> {
+pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
+    let alphabet = alphabets::dna::n_alphabet();
+
     debug!("Read input reference sequence");
     let mut ref_seq = Vec::from_iter(
         fasta::Reader::from_file(reference_path)
@@ -27,10 +25,6 @@ pub fn run(
     ref_seq.extend_from_slice(&ref_seq_rev_compl);
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
-
-    debug!("Rank-transform reference sequence");
-    let rank_transform = alphabets::RankTransform::new(&bwt_alphabet);
-    let ref_seq = rank_transform.transform(&ref_seq);
 
     debug!("Generate suffix array");
     let suffix_array = suffix_array(&ref_seq);
@@ -51,10 +45,10 @@ pub fn run(
     drop(ref_seq);
 
     debug!("Generate \"C\" table");
-    let less = less(&bwt, &rank_alphabet);
+    let less = less(&bwt, &alphabet);
 
     debug!("Generate \"Occ\" table");
-    let occ = Occ::new(&bwt, 128, &rank_alphabet);
+    let occ = Occ::new(&bwt, 128, &alphabet);
 
     debug!("Save BWT to disk");
     let f_bwt = File::create("reference.bwt")?;
