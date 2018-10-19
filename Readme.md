@@ -17,11 +17,11 @@ the ancient DNA damage problem over a more complex error model.
 Besides Rust, no additional dependencies are needed to compile. 
 Rust must be installed to build from source, see: https://rust-lang.org .
 
-0. Install Rust (locally to the current user's home directory):
+0. Install/update Rust (locally, to the current user's home directory):
 
     `curl https://sh.rustup.rs -sSf | sh`
 
-1. Git clone or simply download a release zip file:
+1. Git clone thrust or simply download a release zip file:
 
     `git clone repository/thrust.git`
 
@@ -61,7 +61,9 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Refactor crate/mod structure
 - [x] Make SIMD vectorization easily configurable at compile time (as "feature")
 - [x] Compress index files for hopefully faster IO (libflate)
+- [x] Don't rank-transform during early development. Go back to upstream rust-bio
 - [ ] Inexact matching
+- [ ] It's time to start testing!
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations
   - [ ] Briggs et al. (2007)
