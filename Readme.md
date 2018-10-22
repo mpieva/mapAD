@@ -62,8 +62,8 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Make SIMD vectorization easily configurable at compile time (as "feature")
 - [x] Compress index files for hopefully faster IO (libflate)
 - [x] Don't rank-transform during early development. Go back to upstream rust-bio
-- [ ] Inexact matching
-- [ ] It's time to start testing!
+- [x] Inexact matching
+- [x] It's time to start testing!
 - [ ] Incorporation of one or more of the ancient DNA damage models 
   - [ ] simply ignore C-T deaminations
   - [ ] Briggs et al. (2007)

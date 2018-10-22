@@ -1,11 +1,9 @@
-extern crate clap;
-#[macro_use]
-extern crate log;
 extern crate bio;
+extern crate clap;
+extern crate log;
 extern crate simple_logger;
 extern crate thrust;
 
-use bio::alphabets::Alphabet;
 use clap::{App, AppSettings, Arg, SubCommand};
 
 fn main() {
