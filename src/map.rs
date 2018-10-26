@@ -118,7 +118,7 @@ fn k_mismatch_search_recursive(
 
     let mut interval_set = HashSet::new();
 
-    // Insertion
+    // Insertion in read
     interval_set = interval_set
         .union(&k_mismatch_search_recursive(
             pattern,
@@ -143,7 +143,7 @@ fn k_mismatch_search_recursive(
         };
 
         if interval.lower <= interval.upper {
-            // Deletion
+            // Deletion in read
             interval_set = interval_set
                 .union(&k_mismatch_search_recursive(
                     pattern,

@@ -26,19 +26,19 @@ fn main() {
             ),
         ).subcommand(
             SubCommand::with_name("map")
-//                .arg(
-//                    Arg::with_name("index")
-//                        .required(true)
-//                        .long("index")
-//                        .help("idx file of the genome we are about to map against")
-//                        .value_name("idx file"),
-//                ).arg(
-//                    Arg::with_name("outfile")
-//                        .required(true)
-//                        .long("out")
-//                        .help("output BAM file for the aligned reads")
-//                        .value_name("BAM file"),
-//                )
+                //                .arg(
+                //                    Arg::with_name("index")
+                //                        .required(true)
+                //                        .long("index")
+                //                        .help("idx file of the genome we are about to map against")
+                //                        .value_name("idx file"),
+                //                ).arg(
+                //                    Arg::with_name("outfile")
+                //                        .required(true)
+                //                        .long("out")
+                //                        .help("output BAM file for the aligned reads")
+                //                        .value_name("BAM file"),
+                //                )
                 .arg(
                     Arg::with_name("reads")
                         .required(true)
