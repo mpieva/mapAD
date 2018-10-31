@@ -193,7 +193,7 @@ fn calculate_d(pattern: &[u8], fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>
     let mut z = 0;
     let mut j = 0;
     for i in 0..pattern.len() {
-        // TODO: It's inefficient to search for the whole part of the pattern again and again
+        // FIXME: It's inefficient to search for the whole part of the pattern again and again
         let interval = fmd_index.backward_search(pattern[j..=i].iter());
         if interval.lower >= interval.upper {
             z += 1;
