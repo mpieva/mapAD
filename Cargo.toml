@@ -2,6 +2,7 @@
 name = "thrust"
 version = "0.0.0"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
+edition = "2018"
 
 [features]
 avx-accel = ["bio/avx-accel"]
