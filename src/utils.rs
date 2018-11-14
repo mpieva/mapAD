@@ -35,7 +35,7 @@ impl<'a> AllowedMismatches<'a> {
     }
 
     fn factorial(n: u32) -> u32 {
-        (1..).take_while(|&i| i <= n).product()
+        (2..=n).product()
     }
 
     fn ppoisson(lambda: f32, k: u32) -> f32 {
