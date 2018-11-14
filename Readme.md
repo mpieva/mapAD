@@ -65,7 +65,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Inexact matching
 - [x] It's time to start testing!
 - [ ] Incorporation of one or more of the ancient DNA damage models
-  - [ ] simply ignore C-T deaminations
+  - [x] simply ignore C-T deaminations
   - [ ] Briggs et al. (2007)
   - [ ] Skoglund et al. (2014)
   - [ ] Peyrégne (unpublished)

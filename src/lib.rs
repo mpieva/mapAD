@@ -6,3 +6,4 @@ extern crate libflate;
 
 pub mod index;
 pub mod map;
+pub mod utils;
