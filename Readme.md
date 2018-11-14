@@ -1,4 +1,4 @@
-# Thrust
+# thrust
 
 _We're in pre-alpha state. Very few things work at the moment, but there's hope..._
 
