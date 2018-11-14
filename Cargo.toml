@@ -18,5 +18,12 @@ bincode = "*"
 bio = "*"
 libflate = "*"
 
+[dev-dependencies]
+criterion = "*"
+
+[[bench]]
+name = "benchmark"
+harness = false
+
 [profile.release]
 lto = true

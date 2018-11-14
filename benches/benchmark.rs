@@ -1,0 +1,67 @@
+#[macro_use]
+extern crate criterion;
+
+use bio::alphabets;
+use bio::data_structures::bwt::{bwt, less, Occ};
+use bio::data_structures::fmindex::{FMDIndex, FMIndex};
+use bio::data_structures::suffix_array::suffix_array;
+use criterion::Criterion;
+
+use thrust::map::k_mismatch_search;
+use thrust::utils::AlignmentParameters;
+
+fn criterion_benchmark(c: &mut Criterion) {
+    c.bench_function("3_mismatch_search", |b| {
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            penalty_mismatch: 1,
+            penalty_gap_open: 1,
+            penalty_gap_extend: 1,
+            penalty_c_t: 0,
+            penalty_g_a: 0,
+        };
+
+        // Reference
+        let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());
+        ref_seq.extend_from_slice(b"$");
+        ref_seq.extend_from_slice(&ref_seq_rev_compl);
+        drop(ref_seq_rev_compl);
+        ref_seq.extend_from_slice(b"$");
+
+        let alphabet = alphabets::dna::n_alphabet();
+
+        let sa = suffix_array(&ref_seq);
+        let bwtr = bwt(&ref_seq, &sa);
+        let lessa = less(&bwtr, &alphabet);
+        let occ = Occ::new(&bwtr, 3, &alphabet);
+
+        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
+        let fmd_index = FMDIndex::from(fm_index);
+
+        // Reverse reference
+        let mut rev_ref_seq = ref_seq.into_iter().rev().collect::<Vec<_>>();
+        let rev_ref_seq_rev_compl = alphabets::dna::revcomp(rev_ref_seq.iter());
+        rev_ref_seq.extend_from_slice(b"$");
+        rev_ref_seq.extend_from_slice(&rev_ref_seq_rev_compl);
+        drop(rev_ref_seq_rev_compl);
+        rev_ref_seq.extend_from_slice(b"$");
+
+        let rev_sa = suffix_array(&rev_ref_seq);
+        let rev_bwtr = bwt(&rev_ref_seq, &rev_sa);
+        let rev_less = less(&rev_bwtr, &alphabet);
+        let rev_occ = Occ::new(&rev_bwtr, 3, &alphabet);
+
+        let rev_fm_index = FMIndex::new(&rev_bwtr, &rev_less, &rev_occ);
+        let rev_fmd_index = FMDIndex::from(rev_fm_index);
+
+        let pattern = "GTTT".as_bytes().to_owned();
+
+        b.iter(|| k_mismatch_search(&pattern, 1, &parameters, &fmd_index, &rev_fmd_index))
+    });
+}
+
+criterion_group!(benches, criterion_benchmark);
+criterion_main!(benches);
