@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 pub struct AlignmentParameters {
-    pub base_error_rate: f32,
-    pub poisson_threshold: f32,
+    pub base_error_rate: f64,
+    pub poisson_threshold: f64,
     pub penalty_mismatch: i32,
     pub penalty_gap_open: i32,
     pub penalty_gap_extend: i32,
@@ -34,29 +34,30 @@ impl<'a> AllowedMismatches<'a> {
         }
     }
 
-    fn factorial(n: u32) -> u32 {
-        (2..=n).product()
-    }
-
-    fn ppoisson(lambda: f32, k: u32) -> f32 {
-        let lower_tail: f32 = (0..=k)
-            .map(|i| {
-                lambda.powi(i as i32) * (-lambda).exp() / AllowedMismatches::factorial(i) as f32
-            })
-            .sum();
-        1.0 - lower_tail
-    }
-
     fn calculate_max_num_mismatches(&self, read_length: usize) -> i32 {
-        (1..=read_length as i32)
-            .take_while(|&i| {
-                AllowedMismatches::ppoisson(
-                    self.alignment_parameters.base_error_rate * read_length as f32,
-                    i as u32,
-                ) > self.alignment_parameters.poisson_threshold
-            })
+        let lambda = read_length as f64 * self.alignment_parameters.base_error_rate;
+        let exp_minus_lambda = (-lambda).exp();
+
+        let mut lambda_to_the_power_of_k = 1.0;
+        let mut k_factorial = 1;
+        let mut sum = exp_minus_lambda;
+
+        // k = 0. BWA allows k+1 mismatches, so we do the same
+        [(0 + 1, sum)]
+            .iter()
+            .cloned()
+            // k = 1..read_length
+            .chain((1..=read_length as u64).map(|k| {
+                lambda_to_the_power_of_k *= lambda;
+                k_factorial *= k;
+                sum += lambda_to_the_power_of_k * exp_minus_lambda / k_factorial as f64;
+                // BWA allows k+1 mismatches, so we do the same
+                (k + 1, sum)
+            }))
+            .take_while(|(_k, sum)| 1.0 - sum > self.alignment_parameters.poisson_threshold)
+            .map(|(k, _sum)| k)
             .last()
-            .unwrap_or(0)
+            .unwrap_or(0) as i32
     }
 }
 
@@ -77,9 +78,19 @@ mod tests {
         };
         let mut allowed_mismatches = AllowedMismatches::new(&parameters);
 
-        assert_eq!(4, allowed_mismatches.get(100));
-        assert_eq!(2, allowed_mismatches.get(38));
-        assert_eq!(0, allowed_mismatches.get(1));
+        assert_eq!(6, allowed_mismatches.get(156));
+        assert_eq!(6, allowed_mismatches.get(124));
+        assert_eq!(5, allowed_mismatches.get(123));
+        assert_eq!(5, allowed_mismatches.get(93));
+        assert_eq!(4, allowed_mismatches.get(92));
+        assert_eq!(4, allowed_mismatches.get(64));
+        assert_eq!(3, allowed_mismatches.get(63));
+        assert_eq!(3, allowed_mismatches.get(38));
+        assert_eq!(2, allowed_mismatches.get(37));
+        assert_eq!(2, allowed_mismatches.get(16));
+        assert_eq!(1, allowed_mismatches.get(15));
+        assert_eq!(1, allowed_mismatches.get(3));
+        assert_eq!(0, allowed_mismatches.get(2));
         assert_eq!(0, allowed_mismatches.get(0));
     }
 }
