@@ -9,6 +9,7 @@ use criterion::Criterion;
 
 use thrust::map::k_mismatch_search;
 use thrust::utils::AlignmentParameters;
+use thrust::utils::AllowedMismatches;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
@@ -57,9 +58,19 @@ fn criterion_benchmark(c: &mut Criterion) {
         let rev_fm_index = FMIndex::new(&rev_bwtr, &rev_less, &rev_occ);
         let rev_fmd_index = FMDIndex::from(rev_fm_index);
 
+        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+
         let pattern = "GTTT".as_bytes().to_owned();
 
-        b.iter(|| k_mismatch_search(&pattern, 1, &parameters, &fmd_index, &rev_fmd_index))
+        b.iter(|| {
+            k_mismatch_search(
+                &pattern,
+                allowed_mismatches.get(pattern.len()),
+                &parameters,
+                &fmd_index,
+                &rev_fmd_index,
+            )
+        })
     });
 }
 
