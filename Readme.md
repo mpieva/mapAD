@@ -2,12 +2,13 @@
 
 _We're in pre-alpha state. Very few things work at the moment, but there's hope..._
 
-This is another attempt to write a _fast_ experimental ancient DNA damage aware short read mapper. The name "Thrust" is 
+This is another attempt to write a _fast_ experimental ancient DNA damage aware short read mapper. The name "thrust" is 
 an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
 project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
 
-The first versions will basically be (slightly improved) re-implementations of BWA (FM-index with backtracking and lower-bound pruning of 
-the search space). Improved algorithms and error models will be incorporated step by step as needed. 
+The first versions will basically be (slightly improved by more recent algorithms) re-implementations of BWA (FM-index with 
+backtracking and lower-bound pruning of the search space). Improved algorithms and error models will be incorporated step by 
+step as needed. 
 
 As of now, it's not quite clear whether or not to prefer a rather simple approach (as used in bisulfite sequencing) to 
 the ancient DNA damage problem over a more complex error model.
@@ -15,7 +16,6 @@ the ancient DNA damage problem over a more complex error model.
 ## Build and Install
 
 Besides Rust, no additional dependencies are needed to compile. 
-Rust must be installed to build from source, see: https://rust-lang.org .
 
 0. Install/update Rust (locally, to the current user's home directory):
 
@@ -23,11 +23,7 @@ Rust must be installed to build from source, see: https://rust-lang.org .
 
 1. Git clone thrust or simply download a release zip file:
 
-    `git clone repository/thrust.git`
-
-2. Enter the downloaded directory:
-
-    `cd thrust`
+    `git clone repository/thrust.git && cd thrust`
 
 3. Build:
 
