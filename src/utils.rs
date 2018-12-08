@@ -42,7 +42,7 @@ impl<'a> AllowedMismatches<'a> {
         let mut k_factorial = 1;
         let mut sum = exp_minus_lambda;
 
-        // k = 0. BWA allows k+1 mismatches, so we do the same
+        // k = 0. BWA allows k+1 mismatches, and so do we
         [(0 + 1, sum)]
             .iter()
             .cloned()
@@ -51,7 +51,7 @@ impl<'a> AllowedMismatches<'a> {
                 lambda_to_the_power_of_k *= lambda;
                 k_factorial *= k;
                 sum += lambda_to_the_power_of_k * exp_minus_lambda / k_factorial as f64;
-                // BWA allows k+1 mismatches, so we do the same
+                // BWA allows k+1 mismatches, and so do we
                 (k + 1, sum)
             }))
             .take_while(|(_k, sum)| 1.0 - sum > self.alignment_parameters.poisson_threshold)
