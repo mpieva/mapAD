@@ -64,8 +64,9 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
   - [ ] Briggs et al. (2007)
   - [ ] Skoglund et al. (2014)
   - [ ] Peyrégne (unpublished)
-- [ ] Mapping quality estimation
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
+- [ ] Derive sampled Suffix Arrays from BWT
+- [ ] Mapping quality estimation
 - [ ] Fix suffix array sampling in rust-bio
 - [ ] Multithreading
 - [ ] BAM-IO
