@@ -22,7 +22,7 @@ Besides Rust, no additional dependencies are needed to compile.
 
 1. Git clone thrust or simply download a release zip file:
 
-    `git clone repository/thrust.git && cd thrust`
+    `git clone https://vcs.eva.mpg.de/christian_heide/thrust.git && cd thrust`
 
 3. Build:
 
@@ -64,11 +64,11 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
   - [ ] Briggs et al. (2007)
   - [ ] Skoglund et al. (2014)
   - [ ] Peyrégne (unpublished)
+- [ ] Mapping quality estimation
+- [ ] BAM-IO
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
-- [ ] Mapping quality estimation
 - [ ] Multithreading
-- [ ] BAM-IO
 - [ ] _Cluster-enabled version_
 - [ ] _Paired-end sequencing_
 
