@@ -10,6 +10,7 @@ use bio::io::fastq;
 use libflate::deflate::Decoder;
 
 use crate::utils::{AlignmentParameters, AllowedMismatches};
+use rust_htslib::bam;
 
 struct UnderlyingDataFMDIndex {
     bwt: Vec<u8>,
@@ -39,26 +40,6 @@ impl UnderlyingDataFMDIndex {
 }
 
 pub fn run(reads_path: &str, alignment_parameters: &AlignmentParameters) -> Result<(), Box<Error>> {
-    let intervals = calculate_intervals(reads_path, alignment_parameters)?;
-
-    debug!("Load suffix array");
-    let f_suffix_array = File::open("ref.sar")?;
-    let d_suffix_array = Decoder::new(f_suffix_array);
-    let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
-
-    debug!("Print results");
-    // Loop through the results, extracting the positions array for each pattern
-    for interval_calculator in intervals {
-        let positions = interval_calculator.occ(&suffix_array);
-        println!("{:#?}", positions);
-    }
-    Ok(())
-}
-
-fn calculate_intervals(
-    reads_path: &str,
-    alignment_parameters: &AlignmentParameters,
-) -> Result<Vec<Interval>, Box<Error>> {
     debug!("Load FMD-index");
     let data_fmd_index = UnderlyingDataFMDIndex::load("ref")?;
     debug!("Reconstruct FMD-index");
@@ -79,32 +60,96 @@ fn calculate_intervals(
     );
     let rev_fmd_index = FMDIndex::from(rev_fm_index);
 
-    let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
+    debug!("Load suffix array");
+    let f_suffix_array = File::open("ref.sar")?;
+    let d_suffix_array = Decoder::new(f_suffix_array);
+    let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
 
     debug!("Map reads");
-    // TODO: Load reads in batches to memory to be able to process them in parallel
+    let header = bam::Header::new();
+    let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
+    let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
+    for record in map_reads(
+        &alignment_parameters,
+        &mut allowed_mismatches,
+        reads_path,
+        &fmd_index,
+        &rev_fmd_index,
+        &suffix_array,
+    ) {
+        out.write(&record);
+    }
+
+    Ok(())
+}
+
+fn map_reads(
+    alignment_parameters: &AlignmentParameters,
+    allowed_mismatches: &mut AllowedMismatches,
+    reads_path: &str,
+    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    suffix_array: &Vec<usize>,
+) -> impl Iterator<Item = bam::record::Record> {
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
-    let intervals = reads_fq_reader
-        .records()
-        .flat_map(|pattern| {
-            let pattern = pattern.unwrap().seq().to_ascii_uppercase();
-            k_mismatch_search(
-                &pattern,
-                allowed_mismatches.get(pattern.len()),
-                &alignment_parameters,
-                &fmd_index,
-                &rev_fmd_index,
-            )
-        })
-        .map(|imm| imm.interval)
-        .collect::<Vec<_>>();
-    Ok(intervals)
+
+    for record in reads_fq_reader.records() {
+        let record = record.unwrap();
+        let pattern = record.seq().to_ascii_uppercase();
+        let intervals = k_mismatch_search(
+            &pattern,
+            allowed_mismatches.get(pattern.len()),
+            &alignment_parameters,
+            &fmd_index,
+            &rev_fmd_index,
+        );
+
+        // Estimate mapping quality
+        const TEN_F32: f32 = 10.0;
+        let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
+        let sums_base_q = intervals
+            .iter()
+            .map(|alignment| {
+                alignment
+                    .mismatch_map
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, match_mismatch)| **match_mismatch != Option::None) // TODO
+                    .map(|(i, v)| base_qualities[i])
+                    .sum()
+            })
+            .collect::<Vec<u8>>();
+        let sum_base_q_best = TEN_F32.powi(-(i32::from(*sums_base_q.iter().min().unwrap())));
+        let sum_base_q_all: f32 = sums_base_q
+            .iter()
+            .map(|&f| TEN_F32.powi(-(i32::from(f))))
+            .sum();
+        let mapping_quality = -(1.0 - (sum_base_q_best / sum_base_q_all)).log10();
+
+        // Create SAM/BAM records
+        for imm in intervals.iter() {
+            for position in imm.interval.occ(suffix_array).iter() {
+                let mut bam_record = bam::record::Record::new();
+                bam_record.set_qname(record.id().as_bytes());
+                bam_record.set_pos(*position as i32);
+                bam_record.set_mapq(mapping_quality as u8);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MismatchType {
+    InDel,
+    CtoT,
+    GtoA,
+    Other,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IntervalMismatchMap {
-    pub mismatch_map: Vec<bool>,
-    pub interval: Interval,
+    mismatch_map: Vec<Option<MismatchType>>,
+    interval: Interval,
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
@@ -129,7 +174,7 @@ pub fn k_mismatch_search(
         pattern.len() as isize - 1,
         z,
         interval,
-        Vec::new(),
+        vec![Option::None; pattern.len()],
     )
 }
 
@@ -142,7 +187,7 @@ fn k_mismatch_search_recursive(
     j: isize,
     z: i32,
     mut interval: Interval,
-    mismatch_map: Vec<bool>,
+    mut mismatch_map: Vec<Option<MismatchType>>,
 ) -> HashSet<IntervalMismatchMap> {
     // Too many mismatches
     if z < d[if j < 0 { 0 } else { j as usize }] {
@@ -161,6 +206,8 @@ fn k_mismatch_search_recursive(
     }
 
     let mut interval_set = HashSet::new();
+
+    mismatch_map[j as usize] = Option::Some(MismatchType::InDel);
 
     // Insertion in read
     // TODO: Adaptive penalty
@@ -187,6 +234,9 @@ fn k_mismatch_search_recursive(
 
         if interval.lower <= interval.upper {
             // Deletion in read
+
+            mismatch_map[j as usize] = Option::Some(MismatchType::InDel);
+
             // TODO: Adaptive penalty
             interval_set = interval_set
                 .union(&k_mismatch_search_recursive(
@@ -221,9 +271,18 @@ fn k_mismatch_search_recursive(
             // Mismatch
             } else {
                 let penalty = match (c as char, pattern[j as usize] as char) {
-                    ('C', 'T') => parameters.penalty_c_t,
-                    ('G', 'A') => parameters.penalty_g_a,
-                    _ => parameters.penalty_mismatch,
+                    ('C', 'T') => {
+                        mismatch_map[j as usize] = Option::Some(MismatchType::CtoT);
+                        parameters.penalty_c_t
+                    }
+                    ('G', 'A') => {
+                        mismatch_map[j as usize] = Option::Some(MismatchType::GtoA);
+                        parameters.penalty_g_a
+                    }
+                    _ => {
+                        mismatch_map[j as usize] = Option::Some(MismatchType::Other);
+                        parameters.penalty_mismatch
+                    }
                 };
                 interval_set = interval_set
                     .union(&k_mismatch_search_recursive(
