@@ -66,31 +66,28 @@ pub fn run(reads_path: &str, alignment_parameters: &AlignmentParameters) -> Resu
     let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
 
     debug!("Map reads");
-    let header = bam::Header::new();
-    let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
-    let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
-    for record in map_reads(
+    map_reads(
         &alignment_parameters,
-        &mut allowed_mismatches,
         reads_path,
         &fmd_index,
         &rev_fmd_index,
         &suffix_array,
-    ) {
-        out.write(&record);
-    }
+    )?;
 
     Ok(())
 }
 
 fn map_reads(
     alignment_parameters: &AlignmentParameters,
-    allowed_mismatches: &mut AllowedMismatches,
     reads_path: &str,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
-) -> impl Iterator<Item = bam::record::Record> {
+) -> Result<(), Box<Error>> {
+    let header = bam::Header::new();
+    let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
+    let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
+
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
     for record in reads_fq_reader.records() {
@@ -115,7 +112,7 @@ fn map_reads(
                     .iter()
                     .enumerate()
                     .filter(|(_, match_mismatch)| **match_mismatch != Option::None) // TODO
-                    .map(|(i, v)| base_qualities[i])
+                    .map(|(i, _)| base_qualities[i])
                     .sum()
             })
             .collect::<Vec<u8>>();
@@ -133,9 +130,11 @@ fn map_reads(
                 bam_record.set_qname(record.id().as_bytes());
                 bam_record.set_pos(*position as i32);
                 bam_record.set_mapq(mapping_quality as u8);
+                out.write(&bam_record)?;
             }
         }
     }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
