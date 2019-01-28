@@ -397,7 +397,7 @@ mod tests {
         let intervals = k_mismatch_search(&pattern, 1, &parameters, &fmd_index, &rev_fmd_index);
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.occ(&suffix_array))
+            .map(|f| f.interval.occ(&suffix_array))
             .flatten()
             .collect();
         positions.sort();
