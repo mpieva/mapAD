@@ -96,8 +96,15 @@ fn calculate_intervals(
                 &rev_fmd_index,
             )
         })
+        .map(|imm| imm.interval)
         .collect::<Vec<_>>();
     Ok(intervals)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IntervalMismatchMap {
+    pub mismatch_map: Vec<bool>,
+    pub interval: Interval,
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
@@ -107,7 +114,7 @@ pub fn k_mismatch_search(
     parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-) -> HashSet<Interval> {
+) -> HashSet<IntervalMismatchMap> {
     let d = calculate_d(&pattern, &parameters, rev_fmd_index);
     let interval = Interval {
         lower: 0,
@@ -122,6 +129,7 @@ pub fn k_mismatch_search(
         pattern.len() as isize - 1,
         z,
         interval,
+        Vec::new(),
     )
 }
 
@@ -134,7 +142,8 @@ fn k_mismatch_search_recursive(
     j: isize,
     z: i32,
     mut interval: Interval,
-) -> HashSet<Interval> {
+    mismatch_map: Vec<bool>,
+) -> HashSet<IntervalMismatchMap> {
     // Too many mismatches
     if z < d[if j < 0 { 0 } else { j as usize }] {
         return HashSet::new();
@@ -144,7 +153,10 @@ fn k_mismatch_search_recursive(
     if j < 0 {
         interval.upper += 1;
         let mut interval_set = HashSet::new();
-        interval_set.insert(interval);
+        interval_set.insert(IntervalMismatchMap {
+            interval,
+            mismatch_map,
+        });
         return interval_set;
     }
 
@@ -161,6 +173,7 @@ fn k_mismatch_search_recursive(
             j - 1,
             z - 1,
             interval,
+            mismatch_map.clone(),
         ))
         .cloned()
         .collect();
@@ -184,6 +197,7 @@ fn k_mismatch_search_recursive(
                     j,
                     z - 1,
                     interval_prime,
+                    mismatch_map.clone(),
                 ))
                 .cloned()
                 .collect();
@@ -199,6 +213,7 @@ fn k_mismatch_search_recursive(
                         j - 1,
                         z,
                         interval_prime,
+                        mismatch_map.clone(),
                     ))
                     .cloned()
                     .collect();
@@ -219,6 +234,7 @@ fn k_mismatch_search_recursive(
                         j - 1,
                         z - penalty,
                         interval_prime,
+                        mismatch_map.clone(),
                     ))
                     .cloned()
                     .collect();
