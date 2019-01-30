@@ -106,11 +106,7 @@ fn map_reads(
         );
 
         const TEN_F32: f32 = 10.0;
-        let mut sum_base_q_best = intervals
-            .iter()
-            .take(1)
-            .map(|alignment| alignment.sum_base_qualities)
-            .sum();
+        let mut sum_base_q_best = i32::max_value();
         let mut sum_base_q_all = 0.0;
         for sum_of_qualities in intervals.iter() {
             sum_base_q_all += TEN_F32.powi(-(sum_of_qualities.sum_base_qualities));
