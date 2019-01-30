@@ -61,10 +61,12 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let pattern = "GTTT".as_bytes().to_owned();
+        let base_qualities = [0, 0, 0, 0];
 
         b.iter(|| {
             k_mismatch_search(
                 &pattern,
+                &base_qualities,
                 allowed_mismatches.get(pattern.len()),
                 &parameters,
                 &fmd_index,
