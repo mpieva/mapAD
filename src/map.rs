@@ -108,6 +108,7 @@ fn map_reads(
             None => break,
         };
 
+        debug!("Estimate mapping quality");
         const TEN_F32: f32 = 10.0;
         let mut sum_base_q_best = i32::max_value();
         let mut sum_base_q_all = 0.0;
