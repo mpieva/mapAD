@@ -96,14 +96,17 @@ fn map_reads(
         // Hardcoded value (33) that should be ok only for Illumina reads
         let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
 
-        let intervals = k_mismatch_search(
+        let intervals = match k_mismatch_search(
             &pattern,
             &base_qualities,
             allowed_mismatches.get(pattern.len()),
             &alignment_parameters,
             &fmd_index,
             &rev_fmd_index,
-        );
+        ) {
+            Some(v) => v,
+            None => break,
+        };
 
         const TEN_F32: f32 = 10.0;
         let mut sum_base_q_best = i32::max_value();
@@ -160,7 +163,7 @@ pub fn k_mismatch_search(
     parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-) -> Vec<IntervalQuality> {
+) -> Option<Vec<IntervalQuality>> {
     debug!("Calculate auxiliary array D");
     let d = calculate_d(&pattern, &parameters, rev_fmd_index);
 
@@ -182,34 +185,30 @@ pub fn k_mismatch_search(
 }
 
 /// Follows closely the implementation of BWA-backtrack (Li & Durbin, 2009)
-fn k_mismatch_search_recursive(mut par: MismatchSearchParameters) -> Vec<IntervalQuality> {
+fn k_mismatch_search_recursive(mut par: MismatchSearchParameters) -> Option<Vec<IntervalQuality>> {
     // Too many mismatches
     if par.z < par.d[if par.j < 0 { 0 } else { par.j as usize }] {
-        return Vec::new();
+        return None;
     }
 
     // This route through the read graph is finished successfully, return the interval
     if par.j < 0 {
         par.interval.upper += 1;
-        let mut interval_set = Vec::new();
-        interval_set.push(IntervalQuality {
+        return Some(vec![IntervalQuality {
             interval: par.interval,
             sum_base_qualities: par.current_sum_base_qualities,
-        });
-        return interval_set;
+        }]);
     }
-
-    let mut interval_set = Vec::new();
 
     // Insertion in read
     // TODO: Adaptive penalty
-    interval_set.extend(&k_mismatch_search_recursive(MismatchSearchParameters {
+    let mut interval_set = k_mismatch_search_recursive(MismatchSearchParameters {
         j: par.j - 1,
         z: par.z - 1,
         current_sum_base_qualities: par.current_sum_base_qualities
             + i32::from(par.base_qualities[par.j as usize]),
         ..par
-    }));
+    });
 
     for &c in b"ACGT".iter() {
         let tmp = index_lookup(c, par.interval.lower, par.interval.upper, par.fmd_index);
@@ -221,21 +220,33 @@ fn k_mismatch_search_recursive(mut par: MismatchSearchParameters) -> Vec<Interva
         if par.interval.lower <= par.interval.upper {
             // Deletion in read
             // TODO: Adaptive penalty
-            interval_set.extend(&k_mismatch_search_recursive(MismatchSearchParameters {
+            if let Some(v) = k_mismatch_search_recursive(MismatchSearchParameters {
                 z: par.z - 1,
                 interval: interval_prime,
                 current_sum_base_qualities: par.current_sum_base_qualities
                     + i32::from(par.base_qualities[par.j as usize]),
                 ..par
-            }));
+            }) {
+                if let Some(w) = &mut interval_set {
+                    w.extend(v);
+                } else {
+                    interval_set = Some(v);
+                }
+            }
 
             // Match
             if c == par.pattern[par.j as usize] {
-                interval_set.extend(&k_mismatch_search_recursive(MismatchSearchParameters {
+                if let Some(v) = k_mismatch_search_recursive(MismatchSearchParameters {
                     j: par.j - 1,
                     interval: interval_prime,
                     ..par
-                }));
+                }) {
+                    if let Some(w) = &mut interval_set {
+                        w.extend(v);
+                    } else {
+                        interval_set = Some(v);
+                    }
+                }
 
             // Mismatch
             } else {
@@ -244,14 +255,21 @@ fn k_mismatch_search_recursive(mut par: MismatchSearchParameters) -> Vec<Interva
                     ('G', 'A') => par.parameters.penalty_g_a,
                     _ => par.parameters.penalty_mismatch,
                 };
-                interval_set.extend(&k_mismatch_search_recursive(MismatchSearchParameters {
+
+                if let Some(v) = k_mismatch_search_recursive(MismatchSearchParameters {
                     j: par.j - 1,
                     z: par.z - penalty,
                     interval: interval_prime,
                     current_sum_base_qualities: par.current_sum_base_qualities
                         + i32::from(par.base_qualities[par.j as usize]),
                     ..par
-                }));
+                }) {
+                    if let Some(w) = &mut interval_set {
+                        w.extend(v);
+                    } else {
+                        interval_set = Some(v);
+                    }
+                }
             }
         }
     }
@@ -418,7 +436,8 @@ mod tests {
             &parameters,
             &fmd_index,
             &rev_fmd_index,
-        );
+        )
+        .unwrap();
         let mut positions: Vec<usize> = intervals
             .into_iter()
             .map(|f| f.interval.occ(&suffix_array))
