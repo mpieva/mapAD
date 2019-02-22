@@ -140,12 +140,7 @@ pub struct IntervalQuality {
     sum_base_qualities: i32,
 }
 
-struct MismatchSearchParameters<'a> {
-    pattern: &'a [u8],
-    base_qualities: &'a [u8],
-    d: &'a [i32],
-    parameters: &'a AlignmentParameters,
-    fmd_index: &'a FMDIndex<&'a Vec<u8>, &'a Vec<usize>, &'a Occ>,
+struct MismatchSearchParameters {
     j: isize,
     z: i32,
     interval: Interval,
@@ -161,115 +156,101 @@ pub fn k_mismatch_search(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
-    /// Follows closely the implementation of BWA-backtrack (Li & Durbin, 2009)
-    fn inner(mut par: MismatchSearchParameters, intervals: &mut Vec<IntervalQuality>) {
+    let d = calculate_d(&pattern, &parameters, rev_fmd_index);
+    let mut intervals = Vec::new();
+    let mut stack = vec![MismatchSearchParameters {
+        j: pattern.len() as isize - 1,
+        z,
+        interval: Interval {
+            lower: 0,
+            upper: pattern.len() - 1,
+        },
+        current_sum_base_qualities: 0,
+    }];
+
+    while let Some(stack_frame) = stack.pop() {
         // Too many mismatches
-        if par.z < par.d[if par.j < 0 { 0 } else { par.j as usize }] {
-            return;
+        if stack_frame.z
+            < d[if stack_frame.j < 0 {
+                0
+            } else {
+                stack_frame.j as usize
+            }]
+        {
+            continue;
         }
 
-        // This route through the read graph is finished successfully, return the interval
-        if par.j < 0 {
-            par.interval.upper += 1;
+        // This route through the read graph is finished successfully, push the interval
+        if stack_frame.j < 0 {
+            let mut interval = stack_frame.interval;
+            interval.upper += 1;
             intervals.push(IntervalQuality {
-                interval: par.interval,
-                sum_base_qualities: par.current_sum_base_qualities,
+                interval,
+                sum_base_qualities: stack_frame.current_sum_base_qualities,
             });
-            return;
+            continue;
         }
 
         // Insertion in read
         // TODO: Adaptive penalty
-        inner(
-            MismatchSearchParameters {
-                j: par.j - 1,
-                z: par.z - 1,
-                current_sum_base_qualities: par.current_sum_base_qualities
-                    + i32::from(par.base_qualities[par.j as usize]),
-                ..par
-            },
-            intervals,
-        );
+        stack.push(MismatchSearchParameters {
+            j: stack_frame.j - 1,
+            z: stack_frame.z - 1,
+            current_sum_base_qualities: stack_frame.current_sum_base_qualities
+                + i32::from(base_qualities[stack_frame.j as usize]),
+            ..stack_frame
+        });
 
         for &c in b"ACGT".iter() {
-            let tmp = index_lookup(c, par.interval.lower, par.interval.upper, par.fmd_index);
+            let tmp = index_lookup(
+                c,
+                stack_frame.interval.lower,
+                stack_frame.interval.upper,
+                fmd_index,
+            );
             let interval_prime = Interval {
                 lower: tmp.0,
                 upper: tmp.1,
             };
 
-            if par.interval.lower <= par.interval.upper {
+            if stack_frame.interval.lower <= stack_frame.interval.upper {
                 // Deletion in read
                 // TODO: Adaptive penalty
-                inner(
-                    MismatchSearchParameters {
-                        z: par.z - 1,
-                        interval: interval_prime,
-                        current_sum_base_qualities: par.current_sum_base_qualities
-                            + i32::from(par.base_qualities[par.j as usize]),
-                        ..par
-                    },
-                    intervals,
-                );
+                stack.push(MismatchSearchParameters {
+                    z: stack_frame.z - 1,
+                    interval: interval_prime,
+                    current_sum_base_qualities: stack_frame.current_sum_base_qualities
+                        + i32::from(base_qualities[stack_frame.j as usize]),
+                    ..stack_frame
+                });
 
                 // Match
-                if c == par.pattern[par.j as usize] {
-                    inner(
-                        MismatchSearchParameters {
-                            j: par.j - 1,
-                            interval: interval_prime,
-                            ..par
-                        },
-                        intervals,
-                    );
+                if c == pattern[stack_frame.j as usize] {
+                    stack.push(MismatchSearchParameters {
+                        j: stack_frame.j - 1,
+                        interval: interval_prime,
+                        ..stack_frame
+                    });
 
                 // Mismatch
                 } else {
-                    let penalty = match (c as char, par.pattern[par.j as usize] as char) {
-                        ('C', 'T') => par.parameters.penalty_c_t,
-                        ('G', 'A') => par.parameters.penalty_g_a,
-                        _ => par.parameters.penalty_mismatch,
+                    let penalty = match (c as char, pattern[stack_frame.j as usize] as char) {
+                        ('C', 'T') => parameters.penalty_c_t,
+                        ('G', 'A') => parameters.penalty_g_a,
+                        _ => parameters.penalty_mismatch,
                     };
 
-                    inner(
-                        MismatchSearchParameters {
-                            j: par.j - 1,
-                            z: par.z - penalty,
-                            interval: interval_prime,
-                            current_sum_base_qualities: par.current_sum_base_qualities
-                                + i32::from(par.base_qualities[par.j as usize]),
-                            ..par
-                        },
-                        intervals,
-                    );
+                    stack.push(MismatchSearchParameters {
+                        j: stack_frame.j - 1,
+                        z: stack_frame.z - penalty,
+                        interval: interval_prime,
+                        current_sum_base_qualities: stack_frame.current_sum_base_qualities
+                            + i32::from(base_qualities[stack_frame.j as usize]),
+                    });
                 }
             }
         }
     }
-
-    debug!("Calculate auxiliary array D");
-    let d = calculate_d(&pattern, &parameters, rev_fmd_index);
-
-    debug!("Map reads");
-    let mut intervals = Vec::new();
-    inner(
-        MismatchSearchParameters {
-            pattern,
-            base_qualities,
-            d: &d,
-            parameters,
-            fmd_index,
-            j: pattern.len() as isize - 1,
-            z,
-            interval: Interval {
-                lower: 0,
-                upper: fmd_index.bwt().len() - 1,
-            },
-            current_sum_base_qualities: 0,
-        },
-        &mut intervals,
-    );
-
     intervals
 }
 
