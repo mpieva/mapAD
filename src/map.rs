@@ -156,7 +156,10 @@ pub fn k_mismatch_search(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
+    debug!("Calculate auxiliary array D");
     let d = calculate_d(&pattern, &parameters, rev_fmd_index);
+
+    debug!("Map reads");
     let mut intervals = Vec::new();
     let mut stack = vec![MismatchSearchParameters {
         j: pattern.len() as isize - 1,
