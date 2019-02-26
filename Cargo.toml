@@ -15,7 +15,7 @@ log = "*"
 rust-htslib = "*"
 simple_logger = "*"
 bincode = "*"
-bio = "*"
+bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub" }
 libflate = "*"
 
 [dev-dependencies]
