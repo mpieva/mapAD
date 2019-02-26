@@ -404,10 +404,11 @@ mod tests {
         };
 
         let alphabet = alphabets::dna::n_alphabet();
-        let mut ref_seq = "GAAGAC".as_bytes().to_owned();
+        let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
         let suffix_array = suffix_array(&ref_seq);
         let fm_index = FMIndex::new(
             &data_fmd_index.bwt,
@@ -427,11 +428,11 @@ mod tests {
         );
         let rev_fmd_index = FMDIndex::from(rev_fm_index);
 
-        let pattern = "CAC".as_bytes().to_owned();
-        let base_qualities = [0, 0, 0];
+        let pattern = "GTTC".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
 
         let d = calculate_d(&pattern, &parameters, &rev_fmd_index);
-        assert_eq!(d, vec![0, 1, 1]);
+        assert_eq!(d, vec![0, 0, 1, 1]);
 
         let intervals = k_mismatch_search(
             &pattern,
@@ -443,10 +444,10 @@ mod tests {
         );
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.occ(&suffix_array))
+            .map(|f| f.interval.revcomp().occ(&suffix_array))
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(positions, vec![3, 4]);
+        assert_eq!(positions, vec![2, 6, 10, 19, 23, 27]);
     }
 }
