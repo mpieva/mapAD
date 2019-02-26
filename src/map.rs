@@ -280,13 +280,6 @@ pub fn k_mismatch_search(
     intervals
 }
 
-fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
-    let less = index.less(a);
-    let l = less + if l > 0 { index.occ(l - 1, a) } else { 0 };
-    let r = less + index.occ(r, a) - 1;
-    (l, r)
-}
-
 ///// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
 ///// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
 fn calculate_d(
@@ -294,6 +287,13 @@ fn calculate_d(
     alignment_parameters: &AlignmentParameters,
     reverse_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<i32> {
+    fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
+        let less = index.less(a);
+        let l = less + if l > 0 { index.occ(l - 1, a) } else { 0 };
+        let r = less + index.occ(r, a) - 1;
+        (l, r)
+    }
+
     let r_upper_bound = reverse_fmd_index.bwt().len() - 1;
 
     let (mut l, mut r) = (0, r_upper_bound);
