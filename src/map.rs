@@ -2,14 +2,16 @@ use std::cmp::min;
 use std::error::Error;
 use std::fs::File;
 
-use bincode::deserialize_from;
+use bio::alphabets::dna::complement;
 use bio::data_structures::bwt::Occ;
-use bio::data_structures::fmindex::{FMDIndex, FMIndex, FMIndexable, Interval};
+use bio::data_structures::fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable};
+
+use bincode::deserialize_from;
 use bio::io::fastq;
 use libflate::deflate::Decoder;
+use rust_htslib::bam;
 
 use crate::utils::{AlignmentParameters, AllowedMismatches};
-use rust_htslib::bam;
 
 struct UnderlyingDataFMDIndex {
     bwt: Vec<u8>,
