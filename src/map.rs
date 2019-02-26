@@ -125,7 +125,7 @@ fn map_reads(
 
         // Create SAM/BAM records
         for imm in intervals.iter() {
-            for position in imm.interval.occ(suffix_array).iter() {
+            for position in imm.interval.forward().occ(suffix_array).iter() {
                 let mut bam_record = bam::record::Record::new();
                 bam_record.set_qname(record.id().as_bytes());
                 bam_record.set_pos(*position as i32);
@@ -137,15 +137,17 @@ fn map_reads(
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct IntervalQuality {
-    interval: Interval,
+    interval: BiInterval,
     sum_base_qualities: i32,
 }
 
+#[derive(Debug)]
 struct MismatchSearchParameters {
     j: isize,
     z: i32,
-    interval: Interval,
+    interval: BiInterval,
     current_sum_base_qualities: i32,
 }
 
@@ -166,10 +168,7 @@ pub fn k_mismatch_search(
     let mut stack = vec![MismatchSearchParameters {
         j: pattern.len() as isize - 1,
         z,
-        interval: Interval {
-            lower: 0,
-            upper: pattern.len() - 1,
-        },
+        interval: fmd_index.init_interval(),
         current_sum_base_qualities: 0,
     }];
 
@@ -187,17 +186,15 @@ pub fn k_mismatch_search(
 
         // This route through the read graph is finished successfully, push the interval
         if stack_frame.j < 0 {
-            let mut interval = stack_frame.interval;
-            interval.upper += 1;
             intervals.push(IntervalQuality {
-                interval,
+                interval: stack_frame.interval,
                 sum_base_qualities: stack_frame.current_sum_base_qualities,
             });
             continue;
         }
 
         // Insertion in read
-        // TODO: Adaptive penalty
+        // TODO: Adaptive penalty (gap-{open/extend})
         stack.push(MismatchSearchParameters {
             j: stack_frame.j - 1,
             z: stack_frame.z - 1,
@@ -206,53 +203,77 @@ pub fn k_mismatch_search(
             ..stack_frame
         });
 
-        for &c in b"ACGT".iter() {
-            let tmp = index_lookup(
-                c,
-                stack_frame.interval.lower,
-                stack_frame.interval.upper,
-                fmd_index,
-            );
-            let interval_prime = Interval {
-                lower: tmp.0,
-                upper: tmp.1,
+        let mut s = 0;
+        let mut o;
+        let mut l = stack_frame.interval.lower_rev;
+        // Interval [l(c(aP)), u(c(aP))] is a subinterval of [l(c(P)), u(c(P))] for each a,
+        // starting with the lexicographically smallest ($),
+        // then c(T) = A, c(G) = C, c(C) = G, N, c(A) = T, ...
+        // Hence, we calculate lower revcomp bounds by iterating over
+        // symbols and updating from previous one.
+        for &c in b"$TGCNA".iter() {
+            l += s;
+            o = if stack_frame.interval.lower == 0 {
+                0
+            } else {
+                fmd_index.occ(stack_frame.interval.lower - 1, c)
+            };
+            // Calculate size (I^s)
+            let r = stack_frame.interval.lower + stack_frame.interval.size;
+            s = match r {
+                0 => break, // TODO: Check if ok
+                _ => fmd_index.occ(r - 1, c) - o,
             };
 
-            if stack_frame.interval.lower <= stack_frame.interval.upper {
-                // Deletion in read
-                // TODO: Adaptive penalty
+            // No need to branch for technical characters
+            if c == b'N' || c == b'$' {
+                continue;
+            }
+
+            // Get lower bound
+            let k = fmd_index.less(c) + o;
+
+            // Create new BiInterval of aP
+            let interval_prime = BiInterval {
+                lower: k,
+                lower_rev: l,
+                size: s,
+                match_size: pattern.len() - stack_frame.j as usize - 1, // TODO
+            };
+
+            // Deletion in read
+            // TODO: Adaptive penalty (gap-{open/extend})
+            stack.push(MismatchSearchParameters {
+                z: stack_frame.z - 1,
+                interval: interval_prime,
+                current_sum_base_qualities: stack_frame.current_sum_base_qualities
+                    + i32::from(base_qualities[stack_frame.j as usize]),
+                ..stack_frame
+            });
+
+            // Match
+            if c == pattern[stack_frame.j as usize] {
                 stack.push(MismatchSearchParameters {
-                    z: stack_frame.z - 1,
+                    j: stack_frame.j - 1,
                     interval: interval_prime,
-                    current_sum_base_qualities: stack_frame.current_sum_base_qualities
-                        + i32::from(base_qualities[stack_frame.j as usize]),
                     ..stack_frame
                 });
 
-                // Match
-                if c == pattern[stack_frame.j as usize] {
-                    stack.push(MismatchSearchParameters {
-                        j: stack_frame.j - 1,
-                        interval: interval_prime,
-                        ..stack_frame
-                    });
+            // Mismatch
+            } else {
+                let penalty = match (c as char, pattern[stack_frame.j as usize] as char) {
+                    ('C', 'T') => parameters.penalty_c_t,
+                    ('G', 'A') => parameters.penalty_g_a,
+                    _ => parameters.penalty_mismatch,
+                };
 
-                // Mismatch
-                } else {
-                    let penalty = match (c as char, pattern[stack_frame.j as usize] as char) {
-                        ('C', 'T') => parameters.penalty_c_t,
-                        ('G', 'A') => parameters.penalty_g_a,
-                        _ => parameters.penalty_mismatch,
-                    };
-
-                    stack.push(MismatchSearchParameters {
-                        j: stack_frame.j - 1,
-                        z: stack_frame.z - penalty,
-                        interval: interval_prime,
-                        current_sum_base_qualities: stack_frame.current_sum_base_qualities
-                            + i32::from(base_qualities[stack_frame.j as usize]),
-                    });
-                }
+                stack.push(MismatchSearchParameters {
+                    j: stack_frame.j - 1,
+                    z: stack_frame.z - penalty,
+                    interval: interval_prime,
+                    current_sum_base_qualities: stack_frame.current_sum_base_qualities
+                        + i32::from(base_qualities[stack_frame.j as usize]),
+                });
             }
         }
     }
