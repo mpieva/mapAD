@@ -2,7 +2,7 @@ use std::cmp::min;
 use std::error::Error;
 use std::fs::File;
 
-use bio::alphabets::dna::complement;
+use bio::alphabets::dna;
 use bio::data_structures::bwt::Occ;
 use bio::data_structures::fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable};
 
@@ -149,6 +149,9 @@ struct MismatchSearchParameters {
     z: i32,
     interval: BiInterval,
     current_sum_base_qualities: i32,
+    backward_pointer: isize,
+    forward_pointer: isize,
+    forward: bool,
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
@@ -165,27 +168,35 @@ pub fn k_mismatch_search(
 
     debug!("Map reads");
     let mut intervals = Vec::new();
+
+    let center_of_read = pattern.len() as isize / 2;
     let mut stack = vec![MismatchSearchParameters {
-        j: pattern.len() as isize - 1,
+        j: center_of_read,
         z,
         interval: fmd_index.init_interval(),
         current_sum_base_qualities: 0,
+        backward_pointer: center_of_read - 1,
+        forward_pointer: center_of_read,
+        forward: true,
     }];
 
     while let Some(stack_frame) = stack.pop() {
-        // Too many mismatches
-        if stack_frame.z
-            < d[if stack_frame.j < 0 {
-                0
-            } else {
-                stack_frame.j as usize
-            }]
-        {
+        // Too many mismatches  // FIXME
+        if stack_frame.z < 0 {
             continue;
         }
+        //        if stack_frame.z
+        //            < d[if stack_frame.j < 0 {
+        //                0
+        //            } else {
+        //                stack_frame.j as usize
+        //            }]
+        //        {
+        //            continue;
+        //        }
 
         // This route through the read graph is finished successfully, push the interval
-        if stack_frame.j < 0 {
+        if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
             intervals.push(IntervalQuality {
                 interval: stack_frame.interval,
                 sum_base_qualities: stack_frame.current_sum_base_qualities,
@@ -193,58 +204,74 @@ pub fn k_mismatch_search(
             continue;
         }
 
+        let next_j;
+        let next_backward_pointer;
+        let next_forward_pointer;
+
+        // Determine direction of progress for next iteration on this stack frame
+        let fmd_ext_interval = if stack_frame.forward {
+            next_forward_pointer = stack_frame.forward_pointer + 1;
+            next_backward_pointer = stack_frame.backward_pointer;
+            next_j = next_backward_pointer;
+            stack_frame.interval.swapped()
+        } else {
+            next_forward_pointer = stack_frame.forward_pointer;
+            next_backward_pointer = stack_frame.backward_pointer - 1;
+            next_j = next_forward_pointer;
+            stack_frame.interval
+        };
+
         // Insertion in read
-        // TODO: Adaptive penalty (gap-{open/extend})
         stack.push(MismatchSearchParameters {
-            j: stack_frame.j - 1,
-            z: stack_frame.z - 1,
+            j: next_j,
+            z: stack_frame.z - 1, // TODO: Adaptive penalty (gap-{open/extend})
             current_sum_base_qualities: stack_frame.current_sum_base_qualities
                 + i32::from(base_qualities[stack_frame.j as usize]),
+            backward_pointer: next_backward_pointer,
+            forward_pointer: next_forward_pointer,
+            forward: !stack_frame.forward,
             ..stack_frame
         });
 
         let mut s = 0;
         let mut o;
-        let mut l = stack_frame.interval.lower_rev;
-        // Interval [l(c(aP)), u(c(aP))] is a subinterval of [l(c(P)), u(c(P))] for each a,
-        // starting with the lexicographically smallest ($),
-        // then c(T) = A, c(G) = C, c(C) = G, N, c(A) = T, ...
-        // Hence, we calculate lower revcomp bounds by iterating over
-        // symbols and updating from previous one.
+        let mut l = fmd_ext_interval.lower_rev;
         for &c in b"$TGCNA".iter() {
-            l += s;
-            o = if stack_frame.interval.lower == 0 {
-                0
+            let mut interval_prime = {
+                l += s;
+                o = if fmd_ext_interval.lower == 0 {
+                    0
+                } else {
+                    fmd_index.occ(fmd_ext_interval.lower - 1, c)
+                };
+
+                // Interval size I^s
+                s = fmd_index.occ(fmd_ext_interval.lower + fmd_ext_interval.size - 1, c) - o;
+
+                // No need to branch for technical characters
+                if c == b'$' || c == b'N' {
+                    continue;
+                }
+
+                BiInterval {
+                    lower: fmd_index.less(c) + o,
+                    lower_rev: l,
+                    size: s,
+                    match_size: fmd_ext_interval.match_size + 1,
+                }
+            };
+
+            // Special treatment of forward extension
+            let c = if stack_frame.forward {
+                interval_prime = interval_prime.swapped();
+                dna::complement(c)
             } else {
-                fmd_index.occ(stack_frame.interval.lower - 1, c)
-            };
-            // Calculate size (I^s)
-            let r = stack_frame.interval.lower + stack_frame.interval.size;
-            s = match r {
-                0 => break, // TODO: Check if ok
-                _ => fmd_index.occ(r - 1, c) - o,
-            };
-
-            // No need to branch for technical characters
-            if c == b'N' || c == b'$' {
-                continue;
-            }
-
-            // Get lower bound
-            let k = fmd_index.less(c) + o;
-
-            // Create new BiInterval of aP
-            let interval_prime = BiInterval {
-                lower: k,
-                lower_rev: l,
-                size: s,
-                match_size: pattern.len() - stack_frame.j as usize - 1, // TODO
+                c
             };
 
             // Deletion in read
-            // TODO: Adaptive penalty (gap-{open/extend})
             stack.push(MismatchSearchParameters {
-                z: stack_frame.z - 1,
+                z: stack_frame.z - 1, // TODO: Adaptive penalty (gap-{open/extend})
                 interval: interval_prime,
                 current_sum_base_qualities: stack_frame.current_sum_base_qualities
                     + i32::from(base_qualities[stack_frame.j as usize]),
@@ -254,8 +281,11 @@ pub fn k_mismatch_search(
             // Match
             if c == pattern[stack_frame.j as usize] {
                 stack.push(MismatchSearchParameters {
-                    j: stack_frame.j - 1,
+                    j: next_j,
                     interval: interval_prime,
+                    backward_pointer: next_backward_pointer,
+                    forward_pointer: next_forward_pointer,
+                    forward: !stack_frame.forward,
                     ..stack_frame
                 });
 
@@ -268,11 +298,14 @@ pub fn k_mismatch_search(
                 };
 
                 stack.push(MismatchSearchParameters {
-                    j: stack_frame.j - 1,
+                    j: next_j,
                     z: stack_frame.z - penalty,
                     interval: interval_prime,
                     current_sum_base_qualities: stack_frame.current_sum_base_qualities
                         + i32::from(base_qualities[stack_frame.j as usize]),
+                    backward_pointer: next_backward_pointer,
+                    forward_pointer: next_forward_pointer,
+                    forward: !stack_frame.forward,
                 });
             }
         }
@@ -442,9 +475,10 @@ mod tests {
             &fmd_index,
             &rev_fmd_index,
         );
+
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.revcomp().occ(&suffix_array))
+            .map(|f| f.interval.forward().occ(&suffix_array))
             .flatten()
             .collect();
         positions.sort();
