@@ -2,6 +2,8 @@
 
 _We're in pre-alpha state. Very few things work at the moment, but there's hope..._
 
+[![pipeline status](https://vcs.eva.mpg.de/christian_heide/thrust/badges/master/pipeline.svg)](https://vcs.eva.mpg.de/christian_heide/thrust/commits/master) [![coverage report](https://vcs.eva.mpg.de/christian_heide/thrust/badges/master/coverage.svg)](https://vcs.eva.mpg.de/christian_heide/thrust/commits/master)
+
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. The name "thrust" is 
 an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
 project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
