@@ -415,13 +415,13 @@ mod tests {
         let pattern_1 = b"TA";
         let sai_1 = fmd_index.backward_search(pattern_1.iter());
         let positions_1 = sai_1.occ(&suffix_array);
-        assert_eq!(positions_1, [10, 3]);
+        assert_eq!(vec![10, 3], positions_1);
 
         // Test non-occurring pattern
         let pattern_2 = b"GG";
         let sai_2 = fmd_index.backward_search(pattern_2.iter());
         let positions_2 = sai_2.occ(&suffix_array);
-        assert_eq!(positions_2, []);
+        assert_eq!(Vec::<usize>::new(), positions_2);
     }
 
     #[test]
@@ -465,7 +465,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let d = calculate_d(&pattern, &parameters, &rev_fmd_index);
-        assert_eq!(d, vec![0, 0, 1, 1]);
+        assert_eq!(vec![0, 0, 1, 1], d);
 
         let intervals = k_mismatch_search(
             &pattern,
@@ -482,6 +482,6 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(positions, vec![2, 6, 10, 19, 23, 27]);
+        assert_eq!(vec![2, 6, 10, 19, 23, 27], positions);
     }
 }
