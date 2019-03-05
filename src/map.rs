@@ -318,7 +318,7 @@ pub fn k_mismatch_search(
 fn calculate_d(
     pattern: &[u8],
     alignment_parameters: &AlignmentParameters,
-    reverse_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<i32> {
     fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
         let less = index.less(a);
@@ -327,7 +327,7 @@ fn calculate_d(
         (l, r)
     }
 
-    let r_upper_bound = reverse_fmd_index.bwt().len() - 1;
+    let r_upper_bound = fmd_index.bwt().len() - 1;
 
     let (mut l, mut r) = (0, r_upper_bound);
     let mut z = 0;
@@ -335,7 +335,7 @@ fn calculate_d(
     pattern
         .iter()
         .map(|&a| {
-            let tmp = index_lookup(a, l, r, reverse_fmd_index);
+            let tmp = index_lookup(a, l, r, fmd_index);
             l = tmp.0;
             r = tmp.1;
 
@@ -344,12 +344,12 @@ fn calculate_d(
                 // Allow certain transitions
                 let penalty: i32 = {
                     if a == b'T' {
-                        let (l_prime, r_prime) = index_lookup(b'C', l, r, reverse_fmd_index);
+                        let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
                         if l_prime <= r_prime {
                             return alignment_parameters.penalty_c_t;
                         }
                     } else if a == b'A' {
-                        let (l_prime, r_prime) = index_lookup(b'G', l, r, reverse_fmd_index);
+                        let (l_prime, r_prime) = index_lookup(b'G', l, r, fmd_index);
                         if l_prime <= r_prime {
                             return alignment_parameters.penalty_g_a;
                         }
