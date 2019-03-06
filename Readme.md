@@ -3,8 +3,6 @@
 
 # thrust
 
-_We're in pre-alpha state. Very few things work at the moment, but there's hope..._
-
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. The name "thrust" is 
 an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
 project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
@@ -64,9 +62,12 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] It's time to start testing!
 - [ ] Incorporation of one or more of the ancient DNA damage models
   - [x] simply ignore C-T deaminations
+  - [ ] simply penalize C-T changes according to Vindija pattern
   - [ ] Briggs et al. (2007)
   - [ ] Skoglund et al. (2014)
   - [ ] Peyrégne (unpublished)
+- [x] Recursive -> iterative k-mismatch-search
+- [x] Extend match starting from the presumably lowest deaminated region (center) of a read
 - [ ] Mapping quality estimation
 - [ ] BAM-IO
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
