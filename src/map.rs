@@ -478,9 +478,6 @@ mod tests {
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let d = calculate_d(&pattern, &parameters, &rev_fmd_index);
-        assert_eq!(vec![0, 0, 1, 1], d);
-
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -498,4 +495,54 @@ mod tests {
         positions.sort();
         assert_eq!(vec![2, 6, 10, 19, 23, 27], positions);
     }
+
+    #[test]
+    fn test_d() {
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            penalty_mismatch: 1,
+            penalty_gap_open: 1,
+            penalty_gap_extend: 1,
+            penalty_c_t: 0,
+            penalty_g_a: 0,
+        };
+
+        let alphabet = alphabets::dna::n_alphabet();
+        let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let suffix_array = suffix_array(&ref_seq);
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        // Reverse reference
+        let mut reverse_reference = ref_seq.into_iter().rev().collect::<Vec<_>>();
+        let rev_data_fmd_index = build_auxiliary_structures(&mut reverse_reference, &alphabet);
+
+        let rev_fm_index = FMIndex::new(
+            &rev_data_fmd_index.bwt,
+            &rev_data_fmd_index.less,
+            &rev_data_fmd_index.occ,
+        );
+        let rev_fmd_index = FMDIndex::from(rev_fm_index);
+
+        let pattern = "GTTC".as_bytes().to_owned();
+
+        let d_backward = calculate_d(pattern.iter(), &parameters, &rev_fmd_index);
+        let d_forward = calculate_d(pattern.iter().rev(), &parameters, &fmd_index)
+            .into_iter()
+            .rev()
+            .collect::<Vec<i32>>();
+
+        assert_eq!(vec![0, 0, 1, 1], d_backward);
+        assert_eq!(vec![1, 1, 1, 0], d_forward);
+    }
+
 }
