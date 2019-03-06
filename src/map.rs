@@ -163,13 +163,26 @@ pub fn k_mismatch_search(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
+    let center_of_read = pattern.len() as isize / 2;
+
     debug!("Calculate auxiliary array D");
-    let d = calculate_d(&pattern, &parameters, rev_fmd_index);
+    let d_backwards = calculate_d(
+        pattern[..center_of_read as usize].iter(),
+        &parameters,
+        rev_fmd_index,
+    );
+    let d_forwards = calculate_d(
+        pattern[center_of_read as usize..].iter().rev(),
+        &parameters,
+        fmd_index,
+    )
+    .into_iter()
+    .rev()
+    .collect::<Vec<_>>();
 
     debug!("Map reads");
     let mut intervals = Vec::new();
 
-    let center_of_read = pattern.len() as isize / 2;
     let mut stack = vec![MismatchSearchParameters {
         j: center_of_read,
         z,
@@ -181,19 +194,21 @@ pub fn k_mismatch_search(
     }];
 
     while let Some(stack_frame) = stack.pop() {
-        // Too many mismatches  // FIXME
-        if stack_frame.z < 0 {
+        // Too many mismatches
+        let backwards_lower_bound = d_backwards[if stack_frame.backward_pointer < 0 {
+            0
+        } else {
+            stack_frame.backward_pointer as usize
+        }];
+        let forwards_lower_bound =
+            d_forwards[if stack_frame.forward_pointer > d_forwards.len() as isize - 1 {
+                d_forwards.len() - 1
+            } else {
+                (stack_frame.forward_pointer - center_of_read) as usize
+            }];
+        if stack_frame.z < backwards_lower_bound + forwards_lower_bound {
             continue;
         }
-        //        if stack_frame.z
-        //            < d[if stack_frame.j < 0 {
-        //                0
-        //            } else {
-        //                stack_frame.j as usize
-        //            }]
-        //        {
-        //            continue;
-        //        }
 
         // This route through the read graph is finished successfully, push the interval
         if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
@@ -315,8 +330,8 @@ pub fn k_mismatch_search(
 
 ///// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
 ///// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
-fn calculate_d(
-    pattern: &[u8],
+fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
+    pattern: T,
     alignment_parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<i32> {
@@ -333,7 +348,6 @@ fn calculate_d(
     let mut z = 0;
 
     pattern
-        .iter()
         .map(|&a| {
             let tmp = index_lookup(a, l, r, fmd_index);
             l = tmp.0;
