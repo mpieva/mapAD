@@ -68,6 +68,8 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
   - [ ] Peyrégne (unpublished)
 - [x] Recursive -> iterative k-mismatch-search
 - [x] Extend match starting from the presumably lowest deaminated region (center) of a read
+- [ ] Calculate alignment score (with respect to damage pattern, see above)
+- [ ] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
 - [ ] Mapping quality estimation
 - [ ] BAM-IO
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
