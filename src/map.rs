@@ -195,17 +195,15 @@ pub fn k_mismatch_search(
 
     while let Some(stack_frame) = stack.pop() {
         // Too many mismatches
-        let backwards_lower_bound = d_backwards[if stack_frame.backward_pointer < 0 {
-            0
-        } else {
-            stack_frame.backward_pointer as usize
-        }];
+        let backwards_lower_bound = match d_backwards.get(stack_frame.backward_pointer as usize) {
+            Some(&d_i) => d_i,
+            None => 0,
+        };
         let forwards_lower_bound =
-            d_forwards[if stack_frame.forward_pointer > d_forwards.len() as isize - 1 {
-                d_forwards.len() - 1
-            } else {
-                (stack_frame.forward_pointer - center_of_read) as usize
-            }];
+            match d_forwards.get((stack_frame.forward_pointer - center_of_read) as usize) {
+                Some(&d_i) => d_i,
+                None => 0,
+            };
         if stack_frame.z < backwards_lower_bound + forwards_lower_bound {
             continue;
         }
@@ -543,6 +541,16 @@ mod tests {
 
         assert_eq!(vec![0, 0, 1, 1], d_backward);
         assert_eq!(vec![1, 1, 1, 0], d_forward);
-    }
 
+        let pattern = "GATC".as_bytes().to_owned();
+
+        let d_backward = calculate_d(pattern.iter(), &parameters, &rev_fmd_index);
+        let d_forward = calculate_d(pattern.iter().rev(), &parameters, &fmd_index)
+            .into_iter()
+            .rev()
+            .collect::<Vec<i32>>();
+
+        assert_eq!(vec![0, 1, 1, 2], d_backward);
+        assert_eq!(vec![2, 1, 1, 0], d_forward);
+    }
 }
