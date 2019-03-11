@@ -82,7 +82,7 @@ dependencies = [
 [[package]]
 name = "bio"
 version = "0.25.1-alpha.0"
-source = "git+https://vcs.eva.mpg.de/christian_heide/rust-bio?branch=biinterval_pub#e9eb06b3d5a8ef54d18e29e6735f364fdbd9de91"
+source = "git+https://vcs.eva.mpg.de/christian_heide/rust-bio?branch=biinterval_pub#a1e9d973983adaf08274bd3b857b8ed9bcbbfd40"
 dependencies = [
  "approx 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bio-types 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
