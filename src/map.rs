@@ -59,25 +59,25 @@ struct MismatchSearchParameters {
     alignment_score: i32,
 }
 
-impl Ord for MismatchSearchParameters {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.alignment_score.cmp(&other.alignment_score)
-    }
-}
-
 impl PartialOrd for MismatchSearchParameters {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Eq for MismatchSearchParameters {}
+impl Ord for MismatchSearchParameters {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.alignment_score.cmp(&other.alignment_score)
+    }
+}
 
 impl PartialEq for MismatchSearchParameters {
     fn eq(&self, other: &Self) -> bool {
         self.alignment_score == other.alignment_score
     }
 }
+
+impl Eq for MismatchSearchParameters {}
 
 pub fn run(reads_path: &str, alignment_parameters: &AlignmentParameters) -> Result<(), Box<Error>> {
     debug!("Load FMD-index");
