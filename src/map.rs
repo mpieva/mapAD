@@ -219,6 +219,11 @@ pub fn k_mismatch_search(
     });
 
     while let Some(stack_frame) = stack.pop() {
+        // No match
+        if stack_frame.interval.size < 1 {
+            continue;
+        }
+
         // Too many mismatches
         let backwards_lower_bound = match d_backwards.get(stack_frame.backward_pointer as usize) {
             Some(&d_i) => d_i,
