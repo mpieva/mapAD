@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 use std::error::Error;
 use std::fs::File;
 
@@ -12,6 +12,7 @@ use libflate::deflate::Decoder;
 use rust_htslib::bam;
 
 use crate::utils::{AlignmentParameters, AllowedMismatches};
+use std::collections::binary_heap::BinaryHeap;
 
 struct UnderlyingDataFMDIndex {
     bwt: Vec<u8>,
@@ -37,6 +38,44 @@ impl UnderlyingDataFMDIndex {
         let occ: Occ = deserialize_from(d_occ)?;
 
         Ok(UnderlyingDataFMDIndex { bwt, less, occ })
+    }
+}
+
+#[derive(Debug)]
+pub struct IntervalQuality {
+    interval: BiInterval,
+    alignment_score: i32,
+}
+
+#[derive(Debug)]
+struct MismatchSearchParameters {
+    j: isize,
+    z: i32,
+    interval: BiInterval,
+    current_sum_base_qualities: i32,
+    backward_pointer: isize,
+    forward_pointer: isize,
+    forward: bool,
+    alignment_score: i32,
+}
+
+impl Ord for MismatchSearchParameters {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.alignment_score.cmp(&other.alignment_score)
+    }
+}
+
+impl PartialOrd for MismatchSearchParameters {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Eq for MismatchSearchParameters {}
+
+impl PartialEq for MismatchSearchParameters {
+    fn eq(&self, other: &Self) -> bool {
+        self.alignment_score == other.alignment_score
     }
 }
 
@@ -112,9 +151,9 @@ fn map_reads(
         let mut sum_base_q_best = i32::max_value();
         let mut sum_base_q_all = 0.0;
         for sum_of_qualities in intervals.iter() {
-            sum_base_q_all += TEN_F32.powi(-(sum_of_qualities.sum_base_qualities));
-            if sum_of_qualities.sum_base_qualities < sum_base_q_best {
-                sum_base_q_best = sum_of_qualities.sum_base_qualities
+            sum_base_q_all += TEN_F32.powi(-(sum_of_qualities.alignment_score));
+            if sum_of_qualities.alignment_score < sum_base_q_best {
+                sum_base_q_best = sum_of_qualities.alignment_score
             }
         }
         let mapping_quality =
@@ -135,23 +174,6 @@ fn map_reads(
         }
     }
     Ok(())
-}
-
-#[derive(Debug)]
-pub struct IntervalQuality {
-    interval: BiInterval,
-    sum_base_qualities: i32,
-}
-
-#[derive(Debug)]
-struct MismatchSearchParameters {
-    j: isize,
-    z: i32,
-    interval: BiInterval,
-    current_sum_base_qualities: i32,
-    backward_pointer: isize,
-    forward_pointer: isize,
-    forward: bool,
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
@@ -180,10 +202,10 @@ pub fn k_mismatch_search(
     .rev()
     .collect::<Vec<_>>();
 
-    debug!("Map reads");
     let mut intervals = Vec::new();
 
-    let mut stack = vec![MismatchSearchParameters {
+    let mut stack = BinaryHeap::new();
+    stack.push(MismatchSearchParameters {
         j: center_of_read,
         z,
         interval: fmd_index.init_interval(),
@@ -191,7 +213,8 @@ pub fn k_mismatch_search(
         backward_pointer: center_of_read - 1,
         forward_pointer: center_of_read,
         forward: true,
-    }];
+        alignment_score: 0,
+    });
 
     while let Some(stack_frame) = stack.pop() {
         // Too many mismatches
@@ -212,7 +235,7 @@ pub fn k_mismatch_search(
         if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
             intervals.push(IntervalQuality {
                 interval: stack_frame.interval,
-                sum_base_qualities: stack_frame.current_sum_base_qualities,
+                alignment_score: stack_frame.alignment_score,
             });
             continue;
         }
@@ -243,6 +266,9 @@ pub fn k_mismatch_search(
             backward_pointer: next_backward_pointer,
             forward_pointer: next_forward_pointer,
             forward: !stack_frame.forward,
+            alignment_score: (stack_frame.forward_pointer as i32
+                - stack_frame.backward_pointer as i32
+                - (z - (stack_frame.z - 1))), // TODO: Adaptive penalty (gap-{open/extend})
             ..stack_frame
         });
 
@@ -288,6 +314,9 @@ pub fn k_mismatch_search(
                 interval: interval_prime,
                 current_sum_base_qualities: stack_frame.current_sum_base_qualities
                     + i32::from(base_qualities[stack_frame.j as usize]),
+                alignment_score: (stack_frame.forward_pointer as i32
+                    - stack_frame.backward_pointer as i32
+                    - (z - (stack_frame.z - 1))),
                 ..stack_frame
             });
 
@@ -299,6 +328,7 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
+                    alignment_score: stack_frame.alignment_score + 1,
                     ..stack_frame
                 });
 
@@ -319,6 +349,9 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
+                    alignment_score: (stack_frame.forward_pointer as i32
+                        - stack_frame.backward_pointer as i32
+                        - (z - (stack_frame.z - penalty))),
                 });
             }
         }
@@ -484,6 +517,9 @@ mod tests {
             &fmd_index,
             &rev_fmd_index,
         );
+
+        let alignment_score: Vec<i32> = intervals.iter().map(|f| f.alignment_score).collect();
+        assert_eq!(vec![3], alignment_score);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
