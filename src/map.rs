@@ -131,6 +131,7 @@ fn map_reads(
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
     for record in reads_fq_reader.records() {
+        debug!("Map read");
         let record = record.unwrap();
         let pattern = record.seq().to_ascii_uppercase();
 
@@ -187,7 +188,6 @@ pub fn k_mismatch_search(
 ) -> Vec<IntervalQuality> {
     let center_of_read = pattern.len() as isize / 2;
 
-    debug!("Calculate auxiliary array D");
     let d_backwards = calculate_d(
         pattern[..center_of_read as usize].iter(),
         &parameters,
@@ -548,7 +548,6 @@ mod tests {
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
-        let suffix_array = suffix_array(&ref_seq);
         let fm_index = FMIndex::new(
             &data_fmd_index.bwt,
             &data_fmd_index.less,
