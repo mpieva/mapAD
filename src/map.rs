@@ -288,7 +288,7 @@ pub fn k_mismatch_search(
                 s = fmd_index.occ(fmd_ext_interval.lower + fmd_ext_interval.size - 1, c) - o;
 
                 // No need to branch for technical characters
-                if c == b'$' || c == b'N' {
+                if c == b'$' || c == b'N' || s < 1 {
                     continue;
                 }
 
