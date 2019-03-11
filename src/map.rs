@@ -295,7 +295,7 @@ pub fn k_mismatch_search(
                 // Interval size I^s
                 s = fmd_index.occ(fmd_ext_interval.lower + fmd_ext_interval.size - 1, c) - o;
 
-                // No need to branch for technical characters
+                // No need to branch for technical characters and zero-intervals
                 if c == b'$' || c == b'N' || s < 1 {
                     continue;
                 }
