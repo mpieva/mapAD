@@ -57,6 +57,7 @@ struct MismatchSearchParameters {
     forward_pointer: isize,
     forward: bool,
     alignment_score: i32,
+    gap: bool,
 }
 
 impl PartialOrd for MismatchSearchParameters {
@@ -214,6 +215,7 @@ pub fn k_mismatch_search(
         forward_pointer: center_of_read,
         forward: true,
         alignment_score: 0,
+        gap: false,
     });
 
     while let Some(stack_frame) = stack.pop() {
@@ -258,9 +260,14 @@ pub fn k_mismatch_search(
         };
 
         // Insertion in read
+        let penalty = if stack_frame.gap {
+            parameters.penalty_gap_extend
+        } else {
+            parameters.penalty_gap_open
+        };
         stack.push(MismatchSearchParameters {
             j: next_j,
-            z: stack_frame.z - 1, // TODO: Adaptive penalty (gap-{open/extend})
+            z: stack_frame.z - penalty,
             current_sum_base_qualities: stack_frame.current_sum_base_qualities
                 + i32::from(base_qualities[stack_frame.j as usize]),
             backward_pointer: next_backward_pointer,
@@ -268,7 +275,8 @@ pub fn k_mismatch_search(
             forward: !stack_frame.forward,
             alignment_score: (stack_frame.forward_pointer as i32
                 - stack_frame.backward_pointer as i32
-                - (z - (stack_frame.z - 1))), // TODO: Adaptive penalty (gap-{open/extend})
+                - (z - (stack_frame.z - penalty))),
+            gap: true,
             ..stack_frame
         });
 
@@ -309,14 +317,20 @@ pub fn k_mismatch_search(
             };
 
             // Deletion in read
+            let penalty = if stack_frame.gap {
+                parameters.penalty_gap_extend
+            } else {
+                parameters.penalty_gap_open
+            };
             stack.push(MismatchSearchParameters {
-                z: stack_frame.z - 1, // TODO: Adaptive penalty (gap-{open/extend})
+                z: stack_frame.z - penalty,
                 interval: interval_prime,
                 current_sum_base_qualities: stack_frame.current_sum_base_qualities
                     + i32::from(base_qualities[stack_frame.j as usize]),
                 alignment_score: (stack_frame.forward_pointer as i32
                     - stack_frame.backward_pointer as i32
-                    - (z - (stack_frame.z - 1))),
+                    - (z - (stack_frame.z - penalty))),
+                gap: true,
                 ..stack_frame
             });
 
@@ -329,6 +343,7 @@ pub fn k_mismatch_search(
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
                     alignment_score: stack_frame.alignment_score + 1,
+                    gap: false,
                     ..stack_frame
                 });
 
@@ -339,7 +354,6 @@ pub fn k_mismatch_search(
                     ('G', 'A') => parameters.penalty_g_a,
                     _ => parameters.penalty_mismatch,
                 };
-
                 stack.push(MismatchSearchParameters {
                     j: next_j,
                     z: stack_frame.z - penalty,
@@ -352,6 +366,7 @@ pub fn k_mismatch_search(
                     alignment_score: (stack_frame.forward_pointer as i32
                         - stack_frame.backward_pointer as i32
                         - (z - (stack_frame.z - penalty))),
+                    gap: false,
                 });
             }
         }
