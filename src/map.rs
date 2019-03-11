@@ -214,8 +214,8 @@ pub fn k_mismatch_search(
         backward_pointer: center_of_read - 1,
         forward_pointer: center_of_read,
         forward: true,
-        alignment_score: 0,
         gap: false,
+        alignment_score: 0,
     });
 
     while let Some(stack_frame) = stack.pop() {
@@ -273,10 +273,10 @@ pub fn k_mismatch_search(
             backward_pointer: next_backward_pointer,
             forward_pointer: next_forward_pointer,
             forward: !stack_frame.forward,
+            gap: true,
             alignment_score: (stack_frame.forward_pointer as i32
                 - stack_frame.backward_pointer as i32
                 - (z - (stack_frame.z - penalty))),
-            gap: true,
             ..stack_frame
         });
 
@@ -342,8 +342,8 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
-                    alignment_score: stack_frame.alignment_score + 1,
                     gap: false,
+                    alignment_score: stack_frame.alignment_score + 1,
                     ..stack_frame
                 });
 
@@ -363,10 +363,10 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
+                    gap: false,
                     alignment_score: (stack_frame.forward_pointer as i32
                         - stack_frame.backward_pointer as i32
                         - (z - (stack_frame.z - penalty))),
-                    gap: false,
                 });
             }
         }
