@@ -56,8 +56,9 @@ struct MismatchSearchParameters {
     backward_pointer: isize,
     forward_pointer: isize,
     forward: bool,
+    open_gap_backwards: bool,
+    open_gap_forwards: bool,
     alignment_score: i32,
-    gap: bool,
 }
 
 impl PartialOrd for MismatchSearchParameters {
@@ -214,7 +215,8 @@ pub fn k_mismatch_search(
         backward_pointer: center_of_read - 1,
         forward_pointer: center_of_read,
         forward: true,
-        gap: false,
+        open_gap_backwards: false,
+        open_gap_forwards: false,
         alignment_score: 0,
     });
 
@@ -265,7 +267,9 @@ pub fn k_mismatch_search(
         };
 
         // Insertion in read
-        let penalty = if stack_frame.gap {
+        let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
+            || (stack_frame.open_gap_forwards && !stack_frame.forward)
+        {
             parameters.penalty_gap_extend
         } else {
             parameters.penalty_gap_open
@@ -278,10 +282,16 @@ pub fn k_mismatch_search(
             backward_pointer: next_backward_pointer,
             forward_pointer: next_forward_pointer,
             forward: !stack_frame.forward,
-            gap: true,
-            alignment_score: (stack_frame.forward_pointer as i32
-                - stack_frame.backward_pointer as i32
-                - (z - (stack_frame.z - penalty))),
+            open_gap_backwards: if !stack_frame.forward {
+                stack_frame.open_gap_backwards
+            } else {
+                true
+            },
+            open_gap_forwards: if stack_frame.forward {
+                true
+            } else {
+                stack_frame.open_gap_forwards
+            },
             ..stack_frame
         });
 
@@ -322,7 +332,9 @@ pub fn k_mismatch_search(
             };
 
             // Deletion in read
-            let penalty = if stack_frame.gap {
+            let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
+                || (stack_frame.open_gap_forwards && !stack_frame.forward)
+            {
                 parameters.penalty_gap_extend
             } else {
                 parameters.penalty_gap_open
@@ -335,7 +347,16 @@ pub fn k_mismatch_search(
                 alignment_score: (stack_frame.forward_pointer as i32
                     - stack_frame.backward_pointer as i32
                     - (z - (stack_frame.z - penalty))),
-                gap: true,
+                open_gap_backwards: if !stack_frame.forward {
+                    true
+                } else {
+                    stack_frame.open_gap_backwards
+                },
+                open_gap_forwards: if stack_frame.forward {
+                    true
+                } else {
+                    stack_frame.open_gap_forwards
+                },
                 ..stack_frame
             });
 
@@ -347,7 +368,16 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
-                    gap: false,
+                    open_gap_backwards: if !stack_frame.forward {
+                        false
+                    } else {
+                        stack_frame.open_gap_backwards
+                    },
+                    open_gap_forwards: if stack_frame.forward {
+                        false
+                    } else {
+                        stack_frame.open_gap_forwards
+                    },
                     alignment_score: stack_frame.alignment_score + 1,
                     ..stack_frame
                 });
@@ -368,10 +398,19 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
-                    gap: false,
                     alignment_score: (stack_frame.forward_pointer as i32
                         - stack_frame.backward_pointer as i32
                         - (z - (stack_frame.z - penalty))),
+                    open_gap_backwards: if !stack_frame.forward {
+                        false
+                    } else {
+                        stack_frame.open_gap_backwards
+                    },
+                    open_gap_forwards: if stack_frame.forward {
+                        false
+                    } else {
+                        stack_frame.open_gap_forwards
+                    },
                 });
             }
         }
@@ -495,7 +534,7 @@ mod tests {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
             penalty_mismatch: 1,
-            penalty_gap_open: 1,
+            penalty_gap_open: 2,
             penalty_gap_extend: 1,
             penalty_c_t: 0,
             penalty_g_a: 0,
@@ -607,5 +646,63 @@ mod tests {
 
         assert_eq!(vec![0, 1, 1, 2], d_backward);
         assert_eq!(vec![2, 1, 1, 0], d_forward);
+    }
+
+    #[test]
+    fn test_gapped_alignment() {
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            penalty_mismatch: 10,
+            penalty_gap_open: 2,
+            penalty_gap_extend: 1,
+            penalty_c_t: 10,
+            penalty_g_a: 10,
+        };
+
+        let alphabet = alphabets::dna::n_alphabet();
+        let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let suffix_array = suffix_array(&ref_seq);
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        // Reverse reference
+        let mut reverse_reference = ref_seq.into_iter().rev().collect::<Vec<_>>();
+        let rev_data_fmd_index = build_auxiliary_structures(&mut reverse_reference, &alphabet);
+
+        let rev_fm_index = FMIndex::new(
+            &rev_data_fmd_index.bwt,
+            &rev_data_fmd_index.less,
+            &rev_data_fmd_index.occ,
+        );
+        let rev_fmd_index = FMDIndex::from(rev_fm_index);
+
+        let pattern = "TT".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            2,
+            &parameters,
+            &fmd_index,
+            &rev_fmd_index,
+        );
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(vec![0, 0, 0, 0, 2, 2, 5, 5], positions);
     }
 }
