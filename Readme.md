@@ -1,6 +1,8 @@
 [![pipeline status](https://vcs.eva.mpg.de/christian_heide/thrust/badges/master/pipeline.svg)](https://vcs.eva.mpg.de/christian_heide/thrust/commits/master) 
 [![coverage report](https://vcs.eva.mpg.de/christian_heide/thrust/badges/master/coverage.svg)](https://vcs.eva.mpg.de/christian_heide/thrust/commits/master)
 
+Apparently, GitLab-CI tests currently fail due to storage size reasons - not because of failing unit tests.
+
 # thrust
 
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. The name "thrust" is 
