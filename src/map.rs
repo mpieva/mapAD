@@ -51,8 +51,7 @@ pub struct IntervalQuality {
 struct MismatchSearchParameters {
     j: isize,
     z: i32,
-    interval: BiInterval,
-    current_sum_base_qualities: i32,
+    current_interval: BiInterval,
     backward_pointer: isize,
     forward_pointer: isize,
     forward: bool,
@@ -133,8 +132,8 @@ fn map_reads(
 
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
+    debug!("Map reads");
     for record in reads_fq_reader.records() {
-        debug!("Map read");
         let record = record.unwrap();
         let pattern = record.seq().to_ascii_uppercase();
 
@@ -150,7 +149,6 @@ fn map_reads(
             &rev_fmd_index,
         );
 
-        debug!("Estimate mapping quality");
         const TEN_F32: f32 = 10.0;
         let mut sum_base_q_best = i32::max_value();
         let mut sum_base_q_all = 0.0;
@@ -163,9 +161,6 @@ fn map_reads(
         let mapping_quality =
             -((1.0 - (TEN_F32.powi(-(sum_base_q_best)) / sum_base_q_all)).log10());
 
-        dbg!(&record.id());
-        dbg!(&mapping_quality);
-
         // Create SAM/BAM records
         for imm in intervals.iter() {
             for position in imm.interval.forward().occ(suffix_array).iter() {
@@ -177,13 +172,14 @@ fn map_reads(
             }
         }
     }
+    debug!("Done");
     Ok(())
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
 pub fn k_mismatch_search(
     pattern: &[u8],
-    base_qualities: &[u8],
+    _base_qualities: &[u8],
     z: i32,
     parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -211,8 +207,7 @@ pub fn k_mismatch_search(
     stack.push(MismatchSearchParameters {
         j: center_of_read,
         z,
-        interval: fmd_index.init_interval(),
-        current_sum_base_qualities: 0,
+        current_interval: fmd_index.init_interval(),
         backward_pointer: center_of_read - 1,
         forward_pointer: center_of_read,
         forward: true,
@@ -224,7 +219,7 @@ pub fn k_mismatch_search(
 
     while let Some(stack_frame) = stack.pop() {
         // No match
-        if stack_frame.interval.size < 1 {
+        if stack_frame.current_interval.size < 1 {
             continue;
         }
 
@@ -245,7 +240,7 @@ pub fn k_mismatch_search(
         // This route through the read graph is finished successfully, push the interval
         if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
             intervals.push(IntervalQuality {
-                interval: stack_frame.interval,
+                interval: stack_frame.current_interval,
                 alignment_score: stack_frame.alignment_score,
             });
             continue;
@@ -260,12 +255,12 @@ pub fn k_mismatch_search(
             next_forward_pointer = stack_frame.forward_pointer + 1;
             next_backward_pointer = stack_frame.backward_pointer;
             next_j = next_backward_pointer;
-            stack_frame.interval.swapped()
+            stack_frame.current_interval.swapped()
         } else {
             next_forward_pointer = stack_frame.forward_pointer;
             next_backward_pointer = stack_frame.backward_pointer - 1;
             next_j = next_forward_pointer;
-            stack_frame.interval
+            stack_frame.current_interval
         };
 
         // Insertion in read
@@ -279,8 +274,6 @@ pub fn k_mismatch_search(
         stack.push(MismatchSearchParameters {
             j: next_j,
             z: stack_frame.z - penalty,
-            current_sum_base_qualities: stack_frame.current_sum_base_qualities
-                + i32::from(base_qualities[stack_frame.j as usize]),
             backward_pointer: next_backward_pointer,
             forward_pointer: next_forward_pointer,
             forward: !stack_frame.forward,
@@ -294,6 +287,7 @@ pub fn k_mismatch_search(
             } else {
                 stack_frame.open_gap_forwards
             },
+            alignment_score: stack_frame.alignment_score - penalty,
             debug_helper: if stack_frame.forward {
                 format!("{}(_)", stack_frame.debug_helper)
             } else {
@@ -317,7 +311,7 @@ pub fn k_mismatch_search(
                 // Interval size I^s
                 s = fmd_index.occ(fmd_ext_interval.lower + fmd_ext_interval.size - 1, c) - o;
 
-                // No need to branch for technical characters and zero-intervals
+                // No need to branch for technical characters and zero-sized intervals
                 if c == b'$' || c == b'N' || s < 1 {
                     continue;
                 }
@@ -329,7 +323,6 @@ pub fn k_mismatch_search(
                     match_size: fmd_ext_interval.match_size + 1,
                 }
             };
-
             // Special treatment of forward extension
             let c = if stack_frame.forward {
                 interval_prime = interval_prime.swapped();
@@ -348,12 +341,7 @@ pub fn k_mismatch_search(
             };
             stack.push(MismatchSearchParameters {
                 z: stack_frame.z - penalty,
-                interval: interval_prime,
-                current_sum_base_qualities: stack_frame.current_sum_base_qualities
-                    + i32::from(base_qualities[stack_frame.j as usize]),
-                alignment_score: (stack_frame.forward_pointer as i32
-                    - stack_frame.backward_pointer as i32
-                    - (z - (stack_frame.z - penalty))),
+                current_interval: interval_prime,
                 open_gap_backwards: if !stack_frame.forward {
                     true
                 } else {
@@ -364,6 +352,7 @@ pub fn k_mismatch_search(
                 } else {
                     stack_frame.open_gap_forwards
                 },
+                alignment_score: stack_frame.alignment_score - penalty,
                 debug_helper: if stack_frame.forward {
                     format!("{}({})", stack_frame.debug_helper, c as char)
                 } else {
@@ -376,7 +365,7 @@ pub fn k_mismatch_search(
             if c == pattern[stack_frame.j as usize] {
                 stack.push(MismatchSearchParameters {
                     j: next_j,
-                    interval: interval_prime,
+                    current_interval: interval_prime,
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
@@ -409,15 +398,10 @@ pub fn k_mismatch_search(
                 stack.push(MismatchSearchParameters {
                     j: next_j,
                     z: stack_frame.z - penalty,
-                    interval: interval_prime,
-                    current_sum_base_qualities: stack_frame.current_sum_base_qualities
-                        + i32::from(base_qualities[stack_frame.j as usize]),
+                    current_interval: interval_prime,
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
-                    alignment_score: (stack_frame.forward_pointer as i32
-                        - stack_frame.backward_pointer as i32
-                        - (z - (stack_frame.z - penalty))),
                     open_gap_backwards: if !stack_frame.forward {
                         false
                     } else {
@@ -428,6 +412,7 @@ pub fn k_mismatch_search(
                     } else {
                         stack_frame.open_gap_forwards
                     },
+                    alignment_score: stack_frame.alignment_score - penalty,
                     debug_helper: if stack_frame.forward {
                         format!(
                             "{}{}",
@@ -608,7 +593,7 @@ mod tests {
         );
 
         let alignment_score: Vec<i32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_eq!(vec![3], alignment_score);
+        assert_eq!(vec![2], alignment_score);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
