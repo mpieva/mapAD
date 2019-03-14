@@ -59,6 +59,7 @@ struct MismatchSearchParameters {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: i32,
+    debug_helper: String,
 }
 
 impl PartialOrd for MismatchSearchParameters {
@@ -218,6 +219,7 @@ pub fn k_mismatch_search(
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0,
+        debug_helper: String::from("."),
     });
 
     while let Some(stack_frame) = stack.pop() {
@@ -292,6 +294,11 @@ pub fn k_mismatch_search(
             } else {
                 stack_frame.open_gap_forwards
             },
+            debug_helper: if stack_frame.forward {
+                format!("{}(_)", stack_frame.debug_helper)
+            } else {
+                format!("(_){}", stack_frame.debug_helper)
+            },
             ..stack_frame
         });
 
@@ -357,6 +364,11 @@ pub fn k_mismatch_search(
                 } else {
                     stack_frame.open_gap_forwards
                 },
+                debug_helper: if stack_frame.forward {
+                    format!("{}({})", stack_frame.debug_helper, c as char)
+                } else {
+                    format!("({}){}", c as char, stack_frame.debug_helper)
+                },
                 ..stack_frame
             });
 
@@ -379,6 +391,11 @@ pub fn k_mismatch_search(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + 1,
+                    debug_helper: if stack_frame.forward {
+                        format!("{}{}", stack_frame.debug_helper, c as char)
+                    } else {
+                        format!("{}{}", c as char, stack_frame.debug_helper)
+                    },
                     ..stack_frame
                 });
 
@@ -410,6 +427,19 @@ pub fn k_mismatch_search(
                         false
                     } else {
                         stack_frame.open_gap_forwards
+                    },
+                    debug_helper: if stack_frame.forward {
+                        format!(
+                            "{}{}",
+                            stack_frame.debug_helper,
+                            c.to_ascii_lowercase() as char
+                        )
+                    } else {
+                        format!(
+                            "{}{}",
+                            c.to_ascii_lowercase() as char,
+                            stack_frame.debug_helper
+                        )
                     },
                 });
             }
