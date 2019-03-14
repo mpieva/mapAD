@@ -58,7 +58,7 @@ struct MismatchSearchParameters {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: i32,
-    debug_helper: String,
+    debug_helper: String, // TODO: Remove this before measuring performance (it's very slow)
 }
 
 impl PartialOrd for MismatchSearchParameters {
@@ -277,6 +277,7 @@ pub fn k_mismatch_search(
             backward_pointer: next_backward_pointer,
             forward_pointer: next_forward_pointer,
             forward: !stack_frame.forward,
+            // Mark opened gap at the corresponding end
             open_gap_backwards: if !stack_frame.forward {
                 stack_frame.open_gap_backwards
             } else {
@@ -342,6 +343,7 @@ pub fn k_mismatch_search(
             stack.push(MismatchSearchParameters {
                 z: stack_frame.z - penalty,
                 current_interval: interval_prime,
+                // Mark opened gap at the corresponding end
                 open_gap_backwards: if !stack_frame.forward {
                     true
                 } else {
@@ -369,6 +371,7 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
+                    // Mark closed gap at the corresponding end
                     open_gap_backwards: if !stack_frame.forward {
                         false
                     } else {
@@ -402,6 +405,7 @@ pub fn k_mismatch_search(
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
                     forward: !stack_frame.forward,
+                    // Mark closed gap at the corresponding end
                     open_gap_backwards: if !stack_frame.forward {
                         false
                     } else {
