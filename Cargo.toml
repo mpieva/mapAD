@@ -17,6 +17,7 @@ simple_logger = "*"
 bincode = "*"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub" }
 libflate = "*"
+maplit = "*"
 
 [dev-dependencies]
 criterion = "*"

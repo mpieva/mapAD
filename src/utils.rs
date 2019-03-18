@@ -3,8 +3,6 @@ use std::collections::HashMap;
 pub struct AlignmentParameters {
     pub base_error_rate: f64,
     pub poisson_threshold: f64,
-    pub penalty_c_t: i32,
-    pub penalty_g_a: i32,
     pub penalty_mismatch: f32,
     pub penalty_gap_open: f32,
     pub penalty_gap_extend: f32,
@@ -70,8 +68,6 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_c_t: 0,
-            penalty_g_a: 0,
             penalty_mismatch: 1.0,
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,

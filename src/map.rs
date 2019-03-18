@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::binary_heap::BinaryHeap;
 use std::error::Error;
 use std::fs::File;
 
@@ -11,8 +12,8 @@ use bio::io::fastq;
 use libflate::deflate::Decoder;
 use rust_htslib::bam;
 
+use crate::difference_models::{DifferenceModel, SimplisticVindijaPattern};
 use crate::utils::{AlignmentParameters, AllowedMismatches};
-use std::collections::binary_heap::BinaryHeap;
 
 struct UnderlyingDataFMDIndex {
     bwt: Vec<u8>,
@@ -134,6 +135,7 @@ fn map_reads(
     let header = bam::Header::new();
     let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
 
+    let difference_model = SimplisticVindijaPattern::new_default();
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
@@ -151,6 +153,7 @@ fn map_reads(
             &base_qualities,
             allowed_mismatches.get(pattern.len()),
             &alignment_parameters,
+            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );
@@ -183,11 +186,12 @@ fn map_reads(
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
-pub fn k_mismatch_search(
+pub fn k_mismatch_search<'a, T: DifferenceModel>(
     pattern: &[u8],
     _base_qualities: &[u8],
     z: f32,
     parameters: &AlignmentParameters,
+    difference_model: &'a T,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
@@ -195,12 +199,14 @@ pub fn k_mismatch_search(
 
     let d_backwards = calculate_d(
         pattern[..center_of_read as usize].iter(),
-        &parameters,
+        parameters,
+        difference_model,
         rev_fmd_index,
     );
     let d_forwards = calculate_d(
         pattern[center_of_read as usize..].iter().rev(),
-        &parameters,
+        parameters,
+        difference_model,
         fmd_index,
     )
     .into_iter()
@@ -349,7 +355,7 @@ pub fn k_mismatch_search(
             stack.push(MismatchSearchParameters {
                 z: stack_frame.z - penalty,
                 current_interval: interval_prime,
-                // Mark opened gap at the corresponding end
+                // Mark open gap at the corresponding end
                 open_gap_backwards: if !stack_frame.forward {
                     true
                 } else {
@@ -388,7 +394,12 @@ pub fn k_mismatch_search(
                     } else {
                         stack_frame.open_gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score + 1,
+                    alignment_score: stack_frame.alignment_score
+                        + difference_model.get(
+                            stack_frame.j as usize,
+                            c,
+                            pattern[stack_frame.j as usize],
+                        ),
                     debug_helper: if stack_frame.forward {
                         format!("{}{}", stack_frame.debug_helper, c as char)
                     } else {
@@ -399,11 +410,11 @@ pub fn k_mismatch_search(
 
             // Mismatch
             } else {
-                let penalty = match (c as char, pattern[stack_frame.j as usize] as char) {
-                    ('C', 'T') => parameters.penalty_c_t,
-                    ('G', 'A') => parameters.penalty_g_a,
-                    _ => parameters.penalty_mismatch,
-                };
+                let penalty = difference_model.get(
+                    stack_frame.j as usize,
+                    c,
+                    pattern[stack_frame.j as usize],
+                );
                 stack.push(MismatchSearchParameters {
                     j: next_j,
                     z: stack_frame.z - penalty,
@@ -443,11 +454,12 @@ pub fn k_mismatch_search(
     intervals
 }
 
-///// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
-///// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
-fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
+/// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
+/// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
+fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: DifferenceModel>(
     pattern: T,
     alignment_parameters: &AlignmentParameters,
+    difference_model: &'a U,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<f32> {
     fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
@@ -463,7 +475,8 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
     let mut z = 0.0;
 
     pattern
-        .map(|&a| {
+        .enumerate()
+        .map(|(i, &a)| {
             let tmp = index_lookup(a, l, r, fmd_index);
             l = tmp.0;
             r = tmp.1;
@@ -475,19 +488,19 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
                     if a == b'T' {
                         let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
                         if l_prime <= r_prime {
-                            return alignment_parameters.penalty_c_t;
+                            return difference_model.get(i, b'C', a);
                         }
                     } else if a == b'A' {
                         let (l_prime, r_prime) = index_lookup(b'G', l, r, fmd_index);
                         if l_prime <= r_prime {
-                            return alignment_parameters.penalty_g_a;
+                            return difference_model.get(i, b'G', a);
                         }
                     }
-                    min(
-                        alignment_parameters.penalty_mismatch,
-                        alignment_parameters.penalty_gap_open,
-                    )
-                    .min(alignment_parameters.penalty_gap_extend)
+                    // Return the minimum penalty
+                    difference_model
+                        .get_min(i, a)
+                        .min(alignment_parameters.penalty_gap_open)
+                        .min(alignment_parameters.penalty_gap_extend)
                 };
 
                 l = 0;
@@ -558,12 +571,25 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_c_t: 0,
-            penalty_g_a: 0,
             penalty_mismatch: 1.0,
             penalty_gap_open: 2.0,
             penalty_gap_extend: 1.0,
         };
+        struct TestDifferenceModel {}
+        impl DifferenceModel for TestDifferenceModel {
+            fn new_default() -> Self {
+                TestDifferenceModel {}
+            }
+
+            fn get(&self, _i: usize, _from: u8, _to: u8) -> f32 {
+                1.0
+            }
+
+            fn get_min(&self, _i: usize, _to: u8) -> f32 {
+                1.0
+            }
+        }
+        let difference_model = TestDifferenceModel::new_default();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -598,6 +624,7 @@ mod tests {
             &base_qualities,
             1.0,
             &parameters,
+            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );
@@ -619,12 +646,26 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_c_t: 0,
-            penalty_g_a: 0,
             penalty_mismatch: 1.0,
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,
         };
+
+        struct TestDifferenceModel {}
+        impl DifferenceModel for TestDifferenceModel {
+            fn new_default() -> Self {
+                TestDifferenceModel {}
+            }
+
+            fn get(&self, _i: usize, _from: u8, _to: u8) -> f32 {
+                1.0
+            }
+
+            fn get_min(&self, _i: usize, _to: u8) -> f32 {
+                1.0
+            }
+        }
+        let difference_model = TestDifferenceModel::new_default();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -652,22 +693,42 @@ mod tests {
 
         let pattern = "GTTC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(pattern.iter(), &parameters, &rev_fmd_index);
-        let d_forward = calculate_d(pattern.iter().rev(), &parameters, &fmd_index)
-            .into_iter()
-            .rev()
-            .collect::<Vec<i32>>();
+        let d_backward = calculate_d(
+            pattern.iter(),
+            &parameters,
+            &difference_model,
+            &rev_fmd_index,
+        );
+        let d_forward = calculate_d(
+            pattern.iter().rev(),
+            &parameters,
+            &difference_model,
+            &fmd_index,
+        )
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>();
 
         assert_eq!(vec![0.0, 0.0, 1.0, 1.0], d_backward);
         assert_eq!(vec![1.0, 1.0, 1.0, 0.0], d_forward);
 
         let pattern = "GATC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(pattern.iter(), &parameters, &rev_fmd_index);
-        let d_forward = calculate_d(pattern.iter().rev(), &parameters, &fmd_index)
-            .into_iter()
-            .rev()
-            .collect::<Vec<i32>>();
+        let d_backward = calculate_d(
+            pattern.iter(),
+            &parameters,
+            &difference_model,
+            &rev_fmd_index,
+        );
+        let d_forward = calculate_d(
+            pattern.iter().rev(),
+            &parameters,
+            &difference_model,
+            &fmd_index,
+        )
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>();
 
         assert_eq!(vec![0.0, 1.0, 1.0, 2.0], d_backward);
         assert_eq!(vec![2.0, 1.0, 1.0, 0.0], d_forward);
@@ -678,12 +739,27 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_c_t: 10,
-            penalty_g_a: 10,
             penalty_mismatch: 10.0,
             penalty_gap_open: 2.0,
             penalty_gap_extend: 1.0,
         };
+
+        struct TestDifferenceModel {}
+        impl DifferenceModel for TestDifferenceModel {
+            fn new_default() -> Self {
+                TestDifferenceModel {}
+            }
+
+            fn get(&self, _i: usize, _from: u8, _to: u8) -> f32 {
+                10.0
+            }
+
+            fn get_min(&self, _i: usize, _to: u8) -> f32 {
+                10.0
+            }
+        }
+
+        let difference_model = TestDifferenceModel::new_default();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
@@ -718,6 +794,7 @@ mod tests {
             &base_qualities,
             2.0,
             &parameters,
+            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );
