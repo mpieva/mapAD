@@ -80,11 +80,11 @@ fn main() {
             let alignment_parameters = utils::AlignmentParameters {
                 base_error_rate: 0.02,
                 poisson_threshold: value_t_or_exit!(map_matches.value_of("poisson_prob"), f64),
-                penalty_mismatch: 1,
-                penalty_gap_open: 2,
-                penalty_gap_extend: 1,
                 penalty_c_t: 0,
                 penalty_g_a: 0,
+                penalty_mismatch: 1.0,
+                penalty_gap_open: 2.0,
+                penalty_gap_extend: 1.0,
             };
             if let Err(e) = map::run(
                 map_matches.value_of("reads").unwrap(),

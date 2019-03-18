@@ -1,4 +1,4 @@
-use std::cmp::{min, Ordering};
+use std::cmp::Ordering;
 use std::error::Error;
 use std::fs::File;
 
@@ -44,20 +44,20 @@ impl UnderlyingDataFMDIndex {
 #[derive(Debug)]
 pub struct IntervalQuality {
     interval: BiInterval,
-    alignment_score: i32,
+    alignment_score: f32,
 }
 
 #[derive(Debug)]
 struct MismatchSearchParameters {
     j: isize,
-    z: i32,
+    z: f32,
     current_interval: BiInterval,
     backward_pointer: isize,
     forward_pointer: isize,
     forward: bool,
     open_gap_backwards: bool,
     open_gap_forwards: bool,
-    alignment_score: i32,
+    alignment_score: f32,
     debug_helper: String, // TODO: Remove this before measuring performance (it's very slow)
 }
 
@@ -69,7 +69,13 @@ impl PartialOrd for MismatchSearchParameters {
 
 impl Ord for MismatchSearchParameters {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.alignment_score.cmp(&other.alignment_score)
+        if self.alignment_score > other.alignment_score {
+            Ordering::Less
+        } else if self.alignment_score < other.alignment_score {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
     }
 }
 
@@ -150,16 +156,16 @@ fn map_reads(
         );
 
         const TEN_F32: f32 = 10.0;
-        let mut sum_base_q_best = i32::max_value();
+        let mut sum_base_q_best = std::f32::INFINITY;
         let mut sum_base_q_all = 0.0;
         for sum_of_qualities in intervals.iter() {
-            sum_base_q_all += TEN_F32.powi(-(sum_of_qualities.alignment_score));
+            sum_base_q_all += TEN_F32.powf(-(sum_of_qualities.alignment_score));
             if sum_of_qualities.alignment_score < sum_base_q_best {
                 sum_base_q_best = sum_of_qualities.alignment_score
             }
         }
         let mapping_quality =
-            -((1.0 - (TEN_F32.powi(-(sum_base_q_best)) / sum_base_q_all)).log10());
+            -((1.0 - (TEN_F32.powf(-(sum_base_q_best)) / sum_base_q_all)).log10());
 
         // Create SAM/BAM records
         for imm in intervals.iter() {
@@ -180,7 +186,7 @@ fn map_reads(
 pub fn k_mismatch_search(
     pattern: &[u8],
     _base_qualities: &[u8],
-    z: i32,
+    z: f32,
     parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -213,7 +219,7 @@ pub fn k_mismatch_search(
         forward: true,
         open_gap_backwards: false,
         open_gap_forwards: false,
-        alignment_score: 0,
+        alignment_score: 0.0,
         debug_helper: String::from("."),
     });
 
@@ -226,12 +232,12 @@ pub fn k_mismatch_search(
         // Too many mismatches
         let backwards_lower_bound = match d_backwards.get(stack_frame.backward_pointer as usize) {
             Some(&d_i) => d_i,
-            None => 0,
+            None => 0.0,
         };
         let forwards_lower_bound =
             match d_forwards.get((stack_frame.forward_pointer - center_of_read) as usize) {
                 Some(&d_i) => d_i,
-                None => 0,
+                None => 0.0,
             };
         if stack_frame.z < backwards_lower_bound + forwards_lower_bound {
             continue;
@@ -443,7 +449,7 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
     pattern: T,
     alignment_parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-) -> Vec<i32> {
+) -> Vec<f32> {
     fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
         let less = index.less(a);
         let l = less + if l > 0 { index.occ(l - 1, a) } else { 0 };
@@ -454,7 +460,7 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
     let r_upper_bound = fmd_index.bwt().len() - 1;
 
     let (mut l, mut r) = (0, r_upper_bound);
-    let mut z = 0;
+    let mut z = 0.0;
 
     pattern
         .map(|&a| {
@@ -465,7 +471,7 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>>(
             // Prefix can not be found in the reference
             if l > r {
                 // Allow certain transitions
-                let penalty: i32 = {
+                let penalty: f32 = {
                     if a == b'T' {
                         let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
                         if l_prime <= r_prime {
@@ -552,11 +558,11 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 1,
-            penalty_gap_open: 2,
-            penalty_gap_extend: 1,
             penalty_c_t: 0,
             penalty_g_a: 0,
+            penalty_mismatch: 1.0,
+            penalty_gap_open: 2.0,
+            penalty_gap_extend: 1.0,
         };
 
         let alphabet = alphabets::dna::n_alphabet();
@@ -590,14 +596,14 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            1,
+            1.0,
             &parameters,
             &fmd_index,
             &rev_fmd_index,
         );
 
-        let alignment_score: Vec<i32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_eq!(vec![2], alignment_score);
+        let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
+        assert_eq!(vec![2.0], alignment_score);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -613,11 +619,11 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 1,
-            penalty_gap_open: 1,
-            penalty_gap_extend: 1,
             penalty_c_t: 0,
             penalty_g_a: 0,
+            penalty_mismatch: 1.0,
+            penalty_gap_open: 1.0,
+            penalty_gap_extend: 1.0,
         };
 
         let alphabet = alphabets::dna::n_alphabet();
@@ -652,8 +658,8 @@ mod tests {
             .rev()
             .collect::<Vec<i32>>();
 
-        assert_eq!(vec![0, 0, 1, 1], d_backward);
-        assert_eq!(vec![1, 1, 1, 0], d_forward);
+        assert_eq!(vec![0.0, 0.0, 1.0, 1.0], d_backward);
+        assert_eq!(vec![1.0, 1.0, 1.0, 0.0], d_forward);
 
         let pattern = "GATC".as_bytes().to_owned();
 
@@ -663,8 +669,8 @@ mod tests {
             .rev()
             .collect::<Vec<i32>>();
 
-        assert_eq!(vec![0, 1, 1, 2], d_backward);
-        assert_eq!(vec![2, 1, 1, 0], d_forward);
+        assert_eq!(vec![0.0, 1.0, 1.0, 2.0], d_backward);
+        assert_eq!(vec![2.0, 1.0, 1.0, 0.0], d_forward);
     }
 
     #[test]
@@ -672,11 +678,11 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 10,
-            penalty_gap_open: 2,
-            penalty_gap_extend: 1,
             penalty_c_t: 10,
             penalty_g_a: 10,
+            penalty_mismatch: 10.0,
+            penalty_gap_open: 2.0,
+            penalty_gap_extend: 1.0,
         };
 
         let alphabet = alphabets::dna::n_alphabet();
@@ -710,7 +716,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            2,
+            2.0,
             &parameters,
             &fmd_index,
             &rev_fmd_index,
