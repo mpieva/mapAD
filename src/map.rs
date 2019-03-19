@@ -12,7 +12,7 @@ use bio::io::fastq;
 use libflate::deflate::Decoder;
 use rust_htslib::bam;
 
-use crate::difference_models::{SequenceDifferenceModel, SimplisticVindijaPattern};
+use crate::sequence_difference_models::{SequenceDifferenceModel, SimplisticVindijaPattern};
 use crate::utils::{AlignmentParameters, AllowedMismatches};
 
 struct UnderlyingDataFMDIndex {

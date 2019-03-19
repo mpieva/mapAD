@@ -112,8 +112,8 @@ impl SimplisticVindijaPattern {
 
 #[cfg(test)]
 mod tests {
-    use crate::difference_models::SequenceDifferenceModel;
-    use crate::difference_models::SimplisticVindijaPattern;
+    use crate::sequence_difference_models::SequenceDifferenceModel;
+    use crate::sequence_difference_models::SimplisticVindijaPattern;
 
     use assert_approx_eq::assert_approx_eq;
 
