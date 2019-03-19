@@ -2,10 +2,15 @@ use std::collections::HashMap;
 
 pub trait DifferenceModel {
     fn new_default() -> Self;
-    /// Input is distance from 5' end, distance from 3' end, output is
-    /// divergence, C->T probability, G->A probability
     fn get(&self, i: usize, from: u8, to: u8) -> f32;
-    fn get_min(&self, i: usize, to: u8) -> f32;
+    fn get_min_penalty(&self, i: usize, to: u8) -> f32 {
+        b"ACGT"
+            .iter()
+            .filter(|&&base| base != to)
+            .map(|&base| self.get(i, base, to))
+            .filter(|&penalty| penalty <= (0.0 + std::f32::EPSILON))
+            .fold(std::f32::MIN, |acc: f32, v| acc.max(v))
+    }
 }
 
 ///// Briggs, A. W. et al. Patterns of damage in genomic DNA sequences from a Neandertal. PNAS 104, 14616–14621 (2007)
@@ -88,13 +93,6 @@ impl DifferenceModel for SimplisticVindijaPattern {
             },
             _ => self.substitution_matrix[&to][&from],
         }
-    }
-
-    fn get_min(&self, i: usize, to: u8) -> f32 {
-        b"ACGT"
-            .iter()
-            .map(|&base| self.get(i, base, to))
-            .fold(0.0, |acc: f32, v| acc.min(v))
     }
 }
 

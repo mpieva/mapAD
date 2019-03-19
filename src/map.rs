@@ -285,7 +285,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
         };
         stack.push(MismatchSearchParameters {
             j: next_j,
-            z: stack_frame.z - penalty,
+            z: stack_frame.z + penalty,
             backward_pointer: next_backward_pointer,
             forward_pointer: next_forward_pointer,
             forward: !stack_frame.forward,
@@ -300,7 +300,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
             } else {
                 stack_frame.open_gap_forwards
             },
-            alignment_score: stack_frame.alignment_score - penalty,
+            alignment_score: stack_frame.alignment_score + penalty,
             debug_helper: if stack_frame.forward {
                 format!("{}(_)", stack_frame.debug_helper)
             } else {
@@ -353,7 +353,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
                 parameters.penalty_gap_open
             };
             stack.push(MismatchSearchParameters {
-                z: stack_frame.z - penalty,
+                z: stack_frame.z + penalty,
                 current_interval: interval_prime,
                 // Mark open gap at the corresponding end
                 open_gap_backwards: if !stack_frame.forward {
@@ -366,7 +366,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
                 } else {
                     stack_frame.open_gap_forwards
                 },
-                alignment_score: stack_frame.alignment_score - penalty,
+                alignment_score: stack_frame.alignment_score + penalty,
                 debug_helper: if stack_frame.forward {
                     format!("{}({})", stack_frame.debug_helper, c as char)
                 } else {
@@ -417,7 +417,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
                 );
                 stack.push(MismatchSearchParameters {
                     j: next_j,
-                    z: stack_frame.z - penalty,
+                    z: stack_frame.z + penalty,
                     current_interval: interval_prime,
                     backward_pointer: next_backward_pointer,
                     forward_pointer: next_forward_pointer,
@@ -433,7 +433,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
                     } else {
                         stack_frame.open_gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score - penalty,
+                    alignment_score: stack_frame.alignment_score + penalty,
                     debug_helper: if stack_frame.forward {
                         format!(
                             "{}{}",
@@ -498,14 +498,14 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: DifferenceModel>(
                     }
                     // Return the minimum penalty
                     difference_model
-                        .get_min(i, a)
-                        .min(alignment_parameters.penalty_gap_open)
-                        .min(alignment_parameters.penalty_gap_extend)
+                        .get_min_penalty(i, a)
+                        .max(alignment_parameters.penalty_gap_open)
+                        .max(alignment_parameters.penalty_gap_extend)
                 };
 
                 l = 0;
                 r = r_upper_bound;
-                z += penalty;
+                z -= penalty;
             }
             z
         })
@@ -571,22 +571,23 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 1.0,
-            penalty_gap_open: 2.0,
-            penalty_gap_extend: 1.0,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
         };
+
         struct TestDifferenceModel {}
         impl DifferenceModel for TestDifferenceModel {
             fn new_default() -> Self {
                 TestDifferenceModel {}
             }
-
-            fn get(&self, _i: usize, _from: u8, _to: u8) -> f32 {
-                1.0
-            }
-
-            fn get_min(&self, _i: usize, _to: u8) -> f32 {
-                1.0
+            fn get(&self, _i: usize, from: u8, to: u8) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return 0.0;
+                } else if from != to {
+                    return -1.0;
+                } else {
+                    return 1.0;
+                }
             }
         }
         let difference_model = TestDifferenceModel::new_default();
@@ -646,9 +647,8 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 1.0,
-            penalty_gap_open: 1.0,
-            penalty_gap_extend: 1.0,
+            penalty_gap_open: -1.0,
+            penalty_gap_extend: -1.0,
         };
 
         struct TestDifferenceModel {}
@@ -656,13 +656,14 @@ mod tests {
             fn new_default() -> Self {
                 TestDifferenceModel {}
             }
-
-            fn get(&self, _i: usize, _from: u8, _to: u8) -> f32 {
-                1.0
-            }
-
-            fn get_min(&self, _i: usize, _to: u8) -> f32 {
-                1.0
+            fn get(&self, _i: usize, from: u8, to: u8) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -1.0;
+                } else if from != to {
+                    return -1.0;
+                } else {
+                    return 1.0;
+                }
             }
         }
         let difference_model = TestDifferenceModel::new_default();
@@ -739,9 +740,8 @@ mod tests {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 10.0,
-            penalty_gap_open: 2.0,
-            penalty_gap_extend: 1.0,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
         };
 
         struct TestDifferenceModel {}
@@ -749,16 +749,16 @@ mod tests {
             fn new_default() -> Self {
                 TestDifferenceModel {}
             }
-
-            fn get(&self, _i: usize, _from: u8, _to: u8) -> f32 {
-                10.0
-            }
-
-            fn get_min(&self, _i: usize, _to: u8) -> f32 {
-                10.0
+            fn get(&self, _i: usize, from: u8, to: u8) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -10.0;
+                } else if from != to {
+                    return -10.0;
+                } else {
+                    return 1.0;
+                }
             }
         }
-
         let difference_model = TestDifferenceModel::new_default();
 
         let alphabet = alphabets::dna::n_alphabet();
