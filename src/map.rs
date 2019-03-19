@@ -55,8 +55,8 @@ struct MismatchSearchParameters {
     j: isize,
     z: f32,
     current_interval: BiInterval,
-    backward_pointer: isize,
-    forward_pointer: isize,
+    backward_index: isize,
+    forward_index: isize,
     forward: bool,
     open_gap_backwards: bool,
     open_gap_forwards: bool,
@@ -224,8 +224,8 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
         j: center_of_read,
         z,
         current_interval: fmd_index.init_interval(),
-        backward_pointer: center_of_read - 1,
-        forward_pointer: center_of_read,
+        backward_index: center_of_read - 1,
+        forward_index: center_of_read,
         forward: true,
         open_gap_backwards: false,
         open_gap_forwards: false,
@@ -240,12 +240,12 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
         }
 
         // Too many mismatches
-        let backwards_lower_bound = match d_backwards.get(stack_frame.backward_pointer as usize) {
+        let backwards_lower_bound = match d_backwards.get(stack_frame.backward_index as usize) {
             Some(&d_i) => d_i,
             None => 0.0,
         };
         let forwards_lower_bound =
-            match d_forwards.get((stack_frame.forward_pointer - center_of_read) as usize) {
+            match d_forwards.get((stack_frame.forward_index - center_of_read) as usize) {
                 Some(&d_i) => d_i,
                 None => 0.0,
             };
@@ -263,19 +263,19 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
         }
 
         let next_j;
-        let next_backward_pointer;
-        let next_forward_pointer;
+        let next_backward_index;
+        let next_forward_index;
 
         // Determine direction of progress for next iteration on this stack frame
         let fmd_ext_interval = if stack_frame.forward {
-            next_forward_pointer = stack_frame.forward_pointer + 1;
-            next_backward_pointer = stack_frame.backward_pointer;
-            next_j = next_backward_pointer;
+            next_forward_index = stack_frame.forward_index + 1;
+            next_backward_index = stack_frame.backward_index;
+            next_j = next_backward_index;
             stack_frame.current_interval.swapped()
         } else {
-            next_forward_pointer = stack_frame.forward_pointer;
-            next_backward_pointer = stack_frame.backward_pointer - 1;
-            next_j = next_forward_pointer;
+            next_forward_index = stack_frame.forward_index;
+            next_backward_index = stack_frame.backward_index - 1;
+            next_j = next_forward_index;
             stack_frame.current_interval
         };
 
@@ -290,8 +290,8 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
         stack.push(MismatchSearchParameters {
             j: next_j,
             z: stack_frame.z + penalty,
-            backward_pointer: next_backward_pointer,
-            forward_pointer: next_forward_pointer,
+            backward_index: next_backward_index,
+            forward_index: next_forward_index,
             forward: !stack_frame.forward,
             // Mark opened gap at the corresponding end
             open_gap_backwards: if !stack_frame.forward {
@@ -384,8 +384,8 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
                 stack.push(MismatchSearchParameters {
                     j: next_j,
                     current_interval: interval_prime,
-                    backward_pointer: next_backward_pointer,
-                    forward_pointer: next_forward_pointer,
+                    backward_index: next_backward_index,
+                    forward_index: next_forward_index,
                     forward: !stack_frame.forward,
                     // Mark closed gap at the corresponding end
                     open_gap_backwards: if !stack_frame.forward {
@@ -425,8 +425,8 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
                     j: next_j,
                     z: stack_frame.z + penalty,
                     current_interval: interval_prime,
-                    backward_pointer: next_backward_pointer,
-                    forward_pointer: next_forward_pointer,
+                    backward_index: next_backward_index,
+                    forward_index: next_forward_index,
                     forward: !stack_frame.forward,
                     // Mark closed gap at the corresponding end
                     open_gap_backwards: if !stack_frame.forward {

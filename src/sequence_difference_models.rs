@@ -4,10 +4,12 @@ use std::collections::HashMap;
 pub trait SequenceDifferenceModel {
     fn new_default() -> Self;
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32;
+
+    // TODO: Cache results
     fn get_min_penalty(&self, i: usize, read_length: usize, to: u8) -> f32 {
         b"ACGT"
             .iter()
-            .filter(|&&base| base != to)
+            .filter(|&&base| base != to) // TODO: Don't filter for mismatches
             .map(|&base| self.get(i, read_length, base, to))
             .filter(|&penalty| penalty <= (0.0 + std::f32::EPSILON))
             .fold(std::f32::MIN, |acc: f32, v| acc.max(v))

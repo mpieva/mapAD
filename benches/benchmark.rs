@@ -5,8 +5,8 @@ use bio::data_structures::suffix_array::suffix_array;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use thrust::sequence_difference_models::SequenceDifferenceModel;
 use thrust::map::k_mismatch_search;
+use thrust::sequence_difference_models::SequenceDifferenceModel;
 use thrust::utils::{AlignmentParameters, AllowedMismatches};
 
 fn criterion_benchmark(c: &mut Criterion) {
