@@ -88,7 +88,7 @@ impl SequenceDifferenceModel for SimplisticVindijaPattern {
         }
     }
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32 {
-        let i = i.min(read_length - i);
+        let i = i.min(read_length - (i + 1));
         match from {
             b'C' => match to {
                 b'T' => self.deamination_helper(i),
