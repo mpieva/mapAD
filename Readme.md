@@ -62,15 +62,15 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Don't rank-transform during early development. Go back to upstream rust-bio
 - [x] Inexact matching
 - [x] It's time to start testing!
-- [ ] Incorporation of one or more of the ancient DNA damage models
-  - [x] simply ignore C-T deaminations
-  - [ ] simply penalize C-T changes according to Vindija pattern
+- [x] Incorporation of one or more of the ancient DNA damage models
+  - [x] Add framework to specify PSSMs in the code
+  - [x] simply penalize C-T changes according to Vindija pattern
   - [ ] Briggs et al. (2007)
   - [ ] Skoglund et al. (2014)
   - [ ] Peyrégne (unpublished)
 - [x] Recursive -> iterative k-mismatch-search
 - [x] Extend match starting from the presumably lowest deaminated region (center) of a read
-- [ ] Calculate alignment score (with respect to damage pattern, see above)
+- [x] Calculate alignment score (with respect to damage/difference pattern, see above)
 - [x] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
 - [ ] Mapping quality estimation (base-quality aware or not?)
 - [ ] BAM-IO
