@@ -3,6 +3,8 @@ use std::collections::binary_heap::BinaryHeap;
 use std::error::Error;
 use std::fs::File;
 
+use log::debug;
+
 use bio::alphabets::dna;
 use bio::data_structures::bwt::Occ;
 use bio::data_structures::fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable};

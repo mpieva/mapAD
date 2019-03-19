@@ -1,11 +1,9 @@
-#[macro_use]
-extern crate criterion;
-
 use bio::alphabets;
 use bio::data_structures::bwt::{bwt, less, Occ};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::suffix_array::suffix_array;
-use criterion::Criterion;
+
+use criterion::{criterion_group, criterion_main, Criterion};
 
 use thrust::difference_models::SequenceDifferenceModel;
 use thrust::map::k_mismatch_search;

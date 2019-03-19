@@ -1,3 +1,4 @@
+use maplit::hashmap;
 use std::collections::HashMap;
 
 pub trait SequenceDifferenceModel {
@@ -112,8 +113,7 @@ impl SimplisticVindijaPattern {
 
 #[cfg(test)]
 mod tests {
-    use crate::sequence_difference_models::SequenceDifferenceModel;
-    use crate::sequence_difference_models::SimplisticVindijaPattern;
+    use super::*;
 
     use assert_approx_eq::assert_approx_eq;
 

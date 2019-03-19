@@ -1,7 +1,8 @@
-#[macro_use]
-extern crate clap;
+use clap::{
+    crate_description, crate_name, crate_version, value_t_or_exit, App, AppSettings, Arg,
+    SubCommand,
+};
 
-use clap::{App, AppSettings, Arg, SubCommand};
 use thrust::{index, map, utils};
 
 fn main() {

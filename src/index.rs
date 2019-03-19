@@ -1,11 +1,14 @@
 use std::error::Error;
 use std::fs::File;
 
-use bincode::serialize_into;
+use log::debug;
+
 use bio::alphabets::dna::{n_alphabet, revcomp};
 use bio::alphabets::Alphabet;
 use bio::data_structures::bwt::{bwt, less, Occ};
 use bio::data_structures::suffix_array::suffix_array;
+
+use bincode::serialize_into;
 use bio::io::fasta;
 use libflate::deflate::Encoder;
 
