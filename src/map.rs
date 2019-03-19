@@ -12,7 +12,7 @@ use bio::io::fastq;
 use libflate::deflate::Decoder;
 use rust_htslib::bam;
 
-use crate::difference_models::{DifferenceModel, SimplisticVindijaPattern};
+use crate::difference_models::{SequenceDifferenceModel, SimplisticVindijaPattern};
 use crate::utils::{AlignmentParameters, AllowedMismatches};
 
 struct UnderlyingDataFMDIndex {
@@ -186,7 +186,7 @@ fn map_reads(
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
-pub fn k_mismatch_search<'a, T: DifferenceModel>(
+pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
     pattern: &[u8],
     _base_qualities: &[u8],
     z: f32,
@@ -199,12 +199,14 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
 
     let d_backwards = calculate_d(
         pattern[..center_of_read as usize].iter(),
+        pattern.len(),
         parameters,
         difference_model,
         rev_fmd_index,
     );
     let d_forwards = calculate_d(
         pattern[center_of_read as usize..].iter().rev(),
+        pattern.len(),
         parameters,
         difference_model,
         fmd_index,
@@ -397,6 +399,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
                     alignment_score: stack_frame.alignment_score
                         + difference_model.get(
                             stack_frame.j as usize,
+                            pattern.len(),
                             c,
                             pattern[stack_frame.j as usize],
                         ),
@@ -412,6 +415,7 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
             } else {
                 let penalty = difference_model.get(
                     stack_frame.j as usize,
+                    pattern.len(),
                     c,
                     pattern[stack_frame.j as usize],
                 );
@@ -456,8 +460,9 @@ pub fn k_mismatch_search<'a, T: DifferenceModel>(
 
 /// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
 /// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
-fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: DifferenceModel>(
+fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
     pattern: T,
+    pattern_length: usize,
     alignment_parameters: &AlignmentParameters,
     difference_model: &'a U,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -488,17 +493,17 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: DifferenceModel>(
                     if a == b'T' {
                         let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
                         if l_prime <= r_prime {
-                            return difference_model.get(i, b'C', a);
+                            return difference_model.get(i, pattern_length, b'C', a);
                         }
                     } else if a == b'A' {
                         let (l_prime, r_prime) = index_lookup(b'G', l, r, fmd_index);
                         if l_prime <= r_prime {
-                            return difference_model.get(i, b'G', a);
+                            return difference_model.get(i, pattern_length, b'G', a);
                         }
                     }
                     // Return the minimum penalty
                     difference_model
-                        .get_min_penalty(i, a)
+                        .get_min_penalty(i, pattern_length, a)
                         .max(alignment_parameters.penalty_gap_open)
                         .max(alignment_parameters.penalty_gap_extend)
                 };
@@ -576,11 +581,11 @@ mod tests {
         };
 
         struct TestDifferenceModel {}
-        impl DifferenceModel for TestDifferenceModel {
+        impl SequenceDifferenceModel for TestDifferenceModel {
             fn new_default() -> Self {
                 TestDifferenceModel {}
             }
-            fn get(&self, _i: usize, from: u8, to: u8) -> f32 {
+            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
                 if from == b'C' && to == b'T' {
                     return 0.0;
                 } else if from != to {
@@ -652,11 +657,11 @@ mod tests {
         };
 
         struct TestDifferenceModel {}
-        impl DifferenceModel for TestDifferenceModel {
+        impl SequenceDifferenceModel for TestDifferenceModel {
             fn new_default() -> Self {
                 TestDifferenceModel {}
             }
-            fn get(&self, _i: usize, from: u8, to: u8) -> f32 {
+            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -1.0;
                 } else if from != to {
@@ -696,12 +701,14 @@ mod tests {
 
         let d_backward = calculate_d(
             pattern.iter(),
+            pattern.len(),
             &parameters,
             &difference_model,
             &rev_fmd_index,
         );
         let d_forward = calculate_d(
             pattern.iter().rev(),
+            pattern.len(),
             &parameters,
             &difference_model,
             &fmd_index,
@@ -717,12 +724,14 @@ mod tests {
 
         let d_backward = calculate_d(
             pattern.iter(),
+            pattern.len(),
             &parameters,
             &difference_model,
             &rev_fmd_index,
         );
         let d_forward = calculate_d(
             pattern.iter().rev(),
+            pattern.len(),
             &parameters,
             &difference_model,
             &fmd_index,
@@ -745,11 +754,11 @@ mod tests {
         };
 
         struct TestDifferenceModel {}
-        impl DifferenceModel for TestDifferenceModel {
+        impl SequenceDifferenceModel for TestDifferenceModel {
             fn new_default() -> Self {
                 TestDifferenceModel {}
             }
-            fn get(&self, _i: usize, from: u8, to: u8) -> f32 {
+            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -10.0;
                 } else if from != to {
