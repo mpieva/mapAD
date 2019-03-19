@@ -526,6 +526,8 @@ mod tests {
 
     use super::*;
 
+    use assert_approx_eq::assert_approx_eq;
+
     fn build_auxiliary_structures(
         reference: &mut Vec<u8>,
         alphabet: &alphabets::Alphabet,
@@ -815,5 +817,66 @@ mod tests {
             .collect();
         positions.sort();
         assert_eq!(vec![0, 0, 0, 0, 2, 2, 5, 5], positions);
+    }
+
+    #[test]
+    fn test_vindija_alignment() {
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+        };
+
+        let difference_model = SimplisticVindijaPattern::new_default();
+
+        let alphabet = alphabets::dna::n_alphabet();
+        let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let suffix_array = suffix_array(&ref_seq);
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        // Reverse reference
+        let mut reverse_reference = ref_seq.into_iter().rev().collect::<Vec<_>>();
+        let rev_data_fmd_index = build_auxiliary_structures(&mut reverse_reference, &alphabet);
+
+        let rev_fm_index = FMIndex::new(
+            &rev_data_fmd_index.bwt,
+            &rev_data_fmd_index.less,
+            &rev_data_fmd_index.occ,
+        );
+        let rev_fmd_index = FMDIndex::from(rev_fm_index);
+
+        let pattern = "TTCCCT".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            2.0,
+            &parameters,
+            &difference_model,
+            &fmd_index,
+            &rev_fmd_index,
+        );
+
+        let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
+        assert_approx_eq!(-2.4, alignment_score[0]);
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(vec![0], positions);
     }
 }
