@@ -7,9 +7,9 @@ use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::suffix_array::suffix_array;
 use criterion::Criterion;
 
+use thrust::difference_models::SequenceDifferenceModel;
 use thrust::map::k_mismatch_search;
-use thrust::utils::AlignmentParameters;
-use thrust::utils::AllowedMismatches;
+use thrust::utils::{AlignmentParameters, AllowedMismatches};
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
@@ -18,12 +18,26 @@ fn criterion_benchmark(c: &mut Criterion) {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_mismatch: 1,
-            penalty_gap_open: 1,
-            penalty_gap_extend: 1,
-            penalty_c_t: 0,
-            penalty_g_a: 0,
+            penalty_gap_open: -1.0,
+            penalty_gap_extend: -1.0,
         };
+
+        struct TestDifferenceModel {}
+        impl SequenceDifferenceModel for TestDifferenceModel {
+            fn new_default() -> Self {
+                TestDifferenceModel {}
+            }
+            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return 0.0;
+                } else if from != to {
+                    return -1.0;
+                } else {
+                    return 1.0;
+                }
+            }
+        }
+        let difference_model = TestDifferenceModel::new_default();
 
         // Reference
         let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());
@@ -69,6 +83,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 &base_qualities,
                 allowed_mismatches.get(pattern.len()),
                 &parameters,
+                &difference_model,
                 &fmd_index,
                 &rev_fmd_index,
             )
