@@ -53,7 +53,6 @@ pub struct VindijaPWM {
     // "Sparse" position probability matrix
     ppm_read_ends_symmetric_ct: [f32; 7],
     position_probability_ct_default: f32,
-    background_substitution_probability: f32,
     observed_substitution_probability_default: f32,
 }
 
@@ -64,7 +63,6 @@ impl SequenceDifferenceModel for VindijaPWM {
             // the naked eye from Prüfer et al. (2017), Fig. S3.
             ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
             position_probability_ct_default: 0.02,
-            background_substitution_probability: 0.25,
             observed_substitution_probability_default: 0.0005,
         }
     }
@@ -77,22 +75,24 @@ impl SequenceDifferenceModel for VindijaPWM {
                     .get(i)
                     .unwrap_or(&self.position_probability_ct_default);
                 match to {
+                    // C->T or C->C
                     b'T' => position_probability_ct,
                     b'C' => 1.0 - position_probability_ct,
                     // "Normal" mismatch
                     _ => self.observed_substitution_probability_default,
                 }
             }
-            // "Normal" mismatch
             _ => {
                 if from == to {
-                    1.0
+                    // "Normal" match
+                    1.0 - self.observed_substitution_probability_default
                 } else {
+                    // "Normal" mismatch
                     self.observed_substitution_probability_default
                 }
             }
         };
-        (position_probability / self.background_substitution_probability).log2()
+        position_probability.log2()
     }
 }
 
@@ -108,18 +108,20 @@ mod tests {
         let read_length = 35;
 
         //        for i in 0..read_length {
-        //            let c_t = vindija_pwm.get(i, read_length, b'C', b'T');
-        //            let c_c = vindija_pwm.get(i, read_length, b'C', b'C');
-        //            let a_a = vindija_pwm.get(i, read_length, b'A', b'A');
-        //            let g_a = vindija_pwm.get(i, read_length, b'G', b'A');
         //            println!(
-        //                "{})\tC->T: {}\t\tC->C: {}\t\tA->A: {}\t\t G->A: {}",
-        //                i, c_t, c_c, a_a, g_a
+        //                "{i})\tC->T: {c_t}\t\tC->C: {c_c}\t\tA->A: {a_a}\t\t G->A: {g_a}",
+        //                i = i,
+        //                c_t = vindija_pwm.get(i, read_length, b'C', b'T'),
+        //                c_c = vindija_pwm.get(i, read_length, b'C', b'C'),
+        //                a_a = vindija_pwm.get(i, read_length, b'A', b'A'),
+        //                g_a = vindija_pwm.get(i, read_length, b'G', b'A'),
         //            );
         //        }
 
-        assert_approx_eq!(0.678072, vindija_pwm.get(0, read_length, b'C', b'T'));
-        assert_approx_eq!(1.2630345, vindija_pwm.get(0, read_length, b'C', b'C'));
-        assert_approx_eq!(-3.6438563, vindija_pwm.get(15, read_length, b'C', b'T'));
+        assert_approx_eq!(-1.321928, vindija_pwm.get(0, read_length, b'C', b'T'));
+        assert_approx_eq!(-0.736965, vindija_pwm.get(0, read_length, b'C', b'C'));
+        assert_approx_eq!(-5.643856, vindija_pwm.get(15, read_length, b'C', b'T'));
+        assert_approx_eq!(-10.965784, vindija_pwm.get(15, read_length, b'G', b'C'));
+        assert_approx_eq!(-0.000721, vindija_pwm.get(15, read_length, b'A', b'A'));
     }
 }

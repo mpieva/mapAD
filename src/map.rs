@@ -872,7 +872,7 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(6.6371, alignment_score[0]);
+        assert_approx_eq!(-5.3629, alignment_score[0]);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -896,7 +896,7 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(9.391988, alignment_score[0]);
+        assert_approx_eq!(-2.6080124, alignment_score[0]);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
