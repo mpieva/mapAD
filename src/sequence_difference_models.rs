@@ -1,8 +1,10 @@
+// TODO: All the calculations here can be done in advance (even statically)
+
 pub trait SequenceDifferenceModel {
     fn new() -> Self;
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32;
 
-    // TODO: Cache results
+    /// Needed for the calculation of D arrays
     fn get_min_penalty(&self, i: usize, read_length: usize, to: u8) -> f32 {
         b"ACGT"
             .iter()
@@ -58,6 +60,8 @@ pub struct VindijaPWM {
 impl SequenceDifferenceModel for VindijaPWM {
     fn new() -> Self {
         VindijaPWM {
+            // The following values are roughly derived with
+            // the naked eye from Prüfer et al. (2017), Fig. S3.
             ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
             position_probability_ct_default: 0.02,
             background_substitution_probability: 0.25,
