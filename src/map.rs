@@ -14,7 +14,7 @@ use bio::io::fastq;
 use libflate::deflate::Decoder;
 use rust_htslib::bam;
 
-use crate::sequence_difference_models::{SequenceDifferenceModel, SimplisticVindijaPattern};
+use crate::sequence_difference_models::{SequenceDifferenceModel, VindijaPWM};
 use crate::utils::{AlignmentParameters, AllowedMismatches};
 
 struct UnderlyingDataFMDIndex {
@@ -137,7 +137,7 @@ fn map_reads(
     let header = bam::Header::new();
     let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
 
-    let difference_model = SimplisticVindijaPattern::new_default();
+    let difference_model = VindijaPWM::new_default();
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
@@ -822,15 +822,16 @@ mod tests {
     }
 
     #[test]
-    fn test_vindija_alignment() {
+    fn test_vindija_pwm_alignment() {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
-            penalty_gap_open: -2.0,
-            penalty_gap_extend: -1.0,
+            // Disable gaps
+            penalty_gap_open: -200.0,
+            penalty_gap_extend: -100.0,
         };
 
-        let difference_model = SimplisticVindijaPattern::new_default();
+        let difference_model = VindijaPWM::new_default();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
@@ -863,7 +864,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            2.0,
+            30.0,
             &parameters,
             &difference_model,
             &fmd_index,
@@ -871,7 +872,7 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(-2.4, alignment_score[0]);
+        assert_approx_eq!(6.6371, alignment_score[0]);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()

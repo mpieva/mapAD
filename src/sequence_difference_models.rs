@@ -1,6 +1,3 @@
-use maplit::hashmap;
-use std::collections::HashMap;
-
 pub trait SequenceDifferenceModel {
     fn new_default() -> Self;
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32;
@@ -47,69 +44,51 @@ pub trait SequenceDifferenceModel {
 //    }
 //}
 
-/// This overly simple model only takes C->T deaminations into account.
-/// It also assumes symmetry of 3' and 5' ends of a read.
-pub struct SimplisticVindijaPattern {
-    /// substitution_matrix[&to, &from]
-    substitution_matrix: HashMap<u8, HashMap<u8, f32>>,
-    read_end: [f32; 7],
+/// Very simple model of ancient DNA degradation for starters.
+/// It only takes C->T deaminations into account and assumes
+/// symmetry between 5' and 3' ends of the deamination pattern.
+pub struct VindijaPWM {
+    // "Sparse" position probability matrix
+    ppm_read_ends_symmetric_ct: [f32; 7],
+    position_probability_ct_default: f32,
+    background_substitution_probability: f32,
+    observed_substitution_probability_default: f32,
 }
 
-impl SequenceDifferenceModel for SimplisticVindijaPattern {
+impl SequenceDifferenceModel for VindijaPWM {
     fn new_default() -> Self {
-        let substitution_matrix = hashmap!(
-                b'A' => hashmap!(
-                    b'A' => 1.0,
-                    b'C' => -1.0,
-                    b'G' => -1.0,
-                    b'T' => -1.0,
-                ),
-                b'C' => hashmap!(
-                    b'A' => -1.0,
-                    b'C' => 1.0,
-                    b'G' => -1.0,
-                    b'T' => -1.0,
-                ),
-                b'G' => hashmap!(
-                    b'A' => -1.0,
-                    b'C' => -1.0,
-                    b'G' => 1.0,
-                    b'T' => -1.0,
-                ),
-                b'T' => hashmap!(
-                    b'A' => -1.0,
-                    b'C' => -1.0,
-                    b'G' => -1.0,
-                    b'T' => 1.0,
-                ),
-        );
-        let read_end = [-0.6, -0.75, -0.9, -0.94, -0.95, -0.96, -0.97];
-        // let read_end = [-0.4, -0.25, -0.1, -0.06, -0.05, -0.04, -0.03];
-        SimplisticVindijaPattern {
-            substitution_matrix,
-            read_end,
+        VindijaPWM {
+            ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
+            position_probability_ct_default: 0.02,
+            background_substitution_probability: 0.25,
+            observed_substitution_probability_default: 0.0005,
         }
     }
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32 {
-        let i = i.min(read_length - (i + 1));
-        match from {
-            b'C' => match to {
-                b'T' => self.deamination_helper(i),
-                b'C' => -1.0 - self.deamination_helper(i),
-                _ => self.substitution_matrix[&to][&from],
-            },
-            _ => self.substitution_matrix[&to][&from],
-        }
-    }
-}
-
-impl SimplisticVindijaPattern {
-    fn deamination_helper(&self, i: usize) -> f32 {
-        if i >= self.read_end.len() {
-            -0.98
-        } else {
-            self.read_end[i]
-        }
+        let position_probability = match from {
+            b'C' => {
+                let i = i.min(read_length - (i + 1));
+                let position_probability_ct = *self
+                    .ppm_read_ends_symmetric_ct
+                    .get(i)
+                    .unwrap_or(&self.position_probability_ct_default);
+                match to {
+                    b'T' => position_probability_ct,
+                    b'C' => 1.0 - position_probability_ct,
+                    // "Normal" mismatch
+                    _ => self.observed_substitution_probability_default,
+                }
+            }
+            // "Normal" mismatch
+            _ => {
+                if from == to {
+                    1.0
+                } else {
+                    self.observed_substitution_probability_default
+                }
+            }
+        };
+        (position_probability / self.background_substitution_probability).log2()
     }
 }
 
@@ -120,11 +99,23 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
 
     #[test]
-    fn test_simplistic_adna_damage_model() {
-        let simplistic_model = SimplisticVindijaPattern::new_default();
+    fn test_vindija_pwm() {
+        let vindija_pwm = VindijaPWM::new_default();
+        let read_length = 35;
 
-        assert_approx_eq!(-0.6, simplistic_model.get(0, 50, b'C', b'T'));
-        assert_approx_eq!(-0.4, simplistic_model.get(0, 50, b'C', b'C'));
-        assert_approx_eq!(-0.98, simplistic_model.get(15, 50, b'C', b'T'));
+        //        for i in 0..read_length {
+        //            let c_t = vindija_pwm.get(i, read_length, b'C', b'T');
+        //            let c_c = vindija_pwm.get(i, read_length, b'C', b'C');
+        //            let a_a = vindija_pwm.get(i, read_length, b'A', b'A');
+        //            let g_a = vindija_pwm.get(i, read_length, b'G', b'A');
+        //            println!(
+        //                "{})\tC->T: {}\t\tC->C: {}\t\tA->A: {}\t\t G->A: {}",
+        //                i, c_t, c_c, a_a, g_a
+        //            );
+        //        }
+
+        assert_approx_eq!(0.678072, vindija_pwm.get(0, read_length, b'C', b'T'));
+        assert_approx_eq!(1.2630345, vindija_pwm.get(0, read_length, b'C', b'C'));
+        assert_approx_eq!(-3.6438563, vindija_pwm.get(15, read_length, b'C', b'T'));
     }
 }
