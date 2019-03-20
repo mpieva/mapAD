@@ -22,7 +22,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new_default() -> Self {
+            fn new() -> Self {
                 TestDifferenceModel {}
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
@@ -35,7 +35,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new_default();
+        let difference_model = TestDifferenceModel::new();
 
         // Reference
         let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());

@@ -137,7 +137,7 @@ fn map_reads(
     let header = bam::Header::new();
     let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
 
-    let difference_model = VindijaPWM::new_default();
+    let difference_model = VindijaPWM::new();
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
@@ -586,7 +586,7 @@ mod tests {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new_default() -> Self {
+            fn new() -> Self {
                 TestDifferenceModel {}
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
@@ -599,7 +599,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new_default();
+        let difference_model = TestDifferenceModel::new();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -662,7 +662,7 @@ mod tests {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new_default() -> Self {
+            fn new() -> Self {
                 TestDifferenceModel {}
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
@@ -675,7 +675,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new_default();
+        let difference_model = TestDifferenceModel::new();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -759,7 +759,7 @@ mod tests {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new_default() -> Self {
+            fn new() -> Self {
                 TestDifferenceModel {}
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
@@ -772,7 +772,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new_default();
+        let difference_model = TestDifferenceModel::new();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
@@ -831,7 +831,7 @@ mod tests {
             penalty_gap_extend: -100.0,
         };
 
-        let difference_model = VindijaPWM::new_default();
+        let difference_model = VindijaPWM::new();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"

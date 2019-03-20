@@ -1,5 +1,5 @@
 pub trait SequenceDifferenceModel {
-    fn new_default() -> Self;
+    fn new() -> Self;
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32;
 
     // TODO: Cache results
@@ -56,7 +56,7 @@ pub struct VindijaPWM {
 }
 
 impl SequenceDifferenceModel for VindijaPWM {
-    fn new_default() -> Self {
+    fn new() -> Self {
         VindijaPWM {
             ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
             position_probability_ct_default: 0.02,
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_vindija_pwm() {
-        let vindija_pwm = VindijaPWM::new_default();
+        let vindija_pwm = VindijaPWM::new();
         let read_length = 35;
 
         //        for i in 0..read_length {
