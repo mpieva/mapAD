@@ -881,5 +881,29 @@ mod tests {
             .collect();
         positions.sort();
         assert_eq!(vec![0], positions);
+
+        let pattern = "CCCCCC".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            30.0,
+            &parameters,
+            &difference_model,
+            &fmd_index,
+            &rev_fmd_index,
+        );
+
+        let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
+        assert_approx_eq!(9.391988, alignment_score[0]);
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(vec![0], positions);
     }
 }
