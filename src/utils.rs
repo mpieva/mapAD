@@ -1,19 +1,21 @@
+use crate::sequence_difference_models::SequenceDifferenceModel;
 use std::collections::HashMap;
 
-pub struct AlignmentParameters {
+pub struct AlignmentParameters<T: SequenceDifferenceModel> {
     pub base_error_rate: f64,
     pub poisson_threshold: f64,
+    pub difference_model: T,
     pub penalty_gap_open: f32,
     pub penalty_gap_extend: f32,
 }
 
-pub struct AllowedMismatches<'a> {
-    alignment_parameters: &'a AlignmentParameters,
+pub struct AllowedMismatches<'a, T: SequenceDifferenceModel> {
+    alignment_parameters: &'a AlignmentParameters<T>,
     cache: HashMap<usize, f32>,
 }
 
-impl<'a> AllowedMismatches<'a> {
-    pub fn new(alignment_parameters: &AlignmentParameters) -> AllowedMismatches {
+impl<'a, T: SequenceDifferenceModel> AllowedMismatches<'a, T> {
+    pub fn new(alignment_parameters: &AlignmentParameters<T>) -> AllowedMismatches<T> {
         AllowedMismatches {
             alignment_parameters,
             cache: HashMap::new(),
@@ -61,12 +63,14 @@ impl<'a> AllowedMismatches<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sequence_difference_models::VindijaPWM;
 
     #[test]
     fn test_allowed_mismatches() {
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
+            difference_model: VindijaPWM::new(),
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,
         };

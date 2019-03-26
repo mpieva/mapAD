@@ -14,7 +14,7 @@ use bio::io::fastq;
 use libflate::deflate::Decoder;
 use rust_htslib::bam;
 
-use crate::sequence_difference_models::{SequenceDifferenceModel, VindijaPWM};
+use crate::sequence_difference_models::SequenceDifferenceModel;
 use crate::utils::{AlignmentParameters, AllowedMismatches};
 
 struct UnderlyingDataFMDIndex {
@@ -90,7 +90,10 @@ impl PartialEq for MismatchSearchParameters {
 
 impl Eq for MismatchSearchParameters {}
 
-pub fn run(reads_path: &str, alignment_parameters: &AlignmentParameters) -> Result<(), Box<Error>> {
+pub fn run<T: SequenceDifferenceModel>(
+    reads_path: &str,
+    alignment_parameters: &AlignmentParameters<T>,
+) -> Result<(), Box<Error>> {
     debug!("Load FMD-index");
     let data_fmd_index = UnderlyingDataFMDIndex::load("ref")?;
     debug!("Reconstruct FMD-index");
@@ -127,8 +130,8 @@ pub fn run(reads_path: &str, alignment_parameters: &AlignmentParameters) -> Resu
     Ok(())
 }
 
-fn map_reads(
-    alignment_parameters: &AlignmentParameters,
+fn map_reads<T: SequenceDifferenceModel>(
+    alignment_parameters: &AlignmentParameters<T>,
     reads_path: &str,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -137,7 +140,6 @@ fn map_reads(
     let header = bam::Header::new();
     let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
 
-    let difference_model = VindijaPWM::new();
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
@@ -154,8 +156,7 @@ fn map_reads(
             &pattern,
             &base_qualities,
             allowed_mismatches.get(pattern.len()),
-            &alignment_parameters,
-            &difference_model,
+            alignment_parameters,
             &fmd_index,
             &rev_fmd_index,
         );
@@ -192,8 +193,7 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
     pattern: &[u8],
     _base_qualities: &[u8],
     z: f32,
-    parameters: &AlignmentParameters,
-    difference_model: &'a T,
+    parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
@@ -203,14 +203,12 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
         pattern[..center_of_read as usize].iter(),
         pattern.len(),
         parameters,
-        difference_model,
         rev_fmd_index,
     );
     let d_forwards = calculate_d(
         pattern[center_of_read as usize..].iter().rev(),
         pattern.len(),
         parameters,
-        difference_model,
         fmd_index,
     )
     .into_iter()
@@ -399,7 +397,7 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score
-                        + difference_model.get(
+                        + parameters.difference_model.get(
                             stack_frame.j as usize,
                             pattern.len(),
                             c,
@@ -415,7 +413,7 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
 
             // Mismatch
             } else {
-                let penalty = difference_model.get(
+                let penalty = parameters.difference_model.get(
                     stack_frame.j as usize,
                     pattern.len(),
                     c,
@@ -465,8 +463,7 @@ pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
 fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
     pattern: T,
     pattern_length: usize,
-    alignment_parameters: &AlignmentParameters,
-    difference_model: &'a U,
+    alignment_parameters: &AlignmentParameters<U>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<f32> {
     fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
@@ -495,16 +492,27 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
                     if a == b'T' {
                         let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
                         if l_prime <= r_prime {
-                            return difference_model.get(i, pattern_length, b'C', a);
+                            return alignment_parameters.difference_model.get(
+                                i,
+                                pattern_length,
+                                b'C',
+                                a,
+                            );
                         }
                     } else if a == b'A' {
                         let (l_prime, r_prime) = index_lookup(b'G', l, r, fmd_index);
                         if l_prime <= r_prime {
-                            return difference_model.get(i, pattern_length, b'G', a);
+                            return alignment_parameters.difference_model.get(
+                                i,
+                                pattern_length,
+                                b'G',
+                                a,
+                            );
                         }
                     }
                     // Return the minimum penalty
-                    difference_model
+                    alignment_parameters
+                        .difference_model
                         .get_min_penalty(i, pattern_length, a)
                         .max(alignment_parameters.penalty_gap_open)
                         .max(alignment_parameters.penalty_gap_extend)
@@ -528,6 +536,7 @@ mod tests {
 
     use super::*;
 
+    use crate::sequence_difference_models::VindijaPWM;
     use assert_approx_eq::assert_approx_eq;
 
     fn build_auxiliary_structures(
@@ -577,13 +586,6 @@ mod tests {
 
     #[test]
     fn test_inexact_search() {
-        let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            penalty_gap_open: -2.0,
-            penalty_gap_extend: -1.0,
-        };
-
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
             fn new() -> Self {
@@ -600,6 +602,14 @@ mod tests {
             }
         }
         let difference_model = TestDifferenceModel::new();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+        };
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -634,7 +644,6 @@ mod tests {
             &base_qualities,
             1.0,
             &parameters,
-            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );
@@ -653,13 +662,6 @@ mod tests {
 
     #[test]
     fn test_d() {
-        let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            penalty_gap_open: -1.0,
-            penalty_gap_extend: -1.0,
-        };
-
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
             fn new() -> Self {
@@ -676,6 +678,14 @@ mod tests {
             }
         }
         let difference_model = TestDifferenceModel::new();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -1.0,
+            penalty_gap_extend: -1.0,
+        };
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -703,46 +713,22 @@ mod tests {
 
         let pattern = "GTTC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(
-            pattern.iter(),
-            pattern.len(),
-            &parameters,
-            &difference_model,
-            &rev_fmd_index,
-        );
-        let d_forward = calculate_d(
-            pattern.iter().rev(),
-            pattern.len(),
-            &parameters,
-            &difference_model,
-            &fmd_index,
-        )
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
+        let d_backward = calculate_d(pattern.iter(), pattern.len(), &parameters, &rev_fmd_index);
+        let d_forward = calculate_d(pattern.iter().rev(), pattern.len(), &parameters, &fmd_index)
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>();
 
         assert_eq!(vec![0.0, 0.0, 1.0, 1.0], d_backward);
         assert_eq!(vec![1.0, 1.0, 1.0, 0.0], d_forward);
 
         let pattern = "GATC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(
-            pattern.iter(),
-            pattern.len(),
-            &parameters,
-            &difference_model,
-            &rev_fmd_index,
-        );
-        let d_forward = calculate_d(
-            pattern.iter().rev(),
-            pattern.len(),
-            &parameters,
-            &difference_model,
-            &fmd_index,
-        )
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
+        let d_backward = calculate_d(pattern.iter(), pattern.len(), &parameters, &rev_fmd_index);
+        let d_forward = calculate_d(pattern.iter().rev(), pattern.len(), &parameters, &fmd_index)
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>();
 
         assert_eq!(vec![0.0, 1.0, 1.0, 2.0], d_backward);
         assert_eq!(vec![2.0, 1.0, 1.0, 0.0], d_forward);
@@ -750,13 +736,6 @@ mod tests {
 
     #[test]
     fn test_gapped_alignment() {
-        let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            penalty_gap_open: -2.0,
-            penalty_gap_extend: -1.0,
-        };
-
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
             fn new() -> Self {
@@ -773,6 +752,14 @@ mod tests {
             }
         }
         let difference_model = TestDifferenceModel::new();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+        };
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
@@ -807,7 +794,6 @@ mod tests {
             &base_qualities,
             2.0,
             &parameters,
-            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );
@@ -823,15 +809,16 @@ mod tests {
 
     #[test]
     fn test_vindija_pwm_alignment() {
+        let difference_model = VindijaPWM::new();
+
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
             poisson_threshold: 0.04,
+            difference_model,
             // Disable gaps
             penalty_gap_open: -200.0,
             penalty_gap_extend: -100.0,
         };
-
-        let difference_model = VindijaPWM::new();
 
         let alphabet = alphabets::dna::n_alphabet();
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
@@ -866,7 +853,6 @@ mod tests {
             &base_qualities,
             30.0,
             &parameters,
-            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );
@@ -890,7 +876,6 @@ mod tests {
             &base_qualities,
             30.0,
             &parameters,
-            &difference_model,
             &fmd_index,
             &rev_fmd_index,
         );

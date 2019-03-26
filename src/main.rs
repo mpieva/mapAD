@@ -3,6 +3,7 @@ use clap::{
     SubCommand,
 };
 
+use thrust::sequence_difference_models::{SequenceDifferenceModel, VindijaPWM};
 use thrust::{index, map, utils};
 
 fn main() {
@@ -81,6 +82,7 @@ fn main() {
             let alignment_parameters = utils::AlignmentParameters {
                 base_error_rate: 0.02,
                 poisson_threshold: value_t_or_exit!(map_matches.value_of("poisson_prob"), f64),
+                difference_model: VindijaPWM::new(),
                 penalty_gap_open: -2.0,
                 penalty_gap_extend: -1.0,
             };
