@@ -13,13 +13,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            penalty_gap_open: -1.0,
-            penalty_gap_extend: -1.0,
-        };
-
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
             fn new() -> Self {
@@ -36,6 +29,14 @@ fn criterion_benchmark(c: &mut Criterion) {
             }
         }
         let difference_model = TestDifferenceModel::new();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -1.0,
+            penalty_gap_extend: -1.0,
+        };
 
         // Reference
         let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());
@@ -81,7 +82,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 &base_qualities,
                 allowed_mismatches.get(pattern.len()),
                 &parameters,
-                &difference_model,
                 &fmd_index,
                 &rev_fmd_index,
             )
