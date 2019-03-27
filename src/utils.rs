@@ -23,14 +23,20 @@ impl<'a, T: SequenceDifferenceModel> AllowedMismatches<'a, T> {
     }
 
     pub fn get(&mut self, read_length: usize) -> f32 {
-        match self.cache.get(&read_length) {
+        let out = match self.cache.get(&read_length) {
             None => {
                 let max_num_mismatches = self.calculate_max_num_mismatches(read_length);
                 self.cache.insert(read_length, max_num_mismatches);
                 max_num_mismatches
             }
             Some(v) => *v,
-        }
+        };
+
+        // Scale up the allowed number of mismatches according to difference model
+        out * self
+            .alignment_parameters
+            .difference_model
+            .get_representative_mismatch_penalty()
     }
 
     fn calculate_max_num_mismatches(&self, read_length: usize) -> f32 {

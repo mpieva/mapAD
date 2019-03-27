@@ -4,6 +4,8 @@ pub trait SequenceDifferenceModel {
     fn new() -> Self;
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32;
 
+    fn get_representative_mismatch_penalty(&self) -> f32;
+
     /// Needed for the calculation of D arrays
     fn get_min_penalty(&self, i: usize, read_length: usize, to: u8) -> f32 {
         b"ACGT"
@@ -93,6 +95,10 @@ impl SequenceDifferenceModel for VindijaPWM {
             }
         };
         position_probability.log2()
+    }
+
+    fn get_representative_mismatch_penalty(&self) -> f32 {
+        self.get(25, 50, b'T', b'A')
     }
 }
 
