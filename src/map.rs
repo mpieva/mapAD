@@ -189,7 +189,7 @@ fn map_reads<T: SequenceDifferenceModel>(
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
-pub fn k_mismatch_search<'a, T: SequenceDifferenceModel>(
+pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     pattern: &[u8],
     _base_qualities: &[u8],
     z: f32,
