@@ -137,12 +137,25 @@ fn map_reads<T: SequenceDifferenceModel>(
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
 ) -> Result<(), Box<Error>> {
-    let header = bam::Header::new();
-    let mut out = bam::Writer::from_path(&"out.bam", &header).unwrap();
+    let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
+
+    let mut header = bam::Header::new(); // TODO: Don't hardcode header entries
+    {
+        let mut header_record = bam::header::HeaderRecord::new(b"SQ");
+        header_record.push_tag(b"SN", &"chr22");
+        header_record.push_tag(b"LN", &"51304566");
+        header.push_record(&header_record);
+    }
+    {
+        let mut header_record = bam::header::HeaderRecord::new(b"PG");
+        header_record.push_tag(b"ID", &"thrust");
+        header_record.push_tag(b"PN", &"thrust");
+        header_record.push_tag(b"VN", &"0.0.0");
+        header.push_record(&header_record);
+    }
+    let mut out = bam::Writer::from_path("out.bam", &header).unwrap();
 
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
-
-    let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
     debug!("Map reads");
     for record in reads_fq_reader.records() {
@@ -170,22 +183,64 @@ fn map_reads<T: SequenceDifferenceModel>(
                 sum_base_q_best = sum_of_qualities.alignment_score
             }
         }
-        let mapping_quality =
+        let _mapping_quality =
             -((1.0 - (TEN_F32.powf(-(sum_base_q_best)) / sum_base_q_all)).log10());
 
-        // Create SAM/BAM records
+        // Create BAM records
+        // Aligns to reference strand
         for imm in intervals.iter() {
-            for position in imm.interval.forward().occ(suffix_array).iter() {
-                let mut bam_record = bam::record::Record::new();
-                bam_record.set_qname(record.id().as_bytes());
-                bam_record.set_pos(*position as i32);
-                bam_record.set_mapq(mapping_quality as u8);
-                out.write(&bam_record)?;
+            for &position in imm.interval.forward().occ(suffix_array).iter() {
+                if position < fmd_index.bwt().len() / 2 {
+                    out.write(&create_bam_record(
+                        record.id().as_bytes(),
+                        record.seq(),
+                        record.qual(),
+                        position,
+                    ))?;
+                }
+            }
+            // Aligns to reverse strand
+            for &position in imm.interval.revcomp().occ(suffix_array).iter() {
+                if position < fmd_index.bwt().len() / 2 {
+                    let mut record = create_bam_record(
+                        record.id().as_bytes(),
+                        record.seq(),
+                        record.qual(),
+                        position,
+                    );
+                    record.set_reverse();
+                    out.write(&record)?;
+                }
             }
         }
     }
     debug!("Done");
     Ok(())
+}
+
+fn create_bam_record(
+    input_name: &[u8],
+    input_seq: &[u8],
+    input_qual: &[u8],
+    position: usize,
+) -> bam::Record {
+    let mut bam_record = bam::record::Record::new();
+    let cigar = bam::record::CigarString(vec![bam::record::Cigar::Match(input_seq.len() as u32)]); // FIXME: Calculate CIGAR string appropriately
+    bam_record.set(
+        input_name,
+        &cigar,
+        input_seq,
+        input_qual
+            .iter()
+            .map(|&x| x - 33)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    bam_record.set_pos(position as i32);
+    bam_record.set_mapq(37); // Mapping quality
+    bam_record.set_mpos(-1); // Position of mate (-1 = *)
+    bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
+    bam_record
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
