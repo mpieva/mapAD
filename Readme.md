@@ -74,6 +74,10 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
 - [ ] Mapping quality estimation (base-quality aware or not?)
 - [ ] BAM-IO
+  - [x] BAM output
+  - [ ] BAM input
+- [ ] Generate CIGAR string
+- [ ] Evaluate precision, FPR, FNR
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
 - [ ] Multithreading
