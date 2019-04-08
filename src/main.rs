@@ -79,12 +79,13 @@ fn main() {
             }
         }
         ("map", Some(map_matches)) => {
+            let difference_model = VindijaPWM::new();
             let alignment_parameters = utils::AlignmentParameters {
                 base_error_rate: 0.02,
                 poisson_threshold: value_t_or_exit!(map_matches.value_of("poisson_prob"), f64),
-                difference_model: VindijaPWM::new(),
-                penalty_gap_open: -2.0,
-                penalty_gap_extend: -1.0,
+                penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
+                penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
+                difference_model,
             };
             if let Err(e) = map::run(
                 map_matches.value_of("reads").unwrap(),
