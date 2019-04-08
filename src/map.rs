@@ -786,14 +786,6 @@ mod tests {
             .collect();
         positions.sort();
         assert_eq!(vec![8], positions);
-
-        let mut positions: Vec<usize> = intervals
-            .into_iter()
-            .map(|f| f.interval.revcomp().occ(&suffix_array))
-            .flatten()
-            .collect();
-        positions.sort();
-        assert_eq!(vec![1], positions);
     }
 
     #[test]
