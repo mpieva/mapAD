@@ -10,18 +10,18 @@ avx-accel = ["bio/avx-accel"]
 simd-accel = ["bio/simd-accel"]
 
 [dependencies]
-clap = "*"
-log = "*"
-rust-htslib = "*"
-simple_logger = "*"
-bincode = "*"
+clap = "2.33.0"
+log = "0.4.6"
+rust-htslib = "0.22.0"
+simple_logger = "1.0.1"
+bincode = "1.1.3"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub" }
-libflate = "*"
-maplit = "*"
-assert_approx_eq = "*"
+libflate = "0.1.21"
+maplit = "1.0.1"
+assert_approx_eq = "1.1.0"
 
 [dev-dependencies]
-criterion = "*"
+criterion = "0.2.10"
 
 [[bench]]
 name = "benchmark"
