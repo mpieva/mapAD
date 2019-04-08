@@ -291,11 +291,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     });
 
     while let Some(stack_frame) = stack.pop() {
-        // No match
-        if stack_frame.current_interval.size < 1 {
-            continue;
-        }
-
         // Too many mismatches
         let backwards_lower_bound = match d_backwards.get(stack_frame.backward_index as usize) {
             Some(&d_i) => d_i,
