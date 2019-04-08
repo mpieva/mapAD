@@ -168,7 +168,11 @@ fn map_reads<T: SequenceDifferenceModel>(
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            allowed_mismatches.get(pattern.len()),
+            (allowed_mismatches.get(pattern.len())
+                * alignment_parameters
+                    .difference_model
+                    .get_representative_mismatch_penalty())
+            .abs(),
             alignment_parameters,
             &fmd_index,
             &rev_fmd_index,
