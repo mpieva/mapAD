@@ -716,6 +716,87 @@ mod tests {
     }
 
     #[test]
+    fn test_reverse_strand_search() {
+        struct TestDifferenceModel {}
+        impl SequenceDifferenceModel for TestDifferenceModel {
+            fn new() -> Self {
+                TestDifferenceModel {}
+            }
+            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -10.0;
+                } else if from != to {
+                    return -10.0;
+                } else {
+                    return 1.0;
+                }
+            }
+        }
+        let difference_model = TestDifferenceModel::new();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -20.0,
+            penalty_gap_extend: -10.0,
+        };
+
+        let alphabet = alphabets::dna::n_alphabet();
+        let mut ref_seq = "GAAAAG".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let suffix_array = suffix_array(&ref_seq);
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        // Reverse reference
+        let mut reverse_reference = ref_seq.into_iter().rev().collect::<Vec<_>>();
+        let rev_data_fmd_index = build_auxiliary_structures(&mut reverse_reference, &alphabet);
+
+        let rev_fm_index = FMIndex::new(
+            &rev_data_fmd_index.bwt,
+            &rev_data_fmd_index.less,
+            &rev_data_fmd_index.occ,
+        );
+        let rev_fmd_index = FMDIndex::from(rev_fm_index);
+
+        let pattern = "TTTT".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            1.0,
+            &parameters,
+            &fmd_index,
+            &rev_fmd_index,
+        );
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(vec![8], positions);
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.revcomp().occ(&suffix_array))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(vec![1], positions);
+    }
+
+    #[test]
     fn test_d() {
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
@@ -945,5 +1026,47 @@ mod tests {
             .collect();
         positions.sort();
         assert_eq!(vec![0], positions);
+
+        //
+        // Test "normal" mismatch
+        //
+
+        let mut ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        // Reverse reference
+        let mut reverse_reference = ref_seq.into_iter().rev().collect::<Vec<_>>();
+        let rev_data_fmd_index = build_auxiliary_structures(&mut reverse_reference, &alphabet);
+
+        let rev_fm_index = FMIndex::new(
+            &rev_data_fmd_index.bwt,
+            &rev_data_fmd_index.less,
+            &rev_data_fmd_index.occ,
+        );
+        let rev_fmd_index = FMDIndex::from(rev_fm_index);
+
+        let pattern = "AAGAAA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            30.0,
+            &parameters,
+            &fmd_index,
+            &rev_fmd_index,
+        );
+
+        let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
+        assert_approx_eq!(-10.969394, alignment_score[0]);
     }
 }
