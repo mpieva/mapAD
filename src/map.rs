@@ -61,7 +61,7 @@ struct MismatchSearchParameters {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
-    debug_helper: String, // TODO: Remove this before measuring performance (it's very slow)
+    //    debug_helper: String, // Remove this before measuring performance (it's very slow)
 }
 
 impl PartialOrd for MismatchSearchParameters {
@@ -228,7 +228,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0.0,
-        debug_helper: String::from("."),
+        //        debug_helper: String::from("."),
     });
 
     while let Some(stack_frame) = stack.pop() {
@@ -303,11 +303,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 stack_frame.open_gap_forwards
             },
             alignment_score: stack_frame.alignment_score + penalty,
-            debug_helper: if stack_frame.forward {
-                format!("{}(_)", stack_frame.debug_helper)
-            } else {
-                format!("(_){}", stack_frame.debug_helper)
-            },
+            //            debug_helper: if stack_frame.forward {
+            //                format!("{}(_)", stack_frame.debug_helper)
+            //            } else {
+            //                format!("(_){}", stack_frame.debug_helper)
+            //            },
             ..stack_frame
         });
 
@@ -369,11 +369,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     stack_frame.open_gap_forwards
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
-                debug_helper: if stack_frame.forward {
-                    format!("{}({})", stack_frame.debug_helper, c as char)
-                } else {
-                    format!("({}){}", c as char, stack_frame.debug_helper)
-                },
+                //                debug_helper: if stack_frame.forward {
+                //                    format!("{}({})", stack_frame.debug_helper, c as char)
+                //                } else {
+                //                    format!("({}){}", c as char, stack_frame.debug_helper)
+                //                },
                 ..stack_frame
             });
 
@@ -403,11 +403,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                             c,
                             pattern[stack_frame.j as usize],
                         ),
-                    debug_helper: if stack_frame.forward {
-                        format!("{}{}", stack_frame.debug_helper, c as char)
-                    } else {
-                        format!("{}{}", c as char, stack_frame.debug_helper)
-                    },
+                    //                    debug_helper: if stack_frame.forward {
+                    //                        format!("{}{}", stack_frame.debug_helper, c as char)
+                    //                    } else {
+                    //                        format!("{}{}", c as char, stack_frame.debug_helper)
+                    //                    },
                     ..stack_frame
                 });
 
@@ -438,19 +438,19 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
-                    debug_helper: if stack_frame.forward {
-                        format!(
-                            "{}{}",
-                            stack_frame.debug_helper,
-                            c.to_ascii_lowercase() as char
-                        )
-                    } else {
-                        format!(
-                            "{}{}",
-                            c.to_ascii_lowercase() as char,
-                            stack_frame.debug_helper
-                        )
-                    },
+                    //                    debug_helper: if stack_frame.forward {
+                    //                        format!(
+                    //                            "{}{}",
+                    //                            stack_frame.debug_helper,
+                    //                            c.to_ascii_lowercase() as char
+                    //                        )
+                    //                    } else {
+                    //                        format!(
+                    //                            "{}{}",
+                    //                            c.to_ascii_lowercase() as char,
+                    //                            stack_frame.debug_helper
+                    //                        )
+                    //                    },
                 });
             }
         }
