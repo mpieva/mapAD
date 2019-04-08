@@ -120,7 +120,7 @@ pub fn run<T: SequenceDifferenceModel>(
     let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
 
     map_reads(
-        &alignment_parameters,
+        alignment_parameters,
         reads_path,
         &fmd_index,
         &rev_fmd_index,
@@ -257,7 +257,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 interval: stack_frame.current_interval,
                 alignment_score: stack_frame.alignment_score,
             });
-            continue;
+            continue; // FIXME
         }
 
         let next_j;
@@ -488,7 +488,7 @@ fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
             // Prefix can not be found in the reference
             if l > r {
                 // Allow certain transitions
-                let penalty: f32 = {
+                let penalty = {
                     if a == b'T' {
                         let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
                         if l_prime <= r_prime {
@@ -537,6 +537,7 @@ mod tests {
     use super::*;
 
     use crate::sequence_difference_models::VindijaPWM;
+
     use assert_approx_eq::assert_approx_eq;
 
     fn build_auxiliary_structures(
@@ -826,7 +827,7 @@ mod tests {
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
-        let suffix_array = suffix_array(&ref_seq);
+        let sar = suffix_array(&ref_seq);
         let fm_index = FMIndex::new(
             &data_fmd_index.bwt,
             &data_fmd_index.less,
@@ -862,7 +863,7 @@ mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
+            .map(|f| f.interval.forward().occ(&sar))
             .flatten()
             .collect();
         positions.sort();
@@ -885,7 +886,7 @@ mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
+            .map(|f| f.interval.forward().occ(&sar))
             .flatten()
             .collect();
         positions.sort();
