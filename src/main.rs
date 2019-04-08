@@ -55,7 +55,7 @@ fn main() {
                                 Ok(s) => s,
                                 Err(_) => return Err(error_message),
                             };
-                            if (v >= 0.0) & (v <= 1.0) {
+                            if (v >= 0.0) && (v <= 1.0) {
                                 return Ok(());
                             }
                             Err(error_message)
