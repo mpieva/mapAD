@@ -225,7 +225,7 @@ fn map_reads<T: SequenceDifferenceModel>(
 fn create_bam_record(
     input_name: &[u8],
     input_seq: &[u8],
-    input_qual: &[u8],
+    input_quality: &[u8],
     position: usize,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
@@ -234,7 +234,7 @@ fn create_bam_record(
         input_name,
         &cigar,
         input_seq,
-        input_qual
+        input_quality
             .iter()
             .map(|&x| x - 33)
             .collect::<Vec<_>>()
