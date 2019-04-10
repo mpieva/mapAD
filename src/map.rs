@@ -50,14 +50,69 @@ impl UnderlyingDataFMDIndex {
 pub struct IntervalQuality {
     interval: BiInterval,
     alignment_score: f32,
+    edit_operations: EditOperations,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum EditOperations {
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum EditOperation {
     Insertion,
     Deletion,
-    Match,
-    Mismatch,
+    MatchMismatch,
+}
+
+#[derive(Debug, Clone)]
+struct EditOperations {
+    edit_operations: SmallVec<[EditOperation; 64]>,
+}
+
+impl EditOperations {
+    fn new() -> Self {
+        EditOperations {
+            edit_operations: SmallVec::new(),
+        }
+    }
+    fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
+        let center_of_read = read_length as isize / 2;
+        let mut cigar = Vec::new();
+
+        let add_op = |edit_operation: EditOperation, k, cigar: &mut Vec<bam::record::Cigar>| {
+            match edit_operation {
+                EditOperation::MatchMismatch => cigar.push(bam::record::Cigar::Match(k)),
+                EditOperation::Insertion => cigar.push(bam::record::Cigar::Del(k)),
+                EditOperation::Deletion => cigar.push(bam::record::Cigar::Ins(k)),
+            }
+        };
+
+        if self.edit_operations.is_empty() {
+            return bam::record::CigarString(cigar);
+        }
+
+        let mut n = 1;
+        let mut i = center_of_read as usize;
+        let mut last_edit_operation = self.edit_operations[i];
+        for j in 1..=center_of_read {
+            for &k in [-1, 1].iter() {
+                i = (read_length as isize / 2 + j * k) as usize;
+                if self.edit_operations[i] == last_edit_operation {
+                    n += 1;
+                } else {
+                    add_op(last_edit_operation, n, &mut cigar);
+                    n = 1;
+                    last_edit_operation = self.edit_operations[i];
+                }
+                if read_length % 2 == 0 && i == 0 {
+                    break;
+                }
+            }
+        }
+        add_op(last_edit_operation, n, &mut cigar);
+
+        bam::record::CigarString(cigar)
+    }
+
+    fn push(&mut self, edit_operation: EditOperation) {
+        self.edit_operations.push(edit_operation);
+    }
 }
 
 #[derive(Debug)]
@@ -71,8 +126,8 @@ struct MismatchSearchParameters {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
-    edit_operations: SmallVec<[EditOperations; 64]>,
-    //    debug_helper: String, // Remove this before measuring performance (it's very slow)
+    edit_operations: EditOperations,
+    //    debug_helper: String, // Remove this before measuring performance (it's slow)
 }
 
 impl PartialOrd for MismatchSearchParameters {
@@ -238,9 +293,10 @@ fn create_bam_record(
     input_seq: &[u8],
     input_quality: &[u8],
     position: usize,
+    edit_operations: &EditOperations,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
-    let cigar = bam::record::CigarString(vec![bam::record::Cigar::Match(input_seq.len() as u32)]); // FIXME: Calculate CIGAR string appropriately
+    let cigar = edit_operations.build_cigar(input_seq.len());
     bam_record.set(
         input_name,
         &cigar,
@@ -298,7 +354,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0.0,
-        edit_operations: SmallVec::new(),
+        edit_operations: EditOperations::new(),
         //        debug_helper: String::from("."),
     });
 
@@ -322,6 +378,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             intervals.push(IntervalQuality {
                 interval: stack_frame.current_interval,
                 alignment_score: stack_frame.alignment_score,
+                edit_operations: stack_frame.edit_operations,
             });
             continue;
         }
@@ -353,7 +410,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         };
 
         let mut new_edit_operations = stack_frame.edit_operations.clone();
-        new_edit_operations.push(EditOperations::Insertion);
+        new_edit_operations.push(EditOperation::Insertion);
 
         stack.push(MismatchSearchParameters {
             j: next_j,
@@ -427,7 +484,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             };
 
             let mut new_edit_operations = stack_frame.edit_operations.clone();
-            new_edit_operations.push(EditOperations::Deletion);
+            new_edit_operations.push(EditOperation::Deletion);
 
             stack.push(MismatchSearchParameters {
                 z: stack_frame.z + penalty,
@@ -453,91 +510,51 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 ..stack_frame
             });
 
-            // Match
-            if c == pattern[stack_frame.j as usize] {
-                let mut new_edit_operations = stack_frame.edit_operations.clone();
-                new_edit_operations.push(EditOperations::Match);
+            // Match/mismatch
+            let penalty = parameters.difference_model.get(
+                stack_frame.j as usize,
+                pattern.len(),
+                c,
+                pattern[stack_frame.j as usize],
+            );
 
-                stack.push(MismatchSearchParameters {
-                    j: next_j,
-                    current_interval: interval_prime,
-                    backward_index: next_backward_index,
-                    forward_index: next_forward_index,
-                    forward: !stack_frame.forward,
-                    // Mark closed gap at the corresponding end
-                    open_gap_backwards: if !stack_frame.forward {
-                        false
-                    } else {
-                        stack_frame.open_gap_backwards
-                    },
-                    open_gap_forwards: if stack_frame.forward {
-                        false
-                    } else {
-                        stack_frame.open_gap_forwards
-                    },
-                    alignment_score: stack_frame.alignment_score
-                        + parameters.difference_model.get(
-                            stack_frame.j as usize,
-                            pattern.len(),
-                            c,
-                            pattern[stack_frame.j as usize],
-                        ),
-                    edit_operations: new_edit_operations,
-                    //                    debug_helper: if stack_frame.forward {
-                    //                        format!("{}{}", stack_frame.debug_helper, c as char)
-                    //                    } else {
-                    //                        format!("{}{}", c as char, stack_frame.debug_helper)
-                    //                    },
-                    ..stack_frame
-                });
+            let mut new_edit_operations = stack_frame.edit_operations.clone();
+            new_edit_operations.push(EditOperation::MatchMismatch);
 
-            // Mismatch
-            } else {
-                let penalty = parameters.difference_model.get(
-                    stack_frame.j as usize,
-                    pattern.len(),
-                    c,
-                    pattern[stack_frame.j as usize],
-                );
-
-                let mut new_edit_operations = stack_frame.edit_operations.clone();
-                new_edit_operations.push(EditOperations::Mismatch);
-
-                stack.push(MismatchSearchParameters {
-                    j: next_j,
-                    z: stack_frame.z + penalty,
-                    current_interval: interval_prime,
-                    backward_index: next_backward_index,
-                    forward_index: next_forward_index,
-                    forward: !stack_frame.forward,
-                    // Mark closed gap at the corresponding end
-                    open_gap_backwards: if !stack_frame.forward {
-                        false
-                    } else {
-                        stack_frame.open_gap_backwards
-                    },
-                    open_gap_forwards: if stack_frame.forward {
-                        false
-                    } else {
-                        stack_frame.open_gap_forwards
-                    },
-                    alignment_score: stack_frame.alignment_score + penalty,
-                    edit_operations: new_edit_operations,
-                    //                    debug_helper: if stack_frame.forward {
-                    //                        format!(
-                    //                            "{}{}",
-                    //                            stack_frame.debug_helper,
-                    //                            c.to_ascii_lowercase() as char
-                    //                        )
-                    //                    } else {
-                    //                        format!(
-                    //                            "{}{}",
-                    //                            c.to_ascii_lowercase() as char,
-                    //                            stack_frame.debug_helper
-                    //                        )
-                    //                    },
-                });
-            }
+            stack.push(MismatchSearchParameters {
+                j: next_j,
+                z: stack_frame.z + penalty.min(0.0),
+                current_interval: interval_prime,
+                backward_index: next_backward_index,
+                forward_index: next_forward_index,
+                forward: !stack_frame.forward,
+                // Mark closed gap at the corresponding end
+                open_gap_backwards: if !stack_frame.forward {
+                    false
+                } else {
+                    stack_frame.open_gap_backwards
+                },
+                open_gap_forwards: if stack_frame.forward {
+                    false
+                } else {
+                    stack_frame.open_gap_forwards
+                },
+                alignment_score: stack_frame.alignment_score + penalty,
+                edit_operations: new_edit_operations,
+                //                    debug_helper: if stack_frame.forward {
+                //                        format!(
+                //                            "{}{}",
+                //                            stack_frame.debug_helper,
+                //                            c.to_ascii_lowercase() as char
+                //                        )
+                //                    } else {
+                //                        format!(
+                //                            "{}{}",
+                //                            c.to_ascii_lowercase() as char,
+                //                            stack_frame.debug_helper
+                //                        )
+                //                    },
+            });
         }
     }
     intervals
