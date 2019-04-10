@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fs::File;
 
 use log::debug;
+use smallvec::SmallVec;
 
 use bio::alphabets::dna;
 use bio::data_structures::bwt::Occ;
@@ -50,6 +51,14 @@ pub struct IntervalQuality {
     alignment_score: f32,
 }
 
+#[derive(Debug, Copy, Clone)]
+enum EditOperations {
+    Insertion,
+    Deletion,
+    Match,
+    Mismatch,
+}
+
 #[derive(Debug)]
 struct MismatchSearchParameters {
     j: isize,
@@ -61,6 +70,7 @@ struct MismatchSearchParameters {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
+    edit_operations: SmallVec<[EditOperations; 64]>,
     //    debug_helper: String, // Remove this before measuring performance (it's very slow)
 }
 
@@ -287,6 +297,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0.0,
+        edit_operations: SmallVec::new(),
         //        debug_helper: String::from("."),
     });
 
@@ -311,7 +322,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 interval: stack_frame.current_interval,
                 alignment_score: stack_frame.alignment_score,
             });
-            continue; // FIXME
+            continue;
         }
 
         let next_j;
@@ -339,6 +350,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         } else {
             parameters.penalty_gap_open
         };
+
+        let mut new_edit_operations = stack_frame.edit_operations.clone();
+        new_edit_operations.push(EditOperations::Insertion);
+
         stack.push(MismatchSearchParameters {
             j: next_j,
             z: stack_frame.z + penalty,
@@ -357,6 +372,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 stack_frame.open_gap_forwards
             },
             alignment_score: stack_frame.alignment_score + penalty,
+            edit_operations: new_edit_operations,
             //            debug_helper: if stack_frame.forward {
             //                format!("{}(_)", stack_frame.debug_helper)
             //            } else {
@@ -408,6 +424,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             } else {
                 parameters.penalty_gap_open
             };
+
+            let mut new_edit_operations = stack_frame.edit_operations.clone();
+            new_edit_operations.push(EditOperations::Deletion);
+
             stack.push(MismatchSearchParameters {
                 z: stack_frame.z + penalty,
                 current_interval: interval_prime,
@@ -423,6 +443,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     stack_frame.open_gap_forwards
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
+                edit_operations: new_edit_operations,
                 //                debug_helper: if stack_frame.forward {
                 //                    format!("{}({})", stack_frame.debug_helper, c as char)
                 //                } else {
@@ -433,6 +454,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
 
             // Match
             if c == pattern[stack_frame.j as usize] {
+                let mut new_edit_operations = stack_frame.edit_operations.clone();
+                new_edit_operations.push(EditOperations::Match);
+
                 stack.push(MismatchSearchParameters {
                     j: next_j,
                     current_interval: interval_prime,
@@ -457,6 +481,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                             c,
                             pattern[stack_frame.j as usize],
                         ),
+                    edit_operations: new_edit_operations,
                     //                    debug_helper: if stack_frame.forward {
                     //                        format!("{}{}", stack_frame.debug_helper, c as char)
                     //                    } else {
@@ -473,6 +498,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     c,
                     pattern[stack_frame.j as usize],
                 );
+
+                let mut new_edit_operations = stack_frame.edit_operations.clone();
+                new_edit_operations.push(EditOperations::Mismatch);
+
                 stack.push(MismatchSearchParameters {
                     j: next_j,
                     z: stack_frame.z + penalty,
@@ -492,6 +521,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
+                    edit_operations: new_edit_operations,
                     //                    debug_helper: if stack_frame.forward {
                     //                        format!(
                     //                            "{}{}",

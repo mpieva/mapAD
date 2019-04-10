@@ -19,6 +19,7 @@ bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biint
 libflate = "0.1.21"
 maplit = "1.0.1"
 assert_approx_eq = "1.1.0"
+smallvec = "0.6.9"
 
 [dev-dependencies]
 criterion = "0.2.11"
