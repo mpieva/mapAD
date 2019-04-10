@@ -78,6 +78,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
   - [ ] BAM input
 - [ ] Generate CIGAR string
 - [ ] Evaluate precision, FPR, FNR
+- [ ] Only push to heap if necessary (perhaps check conditions in (inlined) function)
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
 - [ ] Multithreading
