@@ -259,28 +259,38 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Create BAM records
         // Aligns to reference strand
         for imm in intervals.iter() {
-            for &position in imm.interval.forward().occ(suffix_array).iter() {
-                if position < fmd_index.bwt().len() / 2 {
-                    out.write(&create_bam_record(
-                        record.id().as_bytes(),
-                        record.seq(),
-                        record.qual(),
-                        position,
-                    ))?;
-                }
+            for &position in imm
+                .interval
+                .forward()
+                .occ(suffix_array)
+                .iter()
+                .filter(|&&position| position < fmd_index.bwt().len() / 2)
+            {
+                out.write(&create_bam_record(
+                    record.id().as_bytes(),
+                    record.seq(),
+                    record.qual(),
+                    position,
+                    &imm.edit_operations,
+                ))?;
             }
             // Aligns to reverse strand
-            for &position in imm.interval.revcomp().occ(suffix_array).iter() {
-                if position < fmd_index.bwt().len() / 2 {
-                    let mut record = create_bam_record(
-                        record.id().as_bytes(),
-                        record.seq(),
-                        record.qual(),
-                        position,
-                    );
-                    record.set_reverse();
-                    out.write(&record)?;
-                }
+            for &position in imm
+                .interval
+                .revcomp()
+                .occ(suffix_array)
+                .iter()
+                .filter(|&&position| position < fmd_index.bwt().len() / 2)
+            {
+                let mut record = create_bam_record(
+                    record.id().as_bytes(),
+                    record.seq(),
+                    record.qual(),
+                    position,
+                    &imm.edit_operations,
+                );
+                record.set_reverse();
+                out.write(&record)?;
             }
         }
     }
