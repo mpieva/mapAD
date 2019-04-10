@@ -3,6 +3,7 @@ use std::collections::binary_heap::BinaryHeap;
 use std::error::Error;
 use std::fs::File;
 
+use clap::{crate_name, crate_version};
 use log::debug;
 use smallvec::SmallVec;
 
@@ -158,9 +159,9 @@ fn map_reads<T: SequenceDifferenceModel>(
     }
     {
         let mut header_record = bam::header::HeaderRecord::new(b"PG");
-        header_record.push_tag(b"ID", &"thrust");
-        header_record.push_tag(b"PN", &"thrust");
-        header_record.push_tag(b"VN", &"0.0.0");
+        header_record.push_tag(b"ID", &crate_name!());
+        header_record.push_tag(b"PN", &crate_name!());
+        header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
     let mut out = bam::Writer::from_path("out.bam", &header).unwrap();
