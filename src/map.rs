@@ -50,7 +50,7 @@ impl UnderlyingDataFMDIndex {
 pub struct IntervalQuality {
     interval: BiInterval,
     alignment_score: f32,
-    edit_operations: EditOperations,
+    edit_operations: EditOperationsTrack,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -61,13 +61,13 @@ enum EditOperation {
 }
 
 #[derive(Debug, Clone)]
-struct EditOperations {
+struct EditOperationsTrack {
     edit_operations: SmallVec<[EditOperation; 128]>,
 }
 
-impl EditOperations {
+impl EditOperationsTrack {
     fn new() -> Self {
-        EditOperations {
+        EditOperationsTrack {
             edit_operations: SmallVec::new(),
         }
     }
@@ -126,7 +126,7 @@ struct MismatchSearchParameters {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
-    edit_operations: EditOperations,
+    edit_operations: EditOperationsTrack,
     //    debug_helper: String, // Remove this before measuring performance (it's slow)
 }
 
@@ -303,7 +303,7 @@ fn create_bam_record(
     input_seq: &[u8],
     input_quality: &[u8],
     position: usize,
-    edit_operations: &EditOperations,
+    edit_operations: &EditOperationsTrack,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
     let cigar = edit_operations.build_cigar(input_seq.len());
@@ -364,7 +364,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0.0,
-        edit_operations: EditOperations::new(),
+        edit_operations: EditOperationsTrack::new(),
         //        debug_helper: String::from("."),
     });
 
