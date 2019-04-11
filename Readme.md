@@ -79,6 +79,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Generate CIGAR string
 - [ ] Evaluate precision, FPR, FNR
 - [ ] Only push to heap if necessary (perhaps check conditions in (inlined) function)
+- [ ] Problem: BFS does not work well with negative scores which we get with log-probs (-> slow). Perhaps add +1?
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
 - [ ] Multithreading
