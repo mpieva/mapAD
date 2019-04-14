@@ -205,11 +205,11 @@ fn map_reads<T: SequenceDifferenceModel>(
 ) -> Result<(), Box<Error>> {
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
-    let mut header = bam::Header::new(); // TODO: Don't hardcode header entries
+    let mut header = bam::Header::new();
     {
         let mut header_record = bam::header::HeaderRecord::new(b"SQ");
-        header_record.push_tag(b"SN", &"chr22");
-        header_record.push_tag(b"LN", &"51304566");
+        header_record.push_tag(b"SN", &"chr22"); // FIXME: Don't hardcode header entries
+        header_record.push_tag(b"LN", &"51304566"); // FIXME: Don't hardcode header entries
         header.push_record(&header_record);
     }
     {
@@ -244,21 +244,13 @@ fn map_reads<T: SequenceDifferenceModel>(
             &rev_fmd_index,
         );
 
-        const TEN_F32: f32 = 10.0;
-        let mut sum_base_q_best = std::f32::MAX;
-        let mut sum_base_q_all = 0.0;
-        for sum_of_qualities in intervals.iter() {
-            sum_base_q_all += TEN_F32.powf(-(sum_of_qualities.alignment_score));
-            if sum_of_qualities.alignment_score < sum_base_q_best {
-                sum_base_q_best = sum_of_qualities.alignment_score
-            }
-        }
-        let _mapping_quality =
-            -((1.0 - (TEN_F32.powf(-(sum_base_q_best)) / sum_base_q_all)).log10());
-
+        //
         // Create BAM records
-        // Aligns to reference strand
+        //
+        let mapping_quality =
+            estimate_mapping_quality(intervals.first(), intervals.get(1), alignment_parameters);
         for imm in intervals.iter() {
+            // Aligns to reference strand
             for &position in imm
                 .interval
                 .forward()
@@ -272,6 +264,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     record.qual(),
                     position,
                     &imm.edit_operations,
+                    mapping_quality,
                 ))?;
             }
             // Aligns to reverse strand
@@ -288,6 +281,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     record.qual(),
                     position,
                     &imm.edit_operations,
+                    mapping_quality,
                 );
                 record.set_reverse();
                 out.write(&record)?;
@@ -298,12 +292,45 @@ fn map_reads<T: SequenceDifferenceModel>(
     Ok(())
 }
 
+fn estimate_mapping_quality(
+    best_alignment: Option<&IntervalQuality>,
+    second_best_alignment: Option<&IntervalQuality>,
+    alignment_parameters: &AlignmentParameters<impl SequenceDifferenceModel>,
+) -> u8 {
+    let best_alignment = match best_alignment {
+        Some(v) => v,
+        None => return 0,
+    };
+
+    // Multi-mapping
+    if best_alignment.interval.size > 1 {
+        return (-10_f32 * (1.0 / best_alignment.interval.size as f32).log10()).round() as u8;
+    }
+
+    // "Unique" mapping
+    let second_best_alignment = match second_best_alignment {
+        Some(v) => v,
+        None => return 0,
+    };
+    if best_alignment.alignment_score.abs() - second_best_alignment.alignment_score.abs()
+        < alignment_parameters
+            .difference_model
+            .get_representative_mismatch_penalty()
+    {
+        return (-10_f32 * (1.0 / second_best_alignment.interval.size as f32).log10()).round()
+            as u8;
+    }
+
+    37
+}
+
 fn create_bam_record(
     input_name: &[u8],
     input_seq: &[u8],
     input_quality: &[u8],
     position: usize,
     edit_operations: &EditOperationsTrack,
+    mapq: u8,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
     let cigar = edit_operations.build_cigar(input_seq.len());
@@ -318,7 +345,7 @@ fn create_bam_record(
             .as_slice(),
     );
     bam_record.set_pos(position as i32);
-    bam_record.set_mapq(37); // Mapping quality
+    bam_record.set_mapq(mapq); // Mapping quality
     bam_record.set_mpos(-1); // Position of mate (-1 = *)
     bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
     bam_record
