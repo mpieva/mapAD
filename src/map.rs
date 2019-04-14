@@ -247,8 +247,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         //
         // Create BAM records
         //
-        let mapping_quality =
-            estimate_mapping_quality(intervals.first(), intervals.get(1), alignment_parameters);
+        let mapping_quality = estimate_mapping_quality(intervals.first(), intervals.get(1));
         for imm in intervals.iter() {
             // Aligns to reference strand
             for &position in imm
@@ -295,7 +294,6 @@ fn map_reads<T: SequenceDifferenceModel>(
 fn estimate_mapping_quality(
     best_alignment: Option<&IntervalQuality>,
     second_best_alignment: Option<&IntervalQuality>,
-    alignment_parameters: &AlignmentParameters<impl SequenceDifferenceModel>,
 ) -> u8 {
     let best_alignment = match best_alignment {
         Some(v) => v,
@@ -304,24 +302,19 @@ fn estimate_mapping_quality(
 
     // Multi-mapping
     if best_alignment.interval.size > 1 {
-        return (-10_f32 * (1.0 / best_alignment.interval.size as f32).log10()).round() as u8;
+        return (-10_f32 * (1.0 - (1.0 / best_alignment.interval.size as f32)).log10()).round()
+            as u8;
     }
 
     // "Unique" mapping
     let second_best_alignment = match second_best_alignment {
         Some(v) => v,
-        None => return 0,
+        None => return 37,
     };
-    if best_alignment.alignment_score.abs() - second_best_alignment.alignment_score.abs()
-        < alignment_parameters
-            .difference_model
-            .get_representative_mismatch_penalty()
-    {
-        return (-10_f32 * (1.0 / second_best_alignment.interval.size as f32).log10()).round()
-            as u8;
-    }
-
-    37
+    let nominator = best_alignment.alignment_score.abs();
+    let denominator =
+        second_best_alignment.alignment_score.abs() * second_best_alignment.interval.size as f32;
+    (-10_f32 * (1.0 - nominator / denominator).log10()).round() as u8
 }
 
 fn create_bam_record(
