@@ -407,7 +407,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
             intervals.push(IntervalQuality {
                 interval: stack_frame.current_interval,
-                alignment_score: stack_frame.alignment_score,
+                alignment_score: stack_frame.alignment_score - pattern.len() as f32,
                 edit_operations: stack_frame.edit_operations,
             });
             continue;
@@ -459,7 +459,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             } else {
                 stack_frame.open_gap_forwards
             },
-            alignment_score: stack_frame.alignment_score + penalty,
+            alignment_score: stack_frame.alignment_score + penalty + 1.0,
             edit_operations: new_edit_operations,
             //            debug_helper: if stack_frame.forward {
             //                format!("{}(_)", stack_frame.debug_helper)
@@ -530,7 +530,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 } else {
                     stack_frame.open_gap_forwards
                 },
-                alignment_score: stack_frame.alignment_score + penalty,
+                alignment_score: stack_frame.alignment_score + penalty + 1.0,
                 edit_operations: new_edit_operations,
                 //                debug_helper: if stack_frame.forward {
                 //                    format!("{}({})", stack_frame.debug_helper, c as char)
@@ -569,7 +569,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 } else {
                     stack_frame.open_gap_forwards
                 },
-                alignment_score: stack_frame.alignment_score + penalty,
+                alignment_score: stack_frame.alignment_score + penalty + 1.0,
                 edit_operations: new_edit_operations,
                 //                    debug_helper: if stack_frame.forward {
                 //                        format!(
