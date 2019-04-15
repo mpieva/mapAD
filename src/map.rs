@@ -139,9 +139,9 @@ impl PartialOrd for MismatchSearchParameters {
 impl Ord for MismatchSearchParameters {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.alignment_score > other.alignment_score {
-            Ordering::Less
-        } else if self.alignment_score < other.alignment_score {
             Ordering::Greater
+        } else if self.alignment_score < other.alignment_score {
+            Ordering::Less
         } else {
             Ordering::Equal
         }
@@ -1194,5 +1194,47 @@ mod tests {
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(-10.969394, alignment_score[0]);
+    }
+
+    #[test]
+    fn test_ord_impl() {
+        let map_params_large = MismatchSearchParameters {
+            alignment_score: -5.0,
+            j: 0,
+            z: 0.0,
+            current_interval: BiInterval {
+                lower: 5,
+                lower_rev: 5,
+                match_size: 5,
+                size: 5,
+            },
+            backward_index: 5,
+            forward_index: 5,
+            forward: false,
+            open_gap_backwards: false,
+            open_gap_forwards: false,
+            edit_operations: None,
+        };
+        let map_params_small = MismatchSearchParameters {
+            alignment_score: -20.0,
+            j: 0,
+            z: 0.0,
+            current_interval: BiInterval {
+                lower: 5,
+                lower_rev: 5,
+                match_size: 5,
+                size: 5,
+            },
+            backward_index: 5,
+            forward_index: 5,
+            forward: false,
+            open_gap_backwards: false,
+            open_gap_forwards: false,
+            edit_operations: None,
+        };
+
+        assert!(map_params_large > map_params_small);
+        assert!(!(map_params_large < map_params_small));
+        assert_ne!(map_params_large, map_params_small);
     }
 }
