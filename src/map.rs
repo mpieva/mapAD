@@ -354,6 +354,7 @@ fn check_and_push(
     intervals: &mut Vec<IntervalQuality>,
     d_backwards: &[f32],
     d_forwards: &[f32],
+    mut number_of_found_intervals: u8,
 ) -> bool {
     // Empty interval
     if stack_frame.current_interval.size < 1 {
@@ -384,7 +385,8 @@ fn check_and_push(
             alignment_score: stack_frame.alignment_score - pattern.len() as f32,
             edit_operations: new_edit_operations,
         });
-        return false;
+        number_of_found_intervals += 1;
+        return number_of_found_intervals > 1 || stack_frame.current_interval.size > 1;
     }
 
     stack_frame.edit_operations = Some(new_edit_operations);
@@ -402,6 +404,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
+    let number_of_found_intervals = 0;
+
     let center_of_read = pattern.len() as isize / 2;
 
     let d_backwards = calculate_d(
@@ -498,8 +502,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &mut intervals,
             &d_backwards,
             &d_forwards,
+            number_of_found_intervals,
         ) {
-            break;
+            return intervals;
         }
 
         let mut s = 0;
@@ -577,8 +582,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &mut intervals,
                 &d_backwards,
                 &d_forwards,
+                number_of_found_intervals,
             ) {
-                break;
+                return intervals;
             }
 
             // Match/mismatch
@@ -631,8 +637,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &mut intervals,
                 &d_backwards,
                 &d_forwards,
+                number_of_found_intervals,
             ) {
-                break;
+                return intervals;
             }
         }
     }
