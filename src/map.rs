@@ -311,9 +311,9 @@ fn estimate_mapping_quality(
         Some(v) => v,
         None => return 37,
     };
-    let nominator = best_alignment.alignment_score.abs();
-    let denominator =
-        second_best_alignment.alignment_score.abs() * second_best_alignment.interval.size as f32;
+    let nominator = 2_f32.powf(best_alignment.alignment_score);
+    let denominator = 2_f32.powf(second_best_alignment.alignment_score)
+        * second_best_alignment.interval.size as f32;
     (-10_f32 * (1.0 - nominator / denominator).log10()).round() as u8
 }
 
