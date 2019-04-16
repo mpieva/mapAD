@@ -251,7 +251,8 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Create BAM records
         //
         let mapping_quality = estimate_mapping_quality(intervals.first(), intervals.get(1));
-        for imm in intervals.iter() {
+        let mut max_out_lines_per_read = 1;
+        if let Some(imm) = intervals.first() {
             // Aligns to reference strand
             for &position in imm
                 .interval
@@ -259,7 +260,9 @@ fn map_reads<T: SequenceDifferenceModel>(
                 .occ(suffix_array)
                 .iter()
                 .filter(|&&position| position < fmd_index.bwt().len() / 2)
+                .take(max_out_lines_per_read)
             {
+                max_out_lines_per_read -= 1;
                 out.write(&create_bam_record(
                     record.id().as_bytes(),
                     record.seq(),
@@ -276,6 +279,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                 .occ(suffix_array)
                 .iter()
                 .filter(|&&position| position < fmd_index.bwt().len() / 2)
+                .take(max_out_lines_per_read)
             {
                 let mut record = create_bam_record(
                     record.id().as_bytes(),
