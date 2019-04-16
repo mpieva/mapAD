@@ -231,7 +231,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Hardcoded value (33) that should be ok only for Illumina reads
         let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
 
-        let intervals = k_mismatch_search(
+        let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
             (allowed_mismatches.get(pattern.len())
@@ -243,6 +243,8 @@ fn map_reads<T: SequenceDifferenceModel>(
             &fmd_index,
             &rev_fmd_index,
         );
+        intervals
+            .sort_unstable_by(|a, b| b.alignment_score.partial_cmp(&a.alignment_score).unwrap());
 
         //
         // Create BAM records
