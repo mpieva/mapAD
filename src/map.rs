@@ -50,6 +50,7 @@ impl UnderlyingDataFMDIndex {
 pub struct IntervalQuality {
     interval: BiInterval,
     alignment_score: f32,
+    z: f32,
     edit_operations: EditOperationsTrack,
 }
 
@@ -355,6 +356,7 @@ fn check_and_push(
     intervals: &mut Vec<IntervalQuality>,
     d_backwards: &[f32],
     d_forwards: &[f32],
+    representative_mismatch_penalty: f32,
 ) {
     // Empty interval
     if stack_frame.current_interval.size < 1 {
@@ -375,6 +377,15 @@ fn check_and_push(
         return;
     }
 
+    // If the best scoring interval has a total sum of penalties z, do not search
+    // for hits scored worse than z + representative_mismatch.
+    // This speeds up the alignment considerably.
+    if let Some(best_scoring_interval) = intervals.first() {
+        if stack_frame.z + representative_mismatch_penalty < best_scoring_interval.z {
+            return;
+        }
+    }
+
     let mut edit_operations = edit_operations.to_owned().unwrap();
     edit_operations.push(edit_operation);
 
@@ -383,6 +394,7 @@ fn check_and_push(
         intervals.push(IntervalQuality {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score - pattern.len() as f32,
+            z: stack_frame.z,
             edit_operations,
         });
         return;
@@ -401,6 +413,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
+    let representative_mismatch_penalty = parameters
+        .difference_model
+        .get_representative_mismatch_penalty();
     let center_of_read = pattern.len() as isize / 2;
 
     let d_backwards = calculate_d(
@@ -497,6 +512,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &mut intervals,
             &d_backwards,
             &d_forwards,
+            representative_mismatch_penalty,
         );
 
         let mut s = 0;
@@ -574,6 +590,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &mut intervals,
                 &d_backwards,
                 &d_forwards,
+                representative_mismatch_penalty,
             );
 
             // Match/mismatch
@@ -626,6 +643,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &mut intervals,
                 &d_backwards,
                 &d_forwards,
+                representative_mismatch_penalty,
             );
         }
         match intervals.len() {
