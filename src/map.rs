@@ -344,7 +344,6 @@ fn create_bam_record(
     bam_record
 }
 
-#[inline(always)]
 fn check_and_push(
     mut stack_frame: MismatchSearchParameters,
     pattern: &[u8],
@@ -354,11 +353,10 @@ fn check_and_push(
     intervals: &mut Vec<IntervalQuality>,
     d_backwards: &[f32],
     d_forwards: &[f32],
-    mut number_of_found_intervals: u8,
-) -> bool {
+) {
     // Empty interval
     if stack_frame.current_interval.size < 1 {
-        return false;
+        return;
     }
 
     // Too many mismatches
@@ -372,7 +370,7 @@ fn check_and_push(
             None => 0.0,
         };
     if stack_frame.z < backwards_lower_bound + forwards_lower_bound {
-        return false;
+        return;
     }
 
     let mut new_edit_operations = edit_operations.to_owned().unwrap();
@@ -385,14 +383,11 @@ fn check_and_push(
             alignment_score: stack_frame.alignment_score - pattern.len() as f32,
             edit_operations: new_edit_operations,
         });
-        number_of_found_intervals += 1;
-        return number_of_found_intervals > 1 || stack_frame.current_interval.size > 1;
+        return;
     }
 
     stack_frame.edit_operations = Some(new_edit_operations);
-
     stack.push(stack_frame);
-    false
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatches
@@ -404,8 +399,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<IntervalQuality> {
-    let number_of_found_intervals = 0;
-
     let center_of_read = pattern.len() as isize / 2;
 
     let d_backwards = calculate_d(
@@ -468,7 +461,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             parameters.penalty_gap_open
         };
 
-        if check_and_push(
+        check_and_push(
             MismatchSearchParameters {
                 j: next_j,
                 z: stack_frame.z + penalty,
@@ -502,10 +495,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &mut intervals,
             &d_backwards,
             &d_forwards,
-            number_of_found_intervals,
-        ) {
-            return intervals;
-        }
+        );
 
         let mut s = 0;
         let mut o;
@@ -551,7 +541,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 parameters.penalty_gap_open
             };
 
-            if check_and_push(
+            check_and_push(
                 MismatchSearchParameters {
                     z: stack_frame.z + penalty,
                     current_interval: interval_prime,
@@ -582,10 +572,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &mut intervals,
                 &d_backwards,
                 &d_forwards,
-                number_of_found_intervals,
-            ) {
-                return intervals;
-            }
+            );
 
             // Match/mismatch
             let penalty = parameters.difference_model.get(
@@ -595,7 +582,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 pattern[stack_frame.j as usize],
             );
 
-            if check_and_push(
+            check_and_push(
                 MismatchSearchParameters {
                     j: next_j,
                     z: stack_frame.z + penalty.min(0.0),
@@ -637,8 +624,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &mut intervals,
                 &d_backwards,
                 &d_forwards,
-                number_of_found_intervals,
-            ) {
+            );
+        }
+        match intervals.len() {
+            0 => {}
+            1 if intervals.first().unwrap().interval.size > 1 => {
+                return intervals;
+            }
+            1 => {}
+            _ => {
                 return intervals;
             }
         }
