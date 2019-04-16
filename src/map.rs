@@ -283,7 +283,7 @@ fn map_reads<T: SequenceDifferenceModel>(
             {
                 let mut record = create_bam_record(
                     record.id().as_bytes(),
-                    record.seq(),
+                    &dna::revcomp(record.seq()),
                     record.qual(),
                     position,
                     &imm.edit_operations,
