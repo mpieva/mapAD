@@ -72,14 +72,14 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Extend match starting from the presumably lowest deaminated region (center) of a read
 - [x] Calculate alignment score (with respect to damage/difference pattern, see above)
 - [x] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
-- [ ] Mapping quality estimation (base-quality aware or not?)
+- [ ] Revisit mapping quality estimation (base-quality aware or not?)
 - [ ] BAM-IO
   - [x] BAM output
   - [ ] BAM input
 - [x] Generate CIGAR string
 - [ ] Evaluate precision, FPR, FNR
-- [ ] Only push to heap if necessary (perhaps check conditions in (inlined) function)
-- [ ] Problem: BFS does not work well with negative scores which we get with log-probs (-> slow). Perhaps add +1?
+- [x] Only push to heap if necessary (perhaps check conditions in (inlined) function)
+- [x] Problem: BFS does not work well with negative scores which we get with log-probs (-> slow). Perhaps add +1?
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
 - [ ] Multithreading
