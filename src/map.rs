@@ -375,20 +375,20 @@ fn check_and_push(
         return;
     }
 
-    let mut new_edit_operations = edit_operations.to_owned().unwrap();
-    new_edit_operations.push(edit_operation);
+    let mut edit_operations = edit_operations.to_owned().unwrap();
+    edit_operations.push(edit_operation);
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
         intervals.push(IntervalQuality {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score - pattern.len() as f32,
-            edit_operations: new_edit_operations,
+            edit_operations,
         });
         return;
     }
 
-    stack_frame.edit_operations = Some(new_edit_operations);
+    stack_frame.edit_operations = Some(edit_operations);
     stack.push(stack_frame);
 }
 
