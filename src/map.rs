@@ -177,7 +177,7 @@ impl Ord for MismatchSearchStackFrame {
 
 impl PartialEq for MismatchSearchStackFrame {
     fn eq(&self, other: &Self) -> bool {
-        self.alignment_score == other.alignment_score
+        (self.alignment_score - other.alignment_score).abs() < std::f32::EPSILON
     }
 }
 
