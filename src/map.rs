@@ -54,6 +54,32 @@ pub struct HitInterval {
     edit_operations: EditOperationsTrack,
 }
 
+impl PartialOrd for HitInterval {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for HitInterval {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.alignment_score > other.alignment_score {
+            Ordering::Greater
+        } else if self.alignment_score < other.alignment_score {
+            Ordering::Less
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+impl PartialEq for HitInterval {
+    fn eq(&self, other: &Self) -> bool {
+        (self.alignment_score - other.alignment_score).abs() < std::f32::EPSILON
+    }
+}
+
+impl Eq for HitInterval {}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum EditOperation {
     Insertion,
@@ -232,7 +258,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Hardcoded value (33) that should be ok only for Illumina reads
         let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
 
-        let mut intervals = k_mismatch_search(
+        let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
             (allowed_mismatches.get(pattern.len())
@@ -243,9 +269,8 @@ fn map_reads<T: SequenceDifferenceModel>(
             alignment_parameters,
             &fmd_index,
             &rev_fmd_index,
-        );
-        intervals
-            .sort_unstable_by(|a, b| b.alignment_score.partial_cmp(&a.alignment_score).unwrap());
+        )
+        .into_sorted_vec();
 
         //
         // Create BAM records
@@ -359,7 +384,7 @@ fn check_and_push(
     edit_operation: EditOperation,
     edit_operations: &Option<EditOperationsTrack>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
-    intervals: &mut Vec<HitInterval>,
+    intervals: &mut BinaryHeap<HitInterval>,
     d_backwards: &[f32],
     d_forwards: &[f32],
     representative_mismatch_penalty: f32,
@@ -386,7 +411,7 @@ fn check_and_push(
     // If the best scoring interval has a total sum of penalties z, do not search
     // for hits scored worse than z + representative_mismatch.
     // This speeds up the alignment considerably.
-    if let Some(best_scoring_interval) = intervals.first() {
+    if let Some(best_scoring_interval) = intervals.peek() {
         if stack_frame.z + representative_mismatch_penalty < best_scoring_interval.z {
             return;
         }
@@ -418,7 +443,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-) -> Vec<HitInterval> {
+) -> BinaryHeap<HitInterval> {
     let representative_mismatch_penalty = parameters
         .difference_model
         .get_representative_mismatch_penalty();
@@ -440,9 +465,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     .rev()
     .collect::<Vec<_>>();
 
-    let mut intervals = Vec::new();
-
+    let mut hit_intervals = BinaryHeap::new();
     let mut stack = BinaryHeap::new();
+
     stack.push(MismatchSearchStackFrame {
         j: center_of_read,
         z,
@@ -515,7 +540,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             EditOperation::Insertion,
             &stack_frame.edit_operations,
             &mut stack,
-            &mut intervals,
+            &mut hit_intervals,
             &d_backwards,
             &d_forwards,
             representative_mismatch_penalty,
@@ -594,7 +619,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 EditOperation::Deletion,
                 &stack_frame.edit_operations,
                 &mut stack,
-                &mut intervals,
+                &mut hit_intervals,
                 &d_backwards,
                 &d_forwards,
                 representative_mismatch_penalty,
@@ -647,7 +672,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 EditOperation::MatchMismatch,
                 &stack_frame.edit_operations,
                 &mut stack,
-                &mut intervals,
+                &mut hit_intervals,
                 &d_backwards,
                 &d_forwards,
                 representative_mismatch_penalty,
@@ -656,18 +681,18 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
 
         // Only search until we found a multi-hit (equal MAPQs) or two hits
         // with different MAPQs
-        match intervals.len() {
+        match hit_intervals.len() {
             0 => {}
-            1 if intervals.first().unwrap().interval.size > 1 => {
-                return intervals;
+            1 if hit_intervals.peek().unwrap().interval.size > 1 => {
+                return hit_intervals;
             }
             1 => {}
             _ => {
-                return intervals;
+                return hit_intervals;
             }
         }
     }
-    intervals
+    hit_intervals
 }
 
 /// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
