@@ -47,7 +47,7 @@ impl UnderlyingDataFMDIndex {
 }
 
 #[derive(Debug)]
-pub struct IntervalQuality {
+pub struct HitInterval {
     interval: BiInterval,
     alignment_score: f32,
     z: f32,
@@ -117,7 +117,7 @@ impl EditOperationsTrack {
 }
 
 #[derive(Debug)]
-struct MismatchSearchParameters {
+struct MismatchSearchStackFrame {
     j: isize,
     z: f32,
     current_interval: BiInterval,
@@ -131,13 +131,13 @@ struct MismatchSearchParameters {
     //    debug_helper: String, // Remove this before measuring performance (it's slow)
 }
 
-impl PartialOrd for MismatchSearchParameters {
+impl PartialOrd for MismatchSearchStackFrame {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for MismatchSearchParameters {
+impl Ord for MismatchSearchStackFrame {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.alignment_score > other.alignment_score {
             Ordering::Greater
@@ -149,13 +149,13 @@ impl Ord for MismatchSearchParameters {
     }
 }
 
-impl PartialEq for MismatchSearchParameters {
+impl PartialEq for MismatchSearchStackFrame {
     fn eq(&self, other: &Self) -> bool {
         self.alignment_score == other.alignment_score
     }
 }
 
-impl Eq for MismatchSearchParameters {}
+impl Eq for MismatchSearchStackFrame {}
 
 pub fn run<T: SequenceDifferenceModel>(
     reads_path: &str,
@@ -299,8 +299,8 @@ fn map_reads<T: SequenceDifferenceModel>(
 }
 
 fn estimate_mapping_quality(
-    best_alignment: Option<&IntervalQuality>,
-    second_best_alignment: Option<&IntervalQuality>,
+    best_alignment: Option<&HitInterval>,
+    second_best_alignment: Option<&HitInterval>,
 ) -> u8 {
     let best_alignment = match best_alignment {
         Some(v) => v,
@@ -351,13 +351,15 @@ fn create_bam_record(
     bam_record
 }
 
+/// Checks stop-criteria of stack frames before pushing them onto the stack.
+/// Since push operations on heaps are costly, this should accelerate the alignment.
 fn check_and_push(
-    mut stack_frame: MismatchSearchParameters,
+    mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
     edit_operation: EditOperation,
     edit_operations: &Option<EditOperationsTrack>,
-    stack: &mut BinaryHeap<MismatchSearchParameters>,
-    intervals: &mut Vec<IntervalQuality>,
+    stack: &mut BinaryHeap<MismatchSearchStackFrame>,
+    intervals: &mut Vec<HitInterval>,
     d_backwards: &[f32],
     d_forwards: &[f32],
     representative_mismatch_penalty: f32,
@@ -395,7 +397,7 @@ fn check_and_push(
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
-        intervals.push(IntervalQuality {
+        intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score - pattern.len() as f32,
             z: stack_frame.z,
@@ -408,7 +410,7 @@ fn check_and_push(
     stack.push(stack_frame);
 }
 
-/// Finds all suffix array intervals for the current pattern with up to z mismatches
+/// Finds all suffix array intervals for the current pattern with up to z mismatch penalties
 pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     pattern: &[u8],
     _base_qualities: &[u8],
@@ -416,7 +418,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-) -> Vec<IntervalQuality> {
+) -> Vec<HitInterval> {
     let representative_mismatch_penalty = parameters
         .difference_model
         .get_representative_mismatch_penalty();
@@ -441,7 +443,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     let mut intervals = Vec::new();
 
     let mut stack = BinaryHeap::new();
-    stack.push(MismatchSearchParameters {
+    stack.push(MismatchSearchStackFrame {
         j: center_of_read,
         z,
         current_interval: fmd_index.init_interval(),
@@ -483,7 +485,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         };
 
         check_and_push(
-            MismatchSearchParameters {
+            MismatchSearchStackFrame {
                 j: next_j,
                 z: stack_frame.z + penalty,
                 backward_index: next_backward_index,
@@ -519,6 +521,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             representative_mismatch_penalty,
         );
 
+        // Bidirectional extension of the (hit) interval
         let mut s = 0;
         let mut o;
         let mut l = fmd_ext_interval.lower_rev;
@@ -564,7 +567,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             };
 
             check_and_push(
-                MismatchSearchParameters {
+                MismatchSearchStackFrame {
                     z: stack_frame.z + penalty,
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
@@ -606,7 +609,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             );
 
             check_and_push(
-                MismatchSearchParameters {
+                MismatchSearchStackFrame {
                     j: next_j,
                     z: stack_frame.z + penalty.min(0.0),
                     current_interval: interval_prime,
@@ -650,6 +653,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 representative_mismatch_penalty,
             );
         }
+
+        // Only search until we found a multi-hit (equal MAPQs) or two hits
+        // with different MAPQs
         match intervals.len() {
             0 => {}
             1 if intervals.first().unwrap().interval.size > 1 => {
@@ -666,6 +672,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
 
 /// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
 /// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
+/// FIXME
 fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
     pattern: T,
     pattern_length: usize,
@@ -1216,7 +1223,7 @@ mod tests {
 
     #[test]
     fn test_ord_impl() {
-        let map_params_large = MismatchSearchParameters {
+        let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
             j: 0,
             z: 0.0,
@@ -1233,7 +1240,7 @@ mod tests {
             open_gap_forwards: false,
             edit_operations: None,
         };
-        let map_params_small = MismatchSearchParameters {
+        let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
             j: 0,
             z: 0.0,
