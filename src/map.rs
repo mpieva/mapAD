@@ -293,7 +293,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     record.seq(),
                     record.qual(),
                     position,
-                    &imm.edit_operations,
+                    &imm,
                     mapping_quality,
                 ))?;
             }
@@ -311,7 +311,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     &dna::revcomp(record.seq()),
                     record.qual(),
                     position,
-                    &imm.edit_operations,
+                    &imm,
                     mapping_quality,
                 );
                 record.set_reverse();
@@ -354,11 +354,11 @@ fn create_bam_record(
     input_seq: &[u8],
     input_quality: &[u8],
     position: usize,
-    edit_operations: &EditOperationsTrack,
+    hit_interval: &HitInterval,
     mapq: u8,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
-    let cigar = edit_operations.build_cigar(input_seq.len());
+    let cigar = hit_interval.edit_operations.build_cigar(input_seq.len());
     bam_record.set(
         input_name,
         &cigar,
@@ -369,10 +369,17 @@ fn create_bam_record(
             .collect::<Vec<_>>()
             .as_slice(),
     );
+
     bam_record.set_pos(position as i32);
     bam_record.set_mapq(mapq); // Mapping quality
     bam_record.set_mpos(-1); // Position of mate (-1 = *)
     bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
+    bam_record
+        .push_aux(
+            b"AS",
+            &bam::record::Aux::Float(f64::from(hit_interval.alignment_score)),
+        )
+        .unwrap();
     bam_record
 }
 
