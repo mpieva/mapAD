@@ -63,7 +63,7 @@ enum EditOperation {
 
 #[derive(Debug, Clone)]
 struct EditOperationsTrack {
-    edit_operations: SmallVec<[EditOperation; 128]>,
+    edit_operations: SmallVec<[EditOperation; 64]>,
 }
 
 impl EditOperationsTrack {
