@@ -246,7 +246,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
-    let mut out = bam::Writer::from_path("out.bam", &header).unwrap();
+    let mut out = bam::Writer::from_path("out.bam", &header).unwrap(); // TODO: Make path configurable
 
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
