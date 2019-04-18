@@ -377,7 +377,7 @@ fn create_bam_record(
     bam_record
         .push_aux(
             b"AS",
-            &bam::record::Aux::Float(f64::from(hit_interval.alignment_score)),
+            &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
         )
         .unwrap();
     bam_record
