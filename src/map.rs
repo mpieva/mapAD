@@ -705,7 +705,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             );
         }
 
-        // Only search until we found a multi-hit (equal MAPQs) or two hits
+        // Only search until we found a multi-hit (equal MAPQs) or more hits
         // with different MAPQs
         match hit_intervals.len() {
             1 if hit_intervals.peek().unwrap().interval.size > 1 => {
