@@ -264,7 +264,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Hardcoded value (33) that should be ok only for Illumina reads
         let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
 
-        let intervals = k_mismatch_search(
+        let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
             (allowed_mismatches.get(pattern.len())
@@ -275,17 +275,16 @@ fn map_reads<T: SequenceDifferenceModel>(
             alignment_parameters,
             &fmd_index,
             &rev_fmd_index,
-        )
-        .into_sorted_vec();
+        );
 
         //
         // Create BAM records
         //
-        let mapping_quality = estimate_mapping_quality(intervals.first(), intervals.get(1));
-        let mut max_out_lines_per_read = 1;
-        if let Some(imm) = intervals.first() {
+        if let Some(best_alignment) = intervals.pop() {
+            let mapping_quality = estimate_mapping_quality(&best_alignment, intervals.peek());
+            let mut max_out_lines_per_read = 1;
             // Aligns to reference strand
-            for &position in imm
+            for &position in best_alignment
                 .interval
                 .forward()
                 .occ(suffix_array)
@@ -299,12 +298,12 @@ fn map_reads<T: SequenceDifferenceModel>(
                     record.seq(),
                     record.qual(),
                     position,
-                    &imm,
+                    &best_alignment,
                     mapping_quality,
                 ))?;
             }
             // Aligns to reverse strand
-            for &position in imm
+            for &position in best_alignment
                 .interval
                 .revcomp()
                 .occ(suffix_array)
@@ -317,7 +316,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     &dna::revcomp(record.seq()),
                     record.qual(),
                     position,
-                    &imm,
+                    &best_alignment,
                     mapping_quality,
                 );
                 record.set_reverse();
@@ -330,14 +329,9 @@ fn map_reads<T: SequenceDifferenceModel>(
 }
 
 fn estimate_mapping_quality(
-    best_alignment: Option<&HitInterval>,
+    best_alignment: &HitInterval,
     second_best_alignment: Option<&HitInterval>,
 ) -> u8 {
-    let best_alignment = match best_alignment {
-        Some(v) => v,
-        None => return 0,
-    };
-
     // Multi-mapping
     if best_alignment.interval.size > 1 {
         return (-10_f32 * (1.0 - (1.0 / best_alignment.interval.size as f32)).log10()).round()
