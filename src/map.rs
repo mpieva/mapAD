@@ -1138,7 +1138,7 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![0, 0, 0, 0, 2, 2, 5, 5], positions);
+        assert_eq!(vec![0, 2, 5], positions);
     }
 
     #[test]
