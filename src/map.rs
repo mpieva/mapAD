@@ -430,37 +430,11 @@ fn check_and_push(
             z: stack_frame.z,
             edit_operations,
         });
-        print_debug(&stack_frame, intervals, representative_mismatch_penalty); // FIXME
         return;
     }
 
     stack_frame.edit_operations = Some(edit_operations);
     stack.push(stack_frame);
-}
-
-/// FIXME
-fn print_debug(
-    stack_frame: &MismatchSearchStackFrame,
-    intervals: &BinaryHeap<HitInterval>,
-    representative_mismatch_penalty: f32,
-) {
-    let switch = false; // TODO: Switch me on/off!
-
-    if switch {
-        let best_z = match intervals.peek() {
-            Some(v) => v.z,
-            None => 0.0,
-        };
-
-        eprintln!(
-            "{}\t{}\t{}\t{}\t{}",
-            stack_frame.alignment_score,
-            stack_frame.j,
-            stack_frame.z,
-            best_z,
-            best_z + representative_mismatch_penalty,
-        );
-    }
 }
 
 /// If the best scoring interval has a total sum of penalties z, do not search
@@ -538,12 +512,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         let next_j;
         let next_backward_index;
         let next_forward_index;
-
-        print_debug(
-            &stack_frame,
-            &hit_intervals,
-            representative_mismatch_penalty,
-        ); // FIXME
 
         // Determine direction of progress for next iteration on this stack frame
         let fmd_ext_interval = if stack_frame.forward {
@@ -1170,7 +1138,7 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![0, 2, 5], positions);
+        assert_eq!(vec![0, 0, 0, 0, 2, 2, 5, 5], positions);
     }
 
     #[test]
