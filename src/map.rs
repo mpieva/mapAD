@@ -98,11 +98,14 @@ impl EditOperationsTrack {
             edit_operations: SmallVec::new(),
         }
     }
+
+    /// Derive Cigar string from oddly-ordered tracks of edit operations.
+    /// Since we start aligning at the center of a read, tracks of edit operations
+    /// are not ordered by position in the read.
     fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
-        let center_of_read = read_length as isize / 2;
         let mut cigar = Vec::new();
 
-        let add_op = |edit_operation: EditOperation, k, cigar: &mut Vec<bam::record::Cigar>| {
+        fn add_op(edit_operation: EditOperation, k: u32, cigar: &mut Vec<bam::record::Cigar>) {
             match edit_operation {
                 EditOperation::MatchMismatch => cigar.push(bam::record::Cigar::Match(k)),
                 EditOperation::Insertion => cigar.push(bam::record::Cigar::Del(k)),
@@ -110,29 +113,32 @@ impl EditOperationsTrack {
             }
         };
 
-        if self.edit_operations.is_empty() {
-            return bam::record::CigarString(cigar);
-        }
-
         let mut n = 1;
-        let mut i = center_of_read as usize;
-        let mut last_edit_operation = self.edit_operations[i];
-        for j in 1..=center_of_read {
-            for &k in [-1, 1].iter() {
-                i = (read_length as isize / 2 + j * k) as usize;
-                if self.edit_operations[i] == last_edit_operation {
+        let mut last_edit_operation = None;
+        for &edit_operation in self
+            .edit_operations
+            .iter()
+            .rev()
+            .skip(if read_length % 2 == 0 { 0 } else { 1 })
+            .step_by(2)
+            .chain(self.edit_operations.iter().step_by(2))
+        {
+            last_edit_operation = match last_edit_operation {
+                Some(last_edit_op) if last_edit_op == edit_operation => {
                     n += 1;
-                } else {
-                    add_op(last_edit_operation, n, &mut cigar);
+                    last_edit_operation
+                }
+                Some(last_edit_op) => {
+                    add_op(last_edit_op, n, &mut cigar);
                     n = 1;
-                    last_edit_operation = self.edit_operations[i];
+                    Some(edit_operation)
                 }
-                if read_length % 2 == 0 && i == 0 {
-                    break;
-                }
-            }
+                None => Some(edit_operation),
+            };
         }
-        add_op(last_edit_operation, n, &mut cigar);
+        if let Some(last_edit_operation) = last_edit_operation {
+            add_op(last_edit_operation, n, &mut cigar);
+        }
 
         bam::record::CigarString(cigar)
     }
