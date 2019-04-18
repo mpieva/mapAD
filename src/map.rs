@@ -526,7 +526,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             stack_frame.current_interval
         };
 
-        // Insertion in read
+        // Insertion in read / deletion in reference
         let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
             || (stack_frame.open_gap_forwards && !stack_frame.forward)
         {
@@ -608,7 +608,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 c
             };
 
-            // Deletion in read
+            // Deletion in read / insertion in reference
             let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
                 || (stack_frame.open_gap_forwards && !stack_frame.forward)
             {
@@ -719,7 +719,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
 
 /// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
 /// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
-/// FIXME
+/// FIXME: Set to 0 for now, make use of FMD-bidirectionality!
 fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
     pattern: T,
     pattern_length: usize,
