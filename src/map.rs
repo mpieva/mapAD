@@ -415,13 +415,8 @@ fn check_and_push(
         return;
     }
 
-    // If the best scoring interval has a total sum of penalties z, do not search
-    // for hits scored worse than z + representative_mismatch.
-    // This speeds up the alignment considerably.
-    if let Some(best_scoring_interval) = intervals.peek() {
-        if stack_frame.z + representative_mismatch_penalty < best_scoring_interval.z {
-            return;
-        }
+    if stop_searching(&stack_frame, intervals, representative_mismatch_penalty) {
+        return;
     }
 
     let mut edit_operations = edit_operations.to_owned().unwrap();
@@ -440,6 +435,22 @@ fn check_and_push(
 
     stack_frame.edit_operations = Some(edit_operations);
     stack.push(stack_frame);
+}
+
+/// If the best scoring interval has a total sum of penalties z, do not search
+/// for hits scored worse than z + representative_mismatch.
+/// This speeds up the alignment considerably.
+fn stop_searching(
+    stack_frame: &MismatchSearchStackFrame,
+    hit_intervals: &BinaryHeap<HitInterval>,
+    representative_mismatch_penalty: f32,
+) -> bool {
+    if let Some(best_scoring_interval) = hit_intervals.peek() {
+        if stack_frame.z < best_scoring_interval.z + representative_mismatch_penalty {
+            return true;
+        }
+    }
+    false
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatch penalties
@@ -472,7 +483,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     .rev()
     .collect::<Vec<_>>();
 
-    let mut hit_intervals = BinaryHeap::new();
+    let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
     let mut stack = BinaryHeap::new();
 
     stack.push(MismatchSearchStackFrame {
@@ -490,6 +501,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     });
 
     while let Some(stack_frame) = stack.pop() {
+        if stop_searching(
+            &stack_frame,
+            &hit_intervals,
+            representative_mismatch_penalty,
+        ) {
+            continue;
+        }
+
         let next_j;
         let next_backward_index;
         let next_forward_index;
@@ -689,14 +708,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         // Only search until we found a multi-hit (equal MAPQs) or two hits
         // with different MAPQs
         match hit_intervals.len() {
-            0 => {}
             1 if hit_intervals.peek().unwrap().interval.size > 1 => {
                 return hit_intervals;
             }
-            1 => {}
-            _ => {
-                return hit_intervals;
-            }
+            _ => {}
         }
     }
     hit_intervals
