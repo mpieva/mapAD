@@ -296,10 +296,10 @@ fn map_reads<T: SequenceDifferenceModel>(
                 out.write(&create_bam_record(
                     record.id().as_bytes(),
                     record.seq(),
-                    record.qual(),
-                    position,
-                    &best_alignment,
-                    mapping_quality,
+                    record.qual().iter(),
+                    position as i32,
+                    Some(&best_alignment),
+                    Some(mapping_quality),
                 ))?;
             }
             // Aligns to reverse strand
@@ -314,14 +314,27 @@ fn map_reads<T: SequenceDifferenceModel>(
                 let mut record = create_bam_record(
                     record.id().as_bytes(),
                     &dna::revcomp(record.seq()),
-                    record.qual(),
-                    position,
-                    &best_alignment,
-                    mapping_quality,
+                    record.qual().iter().rev(),
+                    position as i32,
+                    Some(&best_alignment),
+                    Some(mapping_quality),
                 );
                 record.set_reverse();
                 out.write(&record)?;
             }
+        } else {
+            // No match found
+            let mut record = create_bam_record(
+                record.id().as_bytes(),
+                record.seq(),
+                record.qual().iter(),
+                -1,
+                None,
+                None,
+            );
+            record.set_tid(-1);
+            record.set_unmapped();
+            out.write(&record)?;
         }
     }
     debug!("Done");
@@ -349,37 +362,44 @@ fn estimate_mapping_quality(
     (-10_f32 * (1.0 - nominator / denominator).log10()).round() as u8
 }
 
-fn create_bam_record(
+fn create_bam_record<'a>(
     input_name: &[u8],
     input_seq: &[u8],
-    input_quality: &[u8],
-    position: usize,
-    hit_interval: &HitInterval,
-    mapq: u8,
+    input_quality: impl Iterator<Item = &'a u8>,
+    position: i32,
+    hit_interval: Option<&HitInterval>,
+    mapq: Option<u8>,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
-    let cigar = hit_interval.edit_operations.build_cigar(input_seq.len());
+    let cigar = match hit_interval {
+        Some(hit_interval) => hit_interval.edit_operations.build_cigar(input_seq.len()),
+        None => bam::record::CigarString::from_str("").unwrap(),
+    };
+
     bam_record.set(
         input_name,
         &cigar,
         input_seq,
         input_quality
-            .iter()
             .map(|&x| x - 33)
             .collect::<Vec<_>>()
             .as_slice(),
     );
 
-    bam_record.set_pos(position as i32);
-    bam_record.set_mapq(mapq); // Mapping quality
+    bam_record.set_pos(position);
+    if let Some(mapq) = mapq {
+        bam_record.set_mapq(mapq); // Mapping quality
+    }
     bam_record.set_mpos(-1); // Position of mate (-1 = *)
     bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
-    bam_record
-        .push_aux(
-            b"AS",
-            &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
-        )
-        .unwrap();
+    if let Some(hit_interval) = hit_interval {
+        bam_record
+            .push_aux(
+                b"AS",
+                &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
+            )
+            .unwrap();
+    }
     bam_record
 }
 
