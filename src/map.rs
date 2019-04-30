@@ -80,7 +80,7 @@ impl PartialEq for HitInterval {
 
 impl Eq for HitInterval {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum EditOperation {
     Insertion,
     Deletion,
@@ -105,7 +105,7 @@ impl EditOperationsTrack {
     fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
         let mut cigar = Vec::new();
 
-        fn add_op(edit_operation: &EditOperation, k: u32, cigar: &mut Vec<bam::record::Cigar>) {
+        fn add_op(edit_operation: EditOperation, k: u32, cigar: &mut Vec<bam::record::Cigar>) {
             match edit_operation {
                 EditOperation::MatchMismatch => cigar.push(bam::record::Cigar::Match(k)),
                 EditOperation::Insertion => cigar.push(bam::record::Cigar::Del(k)),
@@ -115,7 +115,7 @@ impl EditOperationsTrack {
 
         let mut n = 1;
         let mut last_edit_operation = None;
-        for edit_operation in self
+        for &edit_operation in self
             .edit_operations
             .iter()
             .rev()
