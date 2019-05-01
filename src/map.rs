@@ -191,6 +191,7 @@ impl Eq for MismatchSearchStackFrame {}
 
 pub fn run<T: SequenceDifferenceModel>(
     reads_path: &str,
+    out_file_path: &str,
     alignment_parameters: &AlignmentParameters<T>,
 ) -> Result<(), Box<Error>> {
     debug!("Load FMD-index");
@@ -221,6 +222,7 @@ pub fn run<T: SequenceDifferenceModel>(
     map_reads(
         alignment_parameters,
         reads_path,
+        out_file_path,
         &fmd_index,
         &rev_fmd_index,
         &suffix_array,
@@ -232,6 +234,7 @@ pub fn run<T: SequenceDifferenceModel>(
 fn map_reads<T: SequenceDifferenceModel>(
     alignment_parameters: &AlignmentParameters<T>,
     reads_path: &str,
+    out_file_path: &str,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     rev_fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
@@ -252,7 +255,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
-    let mut out = bam::Writer::from_path("out.bam", &header).unwrap(); // TODO: Make path configurable
+    let mut out = bam::Writer::from_path(out_file_path, &header)?;
 
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 

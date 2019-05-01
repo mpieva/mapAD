@@ -42,6 +42,13 @@ fn main() {
                         .value_name("FASTQ FILE"),
                 )
                 .arg(
+                    Arg::with_name("output")
+                        .required(true)
+                        .long("output")
+                        .help("Path to output BAM file")
+                        .value_name("BAM FILE"),
+                )
+                .arg(
                     Arg::with_name("poisson_prob")
                         .short("p")
                         .conflicts_with("max_diff")
@@ -89,6 +96,7 @@ fn main() {
             };
             if let Err(e) = map::run(
                 map_matches.value_of("reads").unwrap(),
+                map_matches.value_of("output").unwrap(),
                 &alignment_parameters,
             ) {
                 println!("Application error: {}", e);
