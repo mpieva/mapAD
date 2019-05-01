@@ -22,4 +22,5 @@ before_script:
 test:cargo:
   script:
   - rustc --version && cargo --version      # Print version info for debugging
+  - cargo clean
   - cargo test --all --verbose
