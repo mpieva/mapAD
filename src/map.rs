@@ -284,7 +284,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Create BAM records
         //
         if let Some(best_alignment) = intervals.pop() {
-            let mapping_quality = estimate_mapping_quality(&best_alignment, intervals.peek());
+            let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
             let mut max_out_lines_per_read = 1;
             // Aligns to reference strand
             for &position in best_alignment
@@ -346,23 +346,29 @@ fn map_reads<T: SequenceDifferenceModel>(
 
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
-    second_best_alignment: Option<&HitInterval>,
+    other_alignments: &BinaryHeap<HitInterval>,
 ) -> u8 {
     // Multi-mapping
     if best_alignment.interval.size > 1 {
-        return (-10_f32 * (1.0 - (1.0 / best_alignment.interval.size as f32)).log10()).round()
-            as u8;
+        (-10_f32 * (1.0 - (1.0 / best_alignment.interval.size as f32)).log10()).round() as u8
+    } else {
+        // "Unique" mapping
+        if let Some(second_alignment) = other_alignments.peek() {
+            let total_number = other_alignments
+                .iter()
+                .take_while(|hit_interval| {
+                    hit_interval.alignment_score.round() >= second_alignment.alignment_score.round()
+                })
+                .fold(0, |agg, hit_interval| agg + hit_interval.interval.size);
+            let nominator = 1.0;
+            let denominator = total_number as f32;
+            let correction =
+                (best_alignment.alignment_score - second_alignment.alignment_score).abs();
+            (-10_f32 * (1.0 - (nominator / denominator)).log10() + correction).round() as u8
+        } else {
+            37
+        }
     }
-
-    // "Unique" mapping
-    let second_best_alignment = match second_best_alignment {
-        Some(v) => v,
-        None => return 37,
-    };
-    let nominator = 2_f32.powf(best_alignment.alignment_score);
-    let denominator = 2_f32.powf(second_best_alignment.alignment_score)
-        * second_best_alignment.interval.size as f32;
-    (-10_f32 * (1.0 - nominator / denominator).log10()).round() as u8
 }
 
 fn create_bam_record<'a>(
