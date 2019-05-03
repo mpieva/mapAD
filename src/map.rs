@@ -512,15 +512,22 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         .get_representative_mismatch_penalty();
     let center_of_read = pattern.len() as isize / 2;
 
+    let d_part_pattern = &pattern[..center_of_read as usize];
     let d_backwards = calculate_d(
-        pattern[..center_of_read as usize].iter(),
+        d_part_pattern.iter(),
+        d_part_pattern.len(),
         pattern.len(),
+        Direction::Forward,
         parameters,
-        rev_fmd_index,
+        fmd_index,
     );
+
+    let d_part_pattern = &pattern[center_of_read as usize..];
     let d_forwards = calculate_d(
-        pattern[center_of_read as usize..].iter().rev(),
+        d_part_pattern.iter().rev(),
+        d_part_pattern.len(),
         pattern.len(),
+        Direction::Backward,
         parameters,
         fmd_index,
     )
@@ -763,69 +770,38 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
 }
 
 /// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
-/// This allows for pruning the search tree. Implementation follows closely Li & Durbin (2009).
-/// FIXME: Set to 0 for now, make use of FMD-bidirectionality!
+/// This allows for pruning the search tree.
 fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
     pattern: T,
     pattern_length: usize,
+    read_length: usize,
+    direction: Direction,
     alignment_parameters: &AlignmentParameters<U>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> Vec<f32> {
-    fn index_lookup<T: FMIndexable>(a: u8, l: usize, r: usize, index: &T) -> (usize, usize) {
-        let less = index.less(a);
-        let l = less + if l > 0 { index.occ(l - 1, a) } else { 0 };
-        let r = less + index.occ(r, a) - 1;
-        (l, r)
-    }
+    let extend_interval = match direction {
+        Direction::Forward => FMDIndex::forward_ext,
+        Direction::Backward => FMDIndex::backward_ext,
+    };
 
-    let r_upper_bound = fmd_index.bwt().len() - 1;
+    let directed_pattern_index = |i| match direction {
+        Direction::Forward => i,
+        Direction::Backward => read_length - pattern_length + i,
+    };
 
-    let (mut l, mut r) = (0, r_upper_bound);
     let mut z = 0.0;
-
+    let mut interval = fmd_index.init_interval();
     pattern
         .enumerate()
-        .map(|(i, &a)| {
-            let tmp = index_lookup(a, l, r, fmd_index);
-            l = tmp.0;
-            r = tmp.1;
-
-            // Prefix can not be found in the reference
-            if l > r {
-                // Allow certain transitions
-                let penalty = {
-                    if a == b'T' {
-                        let (l_prime, r_prime) = index_lookup(b'C', l, r, fmd_index);
-                        if l_prime <= r_prime {
-                            return alignment_parameters.difference_model.get(
-                                i,
-                                pattern_length,
-                                b'C',
-                                a,
-                            );
-                        }
-                    } else if a == b'A' {
-                        let (l_prime, r_prime) = index_lookup(b'G', l, r, fmd_index);
-                        if l_prime <= r_prime {
-                            return alignment_parameters.difference_model.get(
-                                i,
-                                pattern_length,
-                                b'G',
-                                a,
-                            );
-                        }
-                    }
-                    // Return the minimum penalty
-                    alignment_parameters
-                        .difference_model
-                        .get_min_penalty(i, pattern_length, a)
-                        .max(alignment_parameters.penalty_gap_open)
-                        .max(alignment_parameters.penalty_gap_extend)
-                };
-
-                l = 0;
-                r = r_upper_bound;
-                z -= penalty;
+        .map(|(index, &base)| {
+            interval = extend_interval(fmd_index, &interval, base);
+            if interval.size < 1 {
+                z -= alignment_parameters
+                    .difference_model
+                    .get_min_penalty(directed_pattern_index(index), read_length, base)
+                    .max(alignment_parameters.penalty_gap_open)
+                    .max(alignment_parameters.penalty_gap_extend);
+                interval = fmd_index.init_interval();
             }
             z
         })
@@ -1092,22 +1068,50 @@ mod tests {
 
         let pattern = "GTTC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(pattern.iter(), pattern.len(), &parameters, &rev_fmd_index);
-        let d_forward = calculate_d(pattern.iter().rev(), pattern.len(), &parameters, &fmd_index)
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
+        let d_backward = calculate_d(
+            pattern.iter(),
+            pattern.len(),
+            pattern.len(),
+            Direction::Forward,
+            &parameters,
+            &fmd_index,
+        );
+        let d_forward = calculate_d(
+            pattern.iter().rev(),
+            pattern.len(),
+            pattern.len(),
+            Direction::Backward,
+            &parameters,
+            &fmd_index,
+        )
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>();
 
         assert_eq!(vec![0.0, 0.0, 1.0, 1.0], d_backward);
         assert_eq!(vec![1.0, 1.0, 1.0, 0.0], d_forward);
 
         let pattern = "GATC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(pattern.iter(), pattern.len(), &parameters, &rev_fmd_index);
-        let d_forward = calculate_d(pattern.iter().rev(), pattern.len(), &parameters, &fmd_index)
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
+        let d_backward = calculate_d(
+            pattern.iter(),
+            pattern.len(),
+            pattern.len(),
+            Direction::Forward,
+            &parameters,
+            &fmd_index,
+        );
+        let d_forward = calculate_d(
+            pattern.iter().rev(),
+            pattern.len(),
+            pattern.len(),
+            Direction::Backward,
+            &parameters,
+            &fmd_index,
+        )
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>();
 
         assert_eq!(vec![0.0, 1.0, 1.0, 2.0], d_backward);
         assert_eq!(vec![2.0, 1.0, 1.0, 0.0], d_forward);
