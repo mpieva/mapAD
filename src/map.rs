@@ -121,7 +121,7 @@ impl EditOperationsTrack {
     fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
         let mut cigar = Vec::new();
 
-        fn add_op(edit_operation: EditOperation, k: u32, cigar: &mut Vec<bam::record::Cigar>) {
+        fn add_edit_operation(edit_operation: EditOperation, k: u32, cigar: &mut Vec<bam::record::Cigar>) {
             match edit_operation {
                 EditOperation::MatchMismatch => cigar.push(bam::record::Cigar::Match(k)),
                 EditOperation::Insertion => cigar.push(bam::record::Cigar::Del(k)),
@@ -145,7 +145,7 @@ impl EditOperationsTrack {
                     last_edit_operation
                 }
                 Some(last_edit_op) => {
-                    add_op(last_edit_op, n, &mut cigar);
+                    add_edit_operation(last_edit_op, n, &mut cigar);
                     n = 1;
                     Some(edit_operation)
                 }
@@ -153,7 +153,7 @@ impl EditOperationsTrack {
             };
         }
         if let Some(last_edit_operation) = last_edit_operation {
-            add_op(last_edit_operation, n, &mut cigar);
+            add_edit_operation(last_edit_operation, n, &mut cigar);
         }
 
         bam::record::CigarString(cigar)
@@ -171,7 +171,7 @@ struct MismatchSearchStackFrame {
     current_interval: BiInterval,
     backward_index: isize,
     forward_index: isize,
-    forward: bool,
+    forward: bool, // TODO: Switch to Direction enum
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
@@ -374,10 +374,10 @@ fn estimate_mapping_quality(
     }
 }
 
-fn create_bam_record<'a>(
+fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
     input_name: &[u8],
     input_seq: &[u8],
-    input_quality: impl Iterator<Item = &'a u8>,
+    input_quality: T,
     position: i32,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
@@ -564,7 +564,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             stack_frame.current_interval
         };
 
+        //
         // Insertion in read / deletion in reference
+        //
         let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
             || (stack_frame.open_gap_forwards && !stack_frame.forward)
         {
@@ -646,7 +648,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 c
             };
 
+            //
             // Deletion in read / insertion in reference
+            //
             let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
                 || (stack_frame.open_gap_forwards && !stack_frame.forward)
             {
@@ -689,7 +693,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 representative_mismatch_penalty,
             );
 
+            //
             // Match/mismatch
+            //
             let penalty = parameters.difference_model.get(
                 stack_frame.j as usize,
                 pattern.len(),

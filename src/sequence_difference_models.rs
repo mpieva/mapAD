@@ -12,10 +12,10 @@ pub trait SequenceDifferenceModel {
     fn get_min_penalty(&self, i: usize, read_length: usize, to: u8) -> f32 {
         b"ACGT"
             .iter()
-            .filter(|&&base| base != to) // TODO: Don't filter for mismatches
+            .filter(|&&base| base != to)
             .map(|&base| self.get(i, read_length, base, to))
-            .filter(|&penalty| penalty <= (0.0 + std::f32::EPSILON))
-            .fold(std::f32::MIN, |acc: f32, v| acc.max(v))
+            .filter(|&penalty| penalty < 0.0)
+            .fold(std::f32::MIN, |acc, v| acc.max(v))
     }
 }
 
