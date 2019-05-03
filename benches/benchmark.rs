@@ -55,22 +55,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        // Reverse reference
-        let mut rev_ref_seq = ref_seq.into_iter().rev().collect::<Vec<_>>();
-        let rev_ref_seq_rev_compl = alphabets::dna::revcomp(rev_ref_seq.iter());
-        rev_ref_seq.extend_from_slice(b"$");
-        rev_ref_seq.extend_from_slice(&rev_ref_seq_rev_compl);
-        drop(rev_ref_seq_rev_compl);
-        rev_ref_seq.extend_from_slice(b"$");
-
-        let rev_sa = suffix_array(&rev_ref_seq);
-        let rev_bwtr = bwt(&rev_ref_seq, &rev_sa);
-        let rev_less = less(&rev_bwtr, &alphabet);
-        let rev_occ = Occ::new(&rev_bwtr, 3, &alphabet);
-
-        let rev_fm_index = FMIndex::new(&rev_bwtr, &rev_less, &rev_occ);
-        let rev_fmd_index = FMDIndex::from(rev_fm_index);
-
         let mut allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let pattern = "GTTT".as_bytes().to_owned();
@@ -83,7 +67,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 allowed_mismatches.get(pattern.len()),
                 &parameters,
                 &fmd_index,
-                &rev_fmd_index,
             )
         })
     });

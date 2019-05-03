@@ -25,11 +25,6 @@ pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
     // Index the genome
     index(&mut ref_seq, &alphabet, "ref", true)?;
 
-    // Index the reverse (not complement) genome as helper
-    // structure for lower-bound pruning of the search tree
-    let mut rev_ref_seq = ref_seq.into_iter().rev().collect();
-    index(&mut rev_ref_seq, &alphabet, "rev_ref", false)?;
-
     Ok(())
 }
 
