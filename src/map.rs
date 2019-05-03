@@ -80,6 +80,22 @@ impl PartialEq for HitInterval {
 
 impl Eq for HitInterval {}
 
+#[derive(Debug, Copy, Clone)]
+enum Direction {
+    Forward,
+    Backward,
+}
+
+impl Direction {
+    fn reverse(self) -> Self {
+        use self::Direction::*;
+        match self {
+            Forward => Backward,
+            Backward => Forward,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum EditOperation {
     Insertion,
