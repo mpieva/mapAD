@@ -91,4 +91,41 @@ mod tests {
         assert_eq!(0.0, allowed_mismatches.get(2));
         assert_eq!(0.0, allowed_mismatches.get(0));
     }
+
+    #[test]
+    fn test_allowed_mismatches_bwa_ancient_parameters() {
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.01,
+            difference_model: VindijaPWM::new(),
+            penalty_gap_open: 1.0,
+            penalty_gap_extend: 1.0,
+        };
+        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+
+        //        let mut old_val = 0.0;
+        //        let mut count = 0;
+        //        for i in 0.. {
+        //            let max_diff = allowed_mismatches.get(i);
+        //            if max_diff != old_val {
+        //                count += 1;
+        //                old_val = max_diff;
+        //                println!("{}bp reads: max_diff = {}", i, max_diff);
+        //            }
+        //            if count >= 10 {
+        //                break;
+        //            }
+        //        }
+
+        assert_eq!(10.0, allowed_mismatches.get(207));
+        assert_eq!(9.0, allowed_mismatches.get(176));
+        assert_eq!(8.0, allowed_mismatches.get(146));
+        assert_eq!(7.0, allowed_mismatches.get(117));
+        assert_eq!(6.0, allowed_mismatches.get(90));
+        assert_eq!(5.0, allowed_mismatches.get(64));
+        assert_eq!(4.0, allowed_mismatches.get(42));
+        assert_eq!(3.0, allowed_mismatches.get(22));
+        assert_eq!(2.0, allowed_mismatches.get(8));
+        assert_eq!(1.0, allowed_mismatches.get(1));
+    }
 }
