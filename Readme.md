@@ -66,7 +66,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
   - [x] Add framework to specify PSSMs in the code
   - [x] simply penalize C-T changes according to Vindija pattern
   - [ ] Briggs et al. (2007)
-  - [ ] Skoglund et al. (2014)
+  - [ ] ~~Skoglund et al. (2014)~~
   - [ ] Peyrégne (unpublished)
 - [x] Recursive -> iterative k-mismatch-search
 - [x] Extend match starting from the presumably lowest deaminated region (center) of a read
