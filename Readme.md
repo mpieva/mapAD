@@ -72,7 +72,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [x] Extend match starting from the presumably lowest deaminated region (center) of a read
 - [x] Calculate alignment score (with respect to damage/difference pattern, see above)
 - [x] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
-- [ ] Revisit mapping quality estimation (base-quality aware or not?)
+- [ ] Revisit mapping quality estimation (base-quality aware)
 - [ ] BAM-IO
   - [x] BAM output
   - [ ] BAM input
