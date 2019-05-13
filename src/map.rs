@@ -121,7 +121,11 @@ impl EditOperationsTrack {
     fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
         let mut cigar = Vec::new();
 
-        fn add_edit_operation(edit_operation: EditOperation, k: u32, cigar: &mut Vec<bam::record::Cigar>) {
+        fn add_edit_operation(
+            edit_operation: EditOperation,
+            k: u32,
+            cigar: &mut Vec<bam::record::Cigar>,
+        ) {
             match edit_operation {
                 EditOperation::MatchMismatch => cigar.push(bam::record::Cigar::Match(k)),
                 EditOperation::Insertion => cigar.push(bam::record::Cigar::Del(k)),
@@ -648,7 +652,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         let mut s = 0;
         let mut o;
         let mut l = fmd_ext_interval.lower_rev;
-        for &c in b"$TGCNA".iter() {
+        for &c in b"$TGCA".iter() {
             let mut interval_prime = {
                 l += s;
                 o = if fmd_ext_interval.lower == 0 {
@@ -661,7 +665,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 s = fmd_index.occ(fmd_ext_interval.lower + fmd_ext_interval.size - 1, c) - o;
 
                 // No need to branch for technical characters and zero-sized intervals
-                if c == b'$' || c == b'N' || s < 1 {
+                if c == b'$' || s < 1 {
                     continue;
                 }
 

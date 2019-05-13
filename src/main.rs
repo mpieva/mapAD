@@ -20,7 +20,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("index")
-                .about("")  // TODO
+                .about("Indexes a genome file")  // TODO
                 .version(crate_version!())
                 .arg(
                     Arg::with_name("reference")
@@ -32,7 +32,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("map")
-                .about("")  // TODO
+                .about("Maps reads to an indexed genome.")  // TODO
                 .version(crate_version!())
                 .arg(
                     Arg::with_name("reads")

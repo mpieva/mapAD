@@ -2,9 +2,10 @@ use std::error::Error;
 use std::fs::File;
 
 use log::debug;
+use rand::prelude::{Rng, SeedableRng, StdRng};
+use rand::seq::SliceRandom;
 
-use bio::alphabets::dna::{n_alphabet, revcomp};
-use bio::alphabets::Alphabet;
+use bio::alphabets::{dna, Alphabet};
 use bio::data_structures::bwt::{bwt, less, Occ};
 use bio::data_structures::suffix_array::suffix_array;
 
@@ -12,42 +13,50 @@ use bincode::serialize_into;
 use bio::io::fasta;
 use libflate::deflate::Encoder;
 
-pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
-    let alphabet = n_alphabet();
+const ALPHABET: &[u8; 4] = b"ACGT";
 
+pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
+    let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
+
+    let alphabet = dna::alphabet();
+
+    // Index the genome
+    index(reference_path, &alphabet, "ref", &mut rng)?;
+
+    Ok(())
+}
+
+fn index<T: Rng>(
+    reference_path: &str,
+    alphabet: &Alphabet,
+    name: &str,
+    rng: &mut T,
+) -> Result<(), Box<Error>> {
     debug!("Read input reference sequence");
     let mut ref_seq = fasta::Reader::from_file(reference_path)
         .unwrap()
         .records()
         .flat_map(|record| record.unwrap().seq().to_ascii_uppercase())
+        .map(|c| match c {
+            b'N' => *ALPHABET.choose(rng).unwrap(),
+            _ => c,
+        })
         .collect::<Vec<_>>();
 
-    // Index the genome
-    index(&mut ref_seq, &alphabet, "ref", true)?;
-
-    Ok(())
-}
-
-fn index(
-    ref_seq: &mut Vec<u8>,
-    alphabet: &Alphabet,
-    name: &str,
-    save_suffix_array: bool,
-) -> Result<(), Box<Error>> {
     debug!("Add reverse complement and sentinels to reference");
-    let ref_seq_rev_compl = revcomp(ref_seq.as_slice());
     ref_seq.extend_from_slice(b"$");
+    let ref_seq_rev_compl = dna::revcomp(&ref_seq);
     ref_seq.extend_from_slice(&ref_seq_rev_compl);
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
 
     debug!("Generate suffix array");
-    let suffix_array = suffix_array(ref_seq);
+    let suffix_array = suffix_array(&ref_seq);
 
     debug!("Generate BWT");
     let bwt = bwt(&ref_seq, &suffix_array);
 
-    if save_suffix_array {
+    {
         debug!("Save suffix array to disk");
         let f_suffix_array = File::create(format!("{}.sar", name))?;
         let mut e_suffix_array = Encoder::new(f_suffix_array);
