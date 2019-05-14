@@ -869,7 +869,7 @@ mod tests {
 
     #[test]
     fn test_exact_search() {
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
@@ -921,7 +921,7 @@ mod tests {
             penalty_gap_extend: -1.0,
         };
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
@@ -979,7 +979,7 @@ mod tests {
             penalty_gap_extend: -10.0,
         };
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
@@ -1034,7 +1034,7 @@ mod tests {
             penalty_gap_extend: -1.0,
         };
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
@@ -1125,7 +1125,7 @@ mod tests {
             penalty_gap_extend: -1.0,
         };
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
@@ -1166,7 +1166,7 @@ mod tests {
             penalty_gap_extend: -100.0,
         };
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
