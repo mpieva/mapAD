@@ -9,11 +9,11 @@ This is another attempt to write a fast experimental ancient DNA damage aware sh
 an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
 project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
 
-The first versions will basically be re-implementations of BWA (FM-index with backtracking and lower-bound pruning of 
-the search space). Improved algorithms and error models will be incorporated step by step as needed. 
+Thrust is based on the bidirectional FMD-index ([Li, 2012](https://academic.oup.com/bioinformatics/article/28/14/1838/218887)) 
+with backtracking and lower-bound pruning of the search space. 
+Improved algorithms and error models will be incorporated step by step as needed. 
 
-As of now, it's not quite clear whether or not to prefer a rather simple approach (as used in bisulfite sequencing) to 
-the ancient DNA damage problem over a more complex error model.
+Ancient DNA damage models can be included via the `SequenceDifferenceModel` trait. 
 
 ## Build and Install
 
@@ -89,5 +89,5 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 ## Performance/ Hardware Requirements
 
 First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 160GB of RAM 
-(can certainly be improved by sampling the suffix array to k=32). As long as rust-bio does not have a working suffix 
-array sampling implementation, whole-genome mapping is utopic. As of now, tests are performed on chr22. 
+(can certainly be improved by sampling the suffix array to k=32). Overall, the performance is comparable to `bwa aln` using ancient 
+parameters. However, as soon as sampled suffix arrays are implemented, the performance will likely decrease a bit.  
