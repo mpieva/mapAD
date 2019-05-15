@@ -83,7 +83,7 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
 - [ ] Multithreading
-- [ ] _Cluster-enabled version_
+- [ ] Cluster-enabled version
 - [ ] _Paired-end sequencing_
 
 ## Performance/ Hardware Requirements

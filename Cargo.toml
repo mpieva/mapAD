@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "An aDNA aware short-read mapper"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 edition = "2018"
+readme = "Readme.md"
 
 [features]
 avx-accel = ["bio/avx-accel"]
