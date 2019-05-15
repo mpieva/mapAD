@@ -64,7 +64,7 @@ fn main() {
                         .short("p")
                         .conflicts_with("max_diff")
                         .default_value("0.04")
-                        .help("Minimum probability of the number of mismatches under 0.02 base error rate (see BWA)")
+                        .help("Minimum probability of the number of mismatches under 0.02 base error rate")
                         .value_name("PROBABILITY")
                         .validator(|v| {
                             let error_message =
