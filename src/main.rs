@@ -25,6 +25,7 @@ fn main() {
                 .arg(
                     Arg::with_name("reference")
                         .required(true)
+                        .short("g")
                         .long("reference")
                         .help("FASTA file containing the genome to be indexed")
                         .value_name("FASTA FILE"),
@@ -37,13 +38,23 @@ fn main() {
                 .arg(
                     Arg::with_name("reads")
                         .required(true)
+                        .short("r")
                         .long("reads")
                         .help("FASTQ file containing adapter-trimmed and quality-controlled reads")
                         .value_name("FASTQ FILE"),
                 )
                 .arg(
+                    Arg::with_name("reference")
+                        .required(true)
+                        .short("g")
+                        .long("reference")
+                        .help("Filename of the genome file")
+                        .value_name("FASTA FILE"),
+                )
+                .arg(
                     Arg::with_name("output")
                         .required(true)
+                        .short("o")
                         .long("output")
                         .help("Path to output BAM file")
                         .value_name("BAM FILE"),
@@ -96,6 +107,7 @@ fn main() {
             };
             if let Err(e) = map::run(
                 map_matches.value_of("reads").unwrap(),
+                map_matches.value_of("reference").unwrap(),
                 map_matches.value_of("output").unwrap(),
                 &alignment_parameters,
             ) {

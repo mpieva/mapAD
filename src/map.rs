@@ -28,17 +28,17 @@ struct UnderlyingDataFMDIndex {
 impl UnderlyingDataFMDIndex {
     fn load(name: &str) -> Result<UnderlyingDataFMDIndex, Box<Error>> {
         debug!("Load BWT");
-        let f_bwt = File::open(format!("{}.bwt", name))?;
+        let f_bwt = File::open(format!("{}.tbw", name))?;
         let d_bwt = Decoder::new(f_bwt);
         let bwt: Vec<u8> = deserialize_from(d_bwt)?;
 
         debug!("Load \"C\" table");
-        let f_less = File::open(format!("{}.less", name))?;
+        let f_less = File::open(format!("{}.tle", name))?;
         let d_less = Decoder::new(f_less);
         let less: Vec<usize> = deserialize_from(d_less)?;
 
         debug!("Load \"Occ\" table");
-        let f_occ = File::open(format!("{}.occ", name))?;
+        let f_occ = File::open(format!("{}.toc", name))?;
         let d_occ = Decoder::new(f_occ);
         let occ: Occ = deserialize_from(d_occ)?;
 
@@ -211,11 +211,12 @@ impl Eq for MismatchSearchStackFrame {}
 
 pub fn run<T: SequenceDifferenceModel>(
     reads_path: &str,
+    reference_path: &str,
     out_file_path: &str,
     alignment_parameters: &AlignmentParameters<T>,
 ) -> Result<(), Box<Error>> {
     debug!("Load FMD-index");
-    let data_fmd_index = UnderlyingDataFMDIndex::load("ref")?;
+    let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
     debug!("Reconstruct FMD-index");
     let fm_index = FMIndex::new(
         &data_fmd_index.bwt,
@@ -225,7 +226,7 @@ pub fn run<T: SequenceDifferenceModel>(
     let fmd_index = FMDIndex::from(fm_index);
 
     debug!("Load suffix array");
-    let f_suffix_array = File::open("ref.sar")?;
+    let f_suffix_array = File::open(format!("{}.tsa", reference_path))?;
     let d_suffix_array = Decoder::new(f_suffix_array);
     let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
 
