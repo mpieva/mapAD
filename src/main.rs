@@ -33,7 +33,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("map")
-                .about("Maps reads to an indexed genome.")  // TODO
+                .about("Maps reads to an indexed genome")  // TODO
                 .version(crate_version!())
                 .arg(
                     Arg::with_name("reads")
@@ -101,8 +101,8 @@ fn main() {
             let alignment_parameters = utils::AlignmentParameters {
                 base_error_rate: 0.02,
                 poisson_threshold: value_t_or_exit!(map_matches.value_of("poisson_prob"), f64),
-                penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
-                penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
+                penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(), // TODO
+                penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(), // TODO
                 difference_model,
             };
             if let Err(e) = map::run(
