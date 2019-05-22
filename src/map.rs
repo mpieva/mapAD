@@ -216,6 +216,8 @@ impl PartialEq for MismatchSearchStackFrame {
 
 impl Eq for MismatchSearchStackFrame {}
 
+/// For multi-identifier reference sequences like the human genome (that is split by chromosome)
+/// this struct is used to keep a map of IDs and positions
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FastaIdPosition {
     pub start: usize,
@@ -237,6 +239,7 @@ impl FastaIdPositions {
         self.id_position.iter()
     }
 
+    /// Find the corresponding reference identifier by position
     fn get_reference_identifier(&self, position: usize) -> i32 {
         match self
             .iter()
