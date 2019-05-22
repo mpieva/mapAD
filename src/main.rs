@@ -48,7 +48,7 @@ fn main() {
                         .required(true)
                         .short("g")
                         .long("reference")
-                        .help("Filename of the genome file")
+                        .help("Prefix of the file names of the index files. The reference FASTA file itself does not need to be present.")
                         .value_name("FASTA FILE"),
                 )
                 .arg(
