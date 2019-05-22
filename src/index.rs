@@ -33,10 +33,10 @@ fn index<T: Rng>(
     rng: &mut T,
 ) -> Result<(), Box<Error>> {
     debug!("Read input reference sequence");
-    let mut ref_seq = fasta::Reader::from_file(reference_path)
-        .unwrap()
+    let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
-        .flat_map(|record| record.unwrap().seq().to_ascii_uppercase())
+        .filter_map(Result::ok)
+        .flat_map(|record| record.seq().to_ascii_uppercase())
         .map(|c| match c {
             b'N' => *DNA_UPPERCASE_ALPHABET.choose(rng).unwrap(),
             _ => c,
