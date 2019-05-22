@@ -9,9 +9,11 @@ use bio::alphabets::{dna, Alphabet};
 use bio::data_structures::bwt::{bwt, less, Occ};
 use bio::data_structures::suffix_array::suffix_array;
 
-use bincode::serialize_into;
+use bincode;
 use bio::io::fasta;
 use libflate::deflate::Encoder;
+
+use crate::map::{FastaIdPosition, FastaIdPositions};
 
 const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 
@@ -43,6 +45,31 @@ fn index<T: Rng>(
         })
         .collect::<Vec<_>>();
 
+    {
+        debug!("Map identifiers to positions");
+        let mut end = 0;
+        let identifier_position_map = FastaIdPositions::new(
+            fasta::Reader::from_file(reference_path)?
+                .records()
+                .filter_map(Result::ok)
+                .map(|record| {
+                    end += record.seq().len();
+                    FastaIdPosition {
+                        start: end - record.seq().len() + 1,
+                        end,
+                        identifier: record.id().to_string(),
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        debug!("Save position map to disk");
+        let f_pi = File::create(format!("{}.tpi", name))?;
+        let mut e_pi = Encoder::new(f_pi);
+        bincode::serialize_into(&mut e_pi, &identifier_position_map)?;
+        e_pi.finish();
+    }
+
     debug!("Add reverse complement and sentinels to reference");
     ref_seq.extend_from_slice(b"$");
     let ref_seq_rev_compl = dna::revcomp(&ref_seq);
@@ -60,7 +87,7 @@ fn index<T: Rng>(
         debug!("Save suffix array to disk");
         let f_suffix_array = File::create(format!("{}.tsa", name))?;
         let mut e_suffix_array = Encoder::new(f_suffix_array);
-        serialize_into(&mut e_suffix_array, &suffix_array)?;
+        bincode::serialize_into(&mut e_suffix_array, &suffix_array)?;
         e_suffix_array.finish();
     }
 
@@ -76,19 +103,19 @@ fn index<T: Rng>(
     debug!("Save BWT to disk");
     let f_bwt = File::create(format!("{}.tbw", name))?;
     let mut e_bwt = Encoder::new(f_bwt);
-    serialize_into(&mut e_bwt, &bwt)?;
+    bincode::serialize_into(&mut e_bwt, &bwt)?;
     e_bwt.finish();
 
     debug!("Save \"C\" table to disk");
     let f_less = File::create(format!("{}.tle", name))?;
     let mut e_less = Encoder::new(f_less);
-    serialize_into(&mut e_less, &less)?;
+    bincode::serialize_into(&mut e_less, &less)?;
     e_less.finish();
 
     debug!("Save \"Occ\" table to disk");
     let f_occ = File::create(format!("{}.toc", name))?;
     let mut e_occ = Encoder::new(f_occ);
-    serialize_into(&mut e_occ, &occ)?;
+    bincode::serialize_into(&mut e_occ, &occ)?;
     e_occ.finish();
 
     Ok(())
