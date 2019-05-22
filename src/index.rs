@@ -13,7 +13,7 @@ use bincode::serialize_into;
 use bio::io::fasta;
 use libflate::deflate::Encoder;
 
-const ALPHABET: &[u8; 4] = b"ACGT";
+const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 
 pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
     let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
@@ -38,7 +38,7 @@ fn index<T: Rng>(
         .records()
         .flat_map(|record| record.unwrap().seq().to_ascii_uppercase())
         .map(|c| match c {
-            b'N' => *ALPHABET.choose(rng).unwrap(),
+            b'N' => *DNA_UPPERCASE_ALPHABET.choose(rng).unwrap(),
             _ => c,
         })
         .collect::<Vec<_>>();
