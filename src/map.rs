@@ -247,15 +247,11 @@ impl FastaIdPositions {
     /// Find the corresponding reference identifier by position. The function
     /// returns a tuple: ("target ID", "relative position")
     fn get_reference_identifier(&self, position: usize) -> (i32, i32) {
-        match self
-            .iter()
+        self.iter()
             .enumerate()
             .find(|(_, identifier)| (identifier.start <= position) && (position <= identifier.end))
             .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32 + 1))
-        {
-            Some(v) => v,
-            None => (-1, -1),
-        }
+            .unwrap_or((-1, -1))
     }
 }
 
