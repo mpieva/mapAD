@@ -239,16 +239,17 @@ impl FastaIdPositions {
         self.id_position.iter()
     }
 
-    /// Find the corresponding reference identifier by position
-    fn get_reference_identifier(&self, position: usize) -> i32 {
+    /// Find the corresponding reference identifier by position. The function
+    /// returns a tuple: ("target ID", "relative position")
+    fn get_reference_identifier(&self, position: usize) -> (i32, i32) {
         match self
             .iter()
             .enumerate()
             .find(|(_, identifier)| (identifier.start <= position) && (position <= identifier.end))
-            .map(|(index, _)| index)
+            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32 + 1))
         {
-            Some(v) => v as i32,
-            None => -1,
+            Some(v) => v,
+            None => (-1, -1),
         }
     }
 }
@@ -363,15 +364,16 @@ fn map_reads<T: SequenceDifferenceModel>(
                 .take(max_out_lines_per_read)
             {
                 max_out_lines_per_read -= 1;
-                let mut record = create_bam_record(
+                let (tid, position) = identifier_position_map.get_reference_identifier(position);
+                let record = create_bam_record(
                     record.id().as_bytes(),
                     record.seq(),
                     record.qual().iter(),
-                    position as i32,
+                    position,
                     Some(&best_alignment),
                     Some(mapping_quality),
+                    tid,
                 );
-                record.set_tid(identifier_position_map.get_reference_identifier(position));
                 out.write(&record)?;
             }
             // Aligns to reverse strand
@@ -383,15 +385,16 @@ fn map_reads<T: SequenceDifferenceModel>(
                 .filter(|&&position| position < fmd_index.bwt().len() / 2)
                 .take(max_out_lines_per_read)
             {
+                let (tid, position) = identifier_position_map.get_reference_identifier(position);
                 let mut record = create_bam_record(
                     record.id().as_bytes(),
                     &dna::revcomp(record.seq()),
                     record.qual().iter().rev(),
-                    position as i32,
+                    position,
                     Some(&best_alignment),
                     Some(mapping_quality),
+                    tid,
                 );
-                record.set_tid(identifier_position_map.get_reference_identifier(position));
                 record.set_reverse();
                 out.write(&record)?;
             }
@@ -404,8 +407,8 @@ fn map_reads<T: SequenceDifferenceModel>(
                 -1,
                 None,
                 None,
+                -1,
             );
-            record.set_tid(-1);
             record.set_unmapped();
             out.write(&record)?;
         }
@@ -448,8 +451,10 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
     position: i32,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
+    tid: i32,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
+
     let cigar = match hit_interval {
         Some(hit_interval) => hit_interval.edit_operations.build_cigar(input_seq.len()),
         None => bam::record::CigarString::from_str("").unwrap(),
@@ -465,12 +470,16 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
             .as_slice(),
     );
 
+    bam_record.set_tid(tid);
     bam_record.set_pos(position);
+
     if let Some(mapq) = mapq {
         bam_record.set_mapq(mapq); // Mapping quality
     }
+
     bam_record.set_mpos(-1); // Position of mate (-1 = *)
     bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
+
     if let Some(hit_interval) = hit_interval {
         bam_record
             .push_aux(
@@ -479,6 +488,7 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
             )
             .unwrap();
     }
+
     bam_record
 }
 
