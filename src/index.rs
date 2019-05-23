@@ -17,6 +17,7 @@ use crate::map::{FastaIdPosition, FastaIdPositions};
 
 const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 
+/// Entry point function to launch the indexing process
 pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
     let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
 
@@ -28,6 +29,8 @@ pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
     Ok(())
 }
 
+/// Index a given reference and write the index to disk.
+/// Ambiguous bases ('N') are converted to random bases.
 fn index<T: Rng>(
     reference_path: &str,
     alphabet: &Alphabet,
@@ -38,7 +41,9 @@ fn index<T: Rng>(
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
         .filter_map(Result::ok)
+        // Convert all bases to uppercase
         .flat_map(|record| record.seq().to_ascii_uppercase())
+        // Replace ambiguous bases with random ones
         .map(|c| match c {
             b'N' => *DNA_UPPERCASE_ALPHABET.choose(rng).unwrap(),
             _ => c,

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::sequence_difference_models::SequenceDifferenceModel;
 use crate::utils::{AlignmentParameters, AllowedMismatches};
 
+/// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {
     bwt: Vec<u8>,
     less: Vec<usize>,
@@ -53,6 +54,7 @@ impl UnderlyingDataFMDIndex {
     }
 }
 
+/// A subset of MismatchSearchStackFrame to store hits
 #[derive(Debug)]
 pub struct HitInterval {
     interval: BiInterval,
@@ -87,6 +89,7 @@ impl PartialEq for HitInterval {
 
 impl Eq for HitInterval {}
 
+/// Simple zero-cost direction enum to increase readability
 #[derive(Debug, Copy, Clone)]
 enum Direction {
     Forward,
@@ -94,6 +97,7 @@ enum Direction {
 }
 
 impl Direction {
+    /// Reverses the direction from forward to backward and vice-versa
     fn reverse(self) -> Self {
         use self::Direction::*;
         match self {
@@ -175,6 +179,7 @@ impl EditOperationsTrack {
     }
 }
 
+/// Stores information about partial alignments on the priority stack
 #[derive(Debug)]
 struct MismatchSearchStackFrame {
     j: isize,
@@ -254,6 +259,7 @@ impl FastaIdPositions {
     }
 }
 
+/// Loads index files and launches the mapping process
 pub fn run<T: SequenceDifferenceModel>(
     reads_path: &str,
     reference_path: &str,
@@ -296,6 +302,7 @@ pub fn run<T: SequenceDifferenceModel>(
     Ok(())
 }
 
+/// Maps reads and writes them to a file in BAM format
 fn map_reads<T: SequenceDifferenceModel>(
     alignment_parameters: &AlignmentParameters<T>,
     reads_path: &str,
@@ -417,6 +424,8 @@ fn map_reads<T: SequenceDifferenceModel>(
     Ok(())
 }
 
+/// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
+/// and its base qualities
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
     other_alignments: &BinaryHeap<HitInterval>,
@@ -444,6 +453,7 @@ fn estimate_mapping_quality(
     }
 }
 
+/// Create and return a BAM record of either a hit or an unmapped read
 fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
     input_name: &[u8],
     input_seq: &[u8],
