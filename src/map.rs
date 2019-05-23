@@ -11,10 +11,11 @@ use bio::alphabets::dna;
 use bio::data_structures::bwt::Occ;
 use bio::data_structures::fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable};
 
-use bincode::deserialize_from;
+use bincode;
 use bio::io::fastq;
 use libflate::deflate::Decoder;
 use rust_htslib::bam;
+use serde::{Deserialize, Serialize};
 
 use crate::sequence_difference_models::SequenceDifferenceModel;
 use crate::utils::{AlignmentParameters, AllowedMismatches};
@@ -26,21 +27,27 @@ struct UnderlyingDataFMDIndex {
 }
 
 impl UnderlyingDataFMDIndex {
-    fn load(name: &str) -> Result<UnderlyingDataFMDIndex, Box<Error>> {
+    fn load(path: &str) -> Result<UnderlyingDataFMDIndex, Box<Error>> {
         debug!("Load BWT");
-        let f_bwt = File::open(format!("{}.tbw", name))?;
-        let d_bwt = Decoder::new(f_bwt);
-        let bwt: Vec<u8> = deserialize_from(d_bwt)?;
+        let bwt: Vec<u8> = {
+            let f_bwt = File::open(format!("{}.tbw", path))?;
+            let d_bwt = Decoder::new(f_bwt);
+            bincode::deserialize_from(d_bwt)?
+        };
 
         debug!("Load \"C\" table");
-        let f_less = File::open(format!("{}.tle", name))?;
-        let d_less = Decoder::new(f_less);
-        let less: Vec<usize> = deserialize_from(d_less)?;
+        let less: Vec<usize> = {
+            let f_less = File::open(format!("{}.tle", path))?;
+            let d_less = Decoder::new(f_less);
+            bincode::deserialize_from(d_less)?
+        };
 
         debug!("Load \"Occ\" table");
-        let f_occ = File::open(format!("{}.toc", name))?;
-        let d_occ = Decoder::new(f_occ);
-        let occ: Occ = deserialize_from(d_occ)?;
+        let occ: Occ = {
+            let f_occ = File::open(format!("{}.toc", path))?;
+            let d_occ = Decoder::new(f_occ);
+            bincode::deserialize_from(d_occ)?
+        };
 
         Ok(UnderlyingDataFMDIndex { bwt, less, occ })
     }
@@ -209,6 +216,44 @@ impl PartialEq for MismatchSearchStackFrame {
 
 impl Eq for MismatchSearchStackFrame {}
 
+/// For multi-identifier reference sequences like the human genome (that is split by chromosome)
+/// this struct is used to keep a map of IDs and positions
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FastaIdPosition {
+    pub start: usize,
+    pub end: usize,
+    pub identifier: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FastaIdPositions {
+    id_position: Vec<FastaIdPosition>,
+}
+
+impl FastaIdPositions {
+    pub fn new(id_position: Vec<FastaIdPosition>) -> Self {
+        Self { id_position }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &FastaIdPosition> {
+        self.id_position.iter()
+    }
+
+    /// Find the corresponding reference identifier by position. The function
+    /// returns a tuple: ("target ID", "relative position")
+    fn get_reference_identifier(&self, position: usize) -> (i32, i32) {
+        match self
+            .iter()
+            .enumerate()
+            .find(|(_, identifier)| (identifier.start <= position) && (position <= identifier.end))
+            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32 + 1))
+        {
+            Some(v) => v,
+            None => (-1, -1),
+        }
+    }
+}
+
 pub fn run<T: SequenceDifferenceModel>(
     reads_path: &str,
     reference_path: &str,
@@ -226,9 +271,18 @@ pub fn run<T: SequenceDifferenceModel>(
     let fmd_index = FMDIndex::from(fm_index);
 
     debug!("Load suffix array");
-    let f_suffix_array = File::open(format!("{}.tsa", reference_path))?;
-    let d_suffix_array = Decoder::new(f_suffix_array);
-    let suffix_array: Vec<usize> = deserialize_from(d_suffix_array)?;
+    let suffix_array: Vec<usize> = {
+        let f_suffix_array = File::open(format!("{}.tsa", reference_path))?;
+        let d_suffix_array = Decoder::new(f_suffix_array);
+        bincode::deserialize_from(d_suffix_array)?
+    };
+
+    debug!("Load position map");
+    let identifier_position_map: FastaIdPositions = {
+        let f_pi = File::open(format!("{}.tpi", reference_path))?;
+        let d_pi = Decoder::new(f_pi);
+        bincode::deserialize_from(d_pi)?
+    };
 
     map_reads(
         alignment_parameters,
@@ -236,6 +290,7 @@ pub fn run<T: SequenceDifferenceModel>(
         out_file_path,
         &fmd_index,
         &suffix_array,
+        &identifier_position_map,
     )?;
 
     Ok(())
@@ -247,14 +302,18 @@ fn map_reads<T: SequenceDifferenceModel>(
     out_file_path: &str,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
+    identifier_position_map: &FastaIdPositions,
 ) -> Result<(), Box<Error>> {
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
     let mut header = bam::Header::new();
-    {
+    for identifier_position in identifier_position_map.iter() {
         let mut header_record = bam::header::HeaderRecord::new(b"SQ");
-        header_record.push_tag(b"SN", &"chr22"); // FIXME: Don't hardcode header entries
-        header_record.push_tag(b"LN", &"51304566"); // FIXME: Don't hardcode header entries
+        header_record.push_tag(b"SN", &identifier_position.identifier);
+        header_record.push_tag(
+            b"LN",
+            &(identifier_position.end - identifier_position.start + 1),
+        );
         header.push_record(&header_record);
     }
     {
@@ -264,6 +323,7 @@ fn map_reads<T: SequenceDifferenceModel>(
         header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
+
     let mut out = bam::Writer::from_path(out_file_path, &header)?;
 
     let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
@@ -304,14 +364,17 @@ fn map_reads<T: SequenceDifferenceModel>(
                 .take(max_out_lines_per_read)
             {
                 max_out_lines_per_read -= 1;
-                out.write(&create_bam_record(
+                let (tid, position) = identifier_position_map.get_reference_identifier(position);
+                let record = create_bam_record(
                     record.id().as_bytes(),
                     record.seq(),
                     record.qual().iter(),
-                    position as i32,
+                    position,
                     Some(&best_alignment),
                     Some(mapping_quality),
-                ))?;
+                    tid,
+                );
+                out.write(&record)?;
             }
             // Aligns to reverse strand
             for &position in best_alignment
@@ -322,13 +385,15 @@ fn map_reads<T: SequenceDifferenceModel>(
                 .filter(|&&position| position < fmd_index.bwt().len() / 2)
                 .take(max_out_lines_per_read)
             {
+                let (tid, position) = identifier_position_map.get_reference_identifier(position);
                 let mut record = create_bam_record(
                     record.id().as_bytes(),
                     &dna::revcomp(record.seq()),
                     record.qual().iter().rev(),
-                    position as i32,
+                    position,
                     Some(&best_alignment),
                     Some(mapping_quality),
+                    tid,
                 );
                 record.set_reverse();
                 out.write(&record)?;
@@ -342,8 +407,8 @@ fn map_reads<T: SequenceDifferenceModel>(
                 -1,
                 None,
                 None,
+                -1,
             );
-            record.set_tid(-1);
             record.set_unmapped();
             out.write(&record)?;
         }
@@ -386,8 +451,10 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
     position: i32,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
+    tid: i32,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
+
     let cigar = match hit_interval {
         Some(hit_interval) => hit_interval.edit_operations.build_cigar(input_seq.len()),
         None => bam::record::CigarString::from_str("").unwrap(),
@@ -403,12 +470,16 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
             .as_slice(),
     );
 
+    bam_record.set_tid(tid);
     bam_record.set_pos(position);
+
     if let Some(mapq) = mapq {
         bam_record.set_mapq(mapq); // Mapping quality
     }
+
     bam_record.set_mpos(-1); // Position of mate (-1 = *)
     bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
+
     if let Some(hit_interval) = hit_interval {
         bam_record
             .push_aux(
@@ -417,6 +488,7 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
             )
             .unwrap();
     }
+
     bam_record
 }
 

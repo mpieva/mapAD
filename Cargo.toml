@@ -22,6 +22,7 @@ maplit = "1.0.1"
 assert_approx_eq = "1.1.0"
 smallvec = "0.6.9"
 rand = "0.6.5"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 criterion = "0.2.11"
