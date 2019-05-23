@@ -306,13 +306,6 @@ fn map_reads<T: SequenceDifferenceModel>(
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
     let mut header = bam::Header::new();
-    {
-        let mut header_record = bam::header::HeaderRecord::new(b"PG");
-        header_record.push_tag(b"ID", &crate_name!());
-        header_record.push_tag(b"PN", &crate_name!());
-        header_record.push_tag(b"VN", &crate_version!());
-        header.push_record(&header_record);
-    }
     for identifier_position in identifier_position_map.iter() {
         let mut header_record = bam::header::HeaderRecord::new(b"SQ");
         header_record.push_tag(b"SN", &identifier_position.identifier);
@@ -320,6 +313,13 @@ fn map_reads<T: SequenceDifferenceModel>(
             b"LN",
             &(identifier_position.end - identifier_position.start + 1),
         );
+        header.push_record(&header_record);
+    }
+    {
+        let mut header_record = bam::header::HeaderRecord::new(b"PG");
+        header_record.push_tag(b"ID", &crate_name!());
+        header_record.push_tag(b"PN", &crate_name!());
+        header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
 
