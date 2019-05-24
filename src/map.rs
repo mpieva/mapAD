@@ -333,7 +333,7 @@ fn map_reads<T: SequenceDifferenceModel>(
 
     debug!("Map reads");
     for record in reads_fq_reader.records() {
-        let record = record.unwrap();
+        let record = record?;
         let pattern = record.seq().to_ascii_uppercase();
 
         // Hardcoded value (33) that should be ok only for Illumina reads
