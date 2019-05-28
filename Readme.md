@@ -31,13 +31,15 @@ Besides Rust, no additional dependencies are needed to compile.
 
     `cargo build --release`
     
-    The resulting binary file `thrust` is now in the subfolder `./target/release/`.
+    The resulting binary file `thrust` is now in the subfolder `target/release/`.
 
 4. Run!
 
-    `./target/release/thrust index --reference ./example/chr22.fa`
+    `cd target/release/`
+
+    `./thrust index --reference /path/to/reference/hg19.fasta`
     
-    `./target/release/thrust map --reads ./example/simulated_reads/test.bwa.1.fa`
+    `./thrust map --reads /path/to/reads/reads.fastq --reference /path/to/reference/hg19.fasta --output out.bam`
 
 ###### Optional
 The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
@@ -46,9 +48,22 @@ To build explicitly with SIMD support (should be available on most CPUs) use:
 
 `cargo build --release --features simd-accel`
 
-for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use:
+For AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use:
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
+
+To increase its verbosity, invoke the program like this:
+
+`thrust -vvv index ...` or `thrust -vvv map ...`
+
+## Performance/ Hardware Requirements
+
+In #5 (tracking issue) benchmark results for mapping are shown.
+
+Index generation for the human reference genome (hg19) unfortunately eats about 160GB of RAM (can certainly be improved 
+by sampling the suffix array to k=32). Overall, the performance is comparable to `bwa aln` using ancient parameters. 
+However, as soon as sampled suffix arrays are implemented, the performance will likely decrease a bit in favor of memory 
+consumption.  
 
 ## To do
 
@@ -85,9 +100,3 @@ for AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 - [ ] Multithreading
 - [ ] Cluster-enabled version
 - [ ] _Paired-end sequencing_
-
-## Performance/ Hardware Requirements
-
-First tests suggest that index generation for the human reference genome (hg19) unfortunately eats about 160GB of RAM 
-(can certainly be improved by sampling the suffix array to k=32). Overall, the performance is comparable to `bwa aln` using ancient 
-parameters. However, as soon as sampled suffix arrays are implemented, the performance will likely decrease a bit.  
