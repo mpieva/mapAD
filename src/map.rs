@@ -13,9 +13,9 @@ use bio::data_structures::fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable};
 
 use bincode;
 use bio::io::fastq;
-use libflate::deflate::Decoder;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
+use snap;
 
 use crate::sequence_difference_models::SequenceDifferenceModel;
 use crate::utils::{AlignmentParameters, AllowedMismatches};
@@ -31,22 +31,19 @@ impl UnderlyingDataFMDIndex {
     fn load(path: &str) -> Result<UnderlyingDataFMDIndex, Box<Error>> {
         debug!("Load BWT");
         let bwt: Vec<u8> = {
-            let f_bwt = File::open(format!("{}.tbw", path))?;
-            let d_bwt = Decoder::new(f_bwt);
+            let d_bwt = snap::Reader::new(File::open(format!("{}.tbw", path))?);
             bincode::deserialize_from(d_bwt)?
         };
 
         debug!("Load \"C\" table");
         let less: Vec<usize> = {
-            let f_less = File::open(format!("{}.tle", path))?;
-            let d_less = Decoder::new(f_less);
+            let d_less = snap::Reader::new(File::open(format!("{}.tle", path))?);
             bincode::deserialize_from(d_less)?
         };
 
         debug!("Load \"Occ\" table");
         let occ: Occ = {
-            let f_occ = File::open(format!("{}.toc", path))?;
-            let d_occ = Decoder::new(f_occ);
+            let d_occ = snap::Reader::new(File::open(format!("{}.toc", path))?);
             bincode::deserialize_from(d_occ)?
         };
 
@@ -274,15 +271,13 @@ pub fn run<T: SequenceDifferenceModel>(
 
     debug!("Load suffix array");
     let suffix_array: Vec<usize> = {
-        let f_suffix_array = File::open(format!("{}.tsa", reference_path))?;
-        let d_suffix_array = Decoder::new(f_suffix_array);
+        let d_suffix_array = snap::Reader::new(File::open(format!("{}.tsa", reference_path))?);
         bincode::deserialize_from(d_suffix_array)?
     };
 
     debug!("Load position map");
     let identifier_position_map: FastaIdPositions = {
-        let f_pi = File::open(format!("{}.tpi", reference_path))?;
-        let d_pi = Decoder::new(f_pi);
+        let d_pi = snap::Reader::new(File::open(format!("{}.tpi", reference_path))?);
         bincode::deserialize_from(d_pi)?
     };
 
