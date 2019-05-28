@@ -423,7 +423,12 @@ fn estimate_mapping_quality(
 ) -> u8 {
     // Multi-mapping
     if best_alignment.interval.size > 1 {
-        (-10_f32 * (1.0 - (1.0 / best_alignment.interval.size as f32)).log10()).round() as u8
+        (-10_f32
+            * (1.0
+                - (2_f32.powf(best_alignment.alignment_score)
+                    / best_alignment.interval.size as f32))
+                .log10())
+        .round() as u8
     } else {
         // "Unique" mapping
         if let Some(second_alignment) = other_alignments.peek() {
@@ -439,7 +444,7 @@ fn estimate_mapping_quality(
                 (best_alignment.alignment_score - second_alignment.alignment_score).abs();
             (-10_f32 * (1.0 - (nominator / denominator)).log10() + correction).round() as u8
         } else {
-            37
+            (37_f32 * 2_f32.powf(best_alignment.alignment_score)).round() as u8
         }
     }
 }
