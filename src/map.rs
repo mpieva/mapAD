@@ -431,21 +431,25 @@ fn estimate_mapping_quality(
         .round() as u8
     } else {
         // "Unique" mapping
-        if let Some(second_alignment) = other_alignments.peek() {
-            let total_number: usize = other_alignments
-                .iter()
-                .take_while(|hit_interval| {
-                    hit_interval.alignment_score.round() >= second_alignment.alignment_score.round()
-                })
-                .map(|hit_interval| hit_interval.interval.size)
-                .sum();
-            let nominator = 1.0;
-            let denominator = total_number as f32;
-            let correction =
-                (best_alignment.alignment_score - second_alignment.alignment_score).abs();
-            (-10_f32 * (1.0 - (nominator / denominator)).log10() + correction).round() as u8
-        } else {
-            (37_f32 * 2_f32.powf(best_alignment.alignment_score)).round() as u8 + 1
+        match other_alignments.peek() {
+            Some(second_alignment) => {
+                let total_number: usize = other_alignments
+                    .iter()
+                    .take_while(|hit_interval| {
+                        hit_interval.alignment_score.round()
+                            >= second_alignment.alignment_score.round()
+                    })
+                    .map(|hit_interval| hit_interval.interval.size)
+                    .sum();
+                let correction =
+                    (best_alignment.alignment_score - second_alignment.alignment_score).abs();
+                (-10_f32
+                    * (1.0 - (2_f32.powf(best_alignment.alignment_score) / total_number as f32))
+                        .log10()
+                    + correction)
+                    .round() as u8
+            }
+            None => (37_f32 * 2_f32.powf(best_alignment.alignment_score)).round() as u8 + 1,
         }
     }
 }
