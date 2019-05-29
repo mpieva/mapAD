@@ -17,12 +17,12 @@ rust-htslib = "0.23.0"
 simple_logger = "1.2.0"
 bincode = "1.1.4"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub" }
-libflate = "0.1.22"
 maplit = "1.0.1"
 assert_approx_eq = "1.1.0"
 smallvec = "0.6.9"
 rand = "0.6.5"
 serde = { version = "1.0", features = ["derive"] }
+snap = "0.2.5"
 
 [dev-dependencies]
 criterion = "0.2.11"
