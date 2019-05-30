@@ -428,7 +428,6 @@ fn estimate_mapping_quality(
                 - (2_f32.powf(best_alignment.alignment_score)
                     / best_alignment.interval.size as f32))
                 .log10())
-        .round() as u8
     } else {
         // "Unique" mapping
         match other_alignments.peek() {
@@ -441,17 +440,19 @@ fn estimate_mapping_quality(
                     })
                     .map(|hit_interval| hit_interval.interval.size)
                     .sum();
-                let correction =
+                let bonus =
                     (best_alignment.alignment_score - second_alignment.alignment_score).abs();
                 (-10_f32
                     * (1.0 - (2_f32.powf(best_alignment.alignment_score) / total_number as f32))
                         .log10()
-                    + correction)
-                    .round() as u8
+                    + bonus)
             }
-            None => (37_f32 * 2_f32.powf(best_alignment.alignment_score)).round() as u8 + 1,
+            None => (37_f32 * 2_f32.powf(best_alignment.alignment_score)) + 1.0,
         }
     }
+    // 37 should be the highest MAPQ value
+    .min(37.0)
+    .round() as u8
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
