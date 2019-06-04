@@ -423,25 +423,36 @@ fn estimate_mapping_quality(
 ) -> u8 {
     // Multi-mapping
     if best_alignment.interval.size > 1 {
-        (-10_f32 * (1.0 - (1.0 / best_alignment.interval.size as f32)).log10()).round() as u8
+        (-10_f32
+            * (1.0
+                - (2_f32.powf(best_alignment.alignment_score)
+                    / best_alignment.interval.size as f32))
+                .log10())
     } else {
         // "Unique" mapping
-        if let Some(second_alignment) = other_alignments.peek() {
-            let total_number = other_alignments
-                .iter()
-                .take_while(|hit_interval| {
-                    hit_interval.alignment_score.round() >= second_alignment.alignment_score.round()
-                })
-                .fold(0, |agg, hit_interval| agg + hit_interval.interval.size);
-            let nominator = 1.0;
-            let denominator = total_number as f32;
-            let correction =
-                (best_alignment.alignment_score - second_alignment.alignment_score).abs();
-            (-10_f32 * (1.0 - (nominator / denominator)).log10() + correction).round() as u8
-        } else {
-            37
+        match other_alignments.peek() {
+            Some(second_alignment) => {
+                let total_number: usize = other_alignments
+                    .iter()
+                    .take_while(|hit_interval| {
+                        hit_interval.alignment_score.round()
+                            >= second_alignment.alignment_score.round()
+                    })
+                    .map(|hit_interval| hit_interval.interval.size)
+                    .sum();
+                let bonus =
+                    (best_alignment.alignment_score - second_alignment.alignment_score).abs();
+                (-10_f32
+                    * (1.0 - (2_f32.powf(best_alignment.alignment_score) / total_number as f32))
+                        .log10()
+                    + bonus)
+            }
+            None => (37_f32 * 2_f32.powf(best_alignment.alignment_score)) + 1.0,
         }
     }
+    // 37 should be the highest MAPQ value
+    .min(37.0)
+    .round() as u8
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
