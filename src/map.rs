@@ -350,6 +350,9 @@ fn map_reads<T: SequenceDifferenceModel>(
         // Create BAM records
         //
         if let Some(best_alignment) = intervals.pop() {
+            let cigar = best_alignment
+                .edit_operations
+                .build_cigar(record.seq().len());
             let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
             let mut max_out_lines_per_read = 1;
             // Aligns to reference strand
@@ -369,6 +372,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     record.qual().iter(),
                     position,
                     Some(&best_alignment),
+                    Some(&cigar),
                     Some(mapping_quality),
                     tid,
                 );
@@ -390,6 +394,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                     record.qual().iter().rev(),
                     position,
                     Some(&best_alignment),
+                    Some(&cigar),
                     Some(mapping_quality),
                     tid,
                 );
@@ -403,6 +408,7 @@ fn map_reads<T: SequenceDifferenceModel>(
                 record.seq(),
                 record.qual().iter(),
                 -1,
+                None,
                 None,
                 None,
                 -1,
@@ -462,19 +468,15 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
     input_quality: T,
     position: i32,
     hit_interval: Option<&HitInterval>,
+    cigar: Option<&bam::record::CigarString>,
     mapq: Option<u8>,
     tid: i32,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
 
-    let cigar = match hit_interval {
-        Some(hit_interval) => hit_interval.edit_operations.build_cigar(input_seq.len()),
-        None => bam::record::CigarString::from_str("").unwrap(),
-    };
-
     bam_record.set(
         input_name,
-        &cigar,
+        cigar,
         input_seq,
         input_quality
             .map(|&x| x - 33)

@@ -13,15 +13,15 @@ simd-accel = ["bio/simd-accel"]
 [dependencies]
 clap = "2.33.0"
 log = "0.4.6"
-rust-htslib = "0.23.0"
+rust-htslib = "0.24.0"
 simple_logger = "1.2.0"
 bincode = "1.1.4"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub" }
 maplit = "1.0.1"
 assert_approx_eq = "1.1.0"
-smallvec = "0.6.9"
+smallvec = "0.6.10"
 rand = "0.6.5"
-serde = { version = "1.0.91", features = ["derive"] }
+serde = { version = "1.0.92", features = ["derive"] }
 snap = "0.2.5"
 
 [dev-dependencies]
