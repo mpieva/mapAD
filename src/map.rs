@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fs::File;
 
 use clap::{crate_name, crate_version};
+use either::Either;
 use log::debug;
 use smallvec::SmallVec;
 
@@ -249,6 +250,70 @@ impl FastaIdPositions {
             .find(|(_, identifier)| (identifier.start <= position) && (position <= identifier.end))
             .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32 + 1))
             .unwrap_or((-1, -1))
+    }
+}
+
+/// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
+/// This allows for pruning the search tree.
+#[derive(Debug)]
+struct DArray {
+    d_array: SmallVec<[f32; 32]>,
+}
+
+impl DArray {
+    fn new<T: SequenceDifferenceModel>(
+        pattern: &[u8],
+        pattern_length: usize,
+        read_length: usize,
+        direction: Direction,
+        alignment_parameters: &AlignmentParameters<T>,
+        fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    ) -> Self {
+        let extend_interval = match direction {
+            Direction::Forward => FMDIndex::forward_ext,
+            Direction::Backward => FMDIndex::backward_ext,
+        };
+
+        let directed_pattern_index = |i| match direction {
+            Direction::Forward => i,
+            Direction::Backward => read_length - pattern_length + i,
+        };
+
+        let mut z = 0.0;
+        let mut interval = fmd_index.init_interval();
+        let pattern = match direction {
+            Direction::Forward => Either::Left(pattern.iter()),
+            Direction::Backward => Either::Right(pattern.iter().rev()),
+        };
+
+        let pattern = pattern.enumerate().map(|(index, &base)| {
+            interval = extend_interval(fmd_index, &interval, base);
+            if interval.size < 1 {
+                z -= alignment_parameters
+                    .difference_model
+                    .get_min_penalty(directed_pattern_index(index), read_length, base)
+                    .max(alignment_parameters.penalty_gap_open)
+                    .max(alignment_parameters.penalty_gap_extend);
+                interval = fmd_index.init_interval();
+            }
+            z
+        });
+
+        DArray {
+            d_array: match direction {
+                Direction::Forward => pattern.collect(),
+                // FIXME: Don't call collect() twice. Side-effects seem to make this necessary, though.
+                Direction::Backward => pattern
+                    .collect::<SmallVec<[f32; 32]>>()
+                    .into_iter()
+                    .rev()
+                    .collect(),
+            },
+        }
+    }
+
+    fn get(&self, index: isize) -> f32 {
+        *self.d_array.get(index as usize).unwrap_or(&0.0)
     }
 }
 
@@ -515,8 +580,8 @@ fn check_and_push(
     edit_operations: &Option<EditOperationsTrack>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
-    d_backwards: &[f32],
-    d_forwards: &[f32],
+    backwards_lower_bound: f32,
+    forwards_lower_bound: f32,
     representative_mismatch_penalty: f32,
 ) {
     // Empty interval
@@ -525,20 +590,17 @@ fn check_and_push(
     }
 
     // Too many mismatches
-    let backwards_lower_bound = match d_backwards.get(stack_frame.backward_index as usize) {
-        Some(&d_i) => d_i,
-        None => 0.0,
-    };
-    let forwards_lower_bound =
-        match d_forwards.get((stack_frame.forward_index as usize - pattern.len() / 2) as usize) {
-            Some(&d_i) => d_i,
-            None => 0.0,
-        };
     if stack_frame.z < backwards_lower_bound + forwards_lower_bound {
         return;
     }
 
-    if stop_searching(&stack_frame, intervals, representative_mismatch_penalty) {
+    if stop_searching_suboptimal_hits(
+        &stack_frame,
+        intervals,
+        representative_mismatch_penalty,
+        backwards_lower_bound,
+        forwards_lower_bound,
+    ) {
         return;
     }
 
@@ -589,13 +651,17 @@ fn print_debug(
 /// If the best scoring interval has a total sum of penalties z, do not search
 /// for hits scored worse than z + representative_mismatch.
 /// This speeds up the alignment considerably.
-fn stop_searching(
+fn stop_searching_suboptimal_hits(
     stack_frame: &MismatchSearchStackFrame,
     hit_intervals: &BinaryHeap<HitInterval>,
     representative_mismatch_penalty: f32,
+    backwards_lower_bound: f32,
+    forwards_lower_bound: f32,
 ) -> bool {
     if let Some(best_scoring_interval) = hit_intervals.peek() {
-        if stack_frame.z < best_scoring_interval.z + representative_mismatch_penalty {
+        if stack_frame.z + backwards_lower_bound + forwards_lower_bound
+            < best_scoring_interval.z + representative_mismatch_penalty
+        {
             return true;
         }
     }
@@ -616,8 +682,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     let center_of_read = pattern.len() as isize / 2;
 
     let d_part_pattern = &pattern[..center_of_read as usize];
-    let d_backwards = calculate_d(
-        d_part_pattern.iter(),
+    let d_backwards = DArray::new(
+        d_part_pattern,
         d_part_pattern.len(),
         pattern.len(),
         Direction::Forward,
@@ -626,17 +692,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     );
 
     let d_part_pattern = &pattern[center_of_read as usize..];
-    let d_forwards = calculate_d(
-        d_part_pattern.iter().rev(),
+    let d_forwards = DArray::new(
+        d_part_pattern,
         d_part_pattern.len(),
         pattern.len(),
         Direction::Backward,
         parameters,
         fmd_index,
-    )
-    .into_iter()
-    .rev()
-    .collect::<Vec<_>>();
+    );
 
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
     let mut stack = BinaryHeap::new();
@@ -656,10 +719,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
     });
 
     while let Some(stack_frame) = stack.pop() {
-        if stop_searching(
+        // In the meantime, have we found a match whose score we perhaps aren't close enough to?
+        let backwards_lower_bound = d_backwards.get(stack_frame.backward_index);
+        let forwards_lower_bound = d_forwards.get(stack_frame.forward_index);
+        if stop_searching_suboptimal_hits(
             &stack_frame,
             &hit_intervals,
             representative_mismatch_penalty,
+            backwards_lower_bound,
+            forwards_lower_bound,
         ) {
             // Since we operate on a priority stack, it's safe to assume that there are no
             // better scoring frames on the stack, so we are going to stop the search.
@@ -688,6 +756,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             next_j = next_forward_index;
             stack_frame.current_interval
         };
+
+        // Re-calculate the lower bounds for extension
+        let backwards_lower_bound = d_backwards.get(next_backward_index);
+        let forwards_lower_bound = d_forwards.get(next_forward_index - pattern.len() as isize / 2);
 
         //
         // Insertion in read / deletion in reference
@@ -732,8 +804,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &stack_frame.edit_operations,
             &mut stack,
             &mut hit_intervals,
-            &d_backwards,
-            &d_forwards,
+            backwards_lower_bound,
+            forwards_lower_bound,
             representative_mismatch_penalty,
         );
 
@@ -813,8 +885,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
-                &d_backwards,
-                &d_forwards,
+                backwards_lower_bound,
+                forwards_lower_bound,
                 representative_mismatch_penalty,
             );
 
@@ -868,8 +940,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
-                &d_backwards,
-                &d_forwards,
+                backwards_lower_bound,
+                forwards_lower_bound,
                 representative_mismatch_penalty,
             );
         }
@@ -884,45 +956,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         }
     }
     hit_intervals
-}
-
-/// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
-/// This allows for pruning the search tree.
-fn calculate_d<'a, T: Iterator<Item = &'a u8>, U: SequenceDifferenceModel>(
-    pattern: T,
-    pattern_length: usize,
-    read_length: usize,
-    direction: Direction,
-    alignment_parameters: &AlignmentParameters<U>,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-) -> Vec<f32> {
-    let extend_interval = match direction {
-        Direction::Forward => FMDIndex::forward_ext,
-        Direction::Backward => FMDIndex::backward_ext,
-    };
-
-    let directed_pattern_index = |i| match direction {
-        Direction::Forward => i,
-        Direction::Backward => read_length - pattern_length + i,
-    };
-
-    let mut z = 0.0;
-    let mut interval = fmd_index.init_interval();
-    pattern
-        .enumerate()
-        .map(|(index, &base)| {
-            interval = extend_interval(fmd_index, &interval, base);
-            if interval.size < 1 {
-                z -= alignment_parameters
-                    .difference_model
-                    .get_min_penalty(directed_pattern_index(index), read_length, base)
-                    .max(alignment_parameters.penalty_gap_open)
-                    .max(alignment_parameters.penalty_gap_extend);
-                interval = fmd_index.init_interval();
-            }
-            z
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -1138,53 +1171,47 @@ mod tests {
 
         let pattern = "GTTC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(
-            pattern.iter(),
+        let d_backward = DArray::new(
+            &pattern,
             pattern.len(),
             pattern.len(),
             Direction::Forward,
             &parameters,
             &fmd_index,
         );
-        let d_forward = calculate_d(
-            pattern.iter().rev(),
+        let d_forward = DArray::new(
+            &pattern,
             pattern.len(),
             pattern.len(),
             Direction::Backward,
             &parameters,
             &fmd_index,
-        )
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
+        );
 
-        assert_eq!(vec![0.0, 0.0, 1.0, 1.0], d_backward);
-        assert_eq!(vec![1.0, 1.0, 1.0, 0.0], d_forward);
+        assert_eq!(&[0.0, 0.0, 1.0, 1.0], &*d_backward.d_array);
+        assert_eq!(&[1.0, 1.0, 1.0, 0.0], &*d_forward.d_array);
 
         let pattern = "GATC".as_bytes().to_owned();
 
-        let d_backward = calculate_d(
-            pattern.iter(),
+        let d_backward = DArray::new(
+            &pattern,
             pattern.len(),
             pattern.len(),
             Direction::Forward,
             &parameters,
             &fmd_index,
         );
-        let d_forward = calculate_d(
-            pattern.iter().rev(),
+        let d_forward = DArray::new(
+            &pattern,
             pattern.len(),
             pattern.len(),
             Direction::Backward,
             &parameters,
             &fmd_index,
-        )
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
+        );
 
-        assert_eq!(vec![0.0, 1.0, 1.0, 2.0], d_backward);
-        assert_eq!(vec![2.0, 1.0, 1.0, 0.0], d_forward);
+        assert_eq!(&[0.0, 1.0, 1.0, 2.0], &*d_backward.d_array);
+        assert_eq!(&[2.0, 1.0, 1.0, 0.0], &*d_forward.d_array);
     }
 
     #[test]
