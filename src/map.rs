@@ -661,7 +661,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &hit_intervals,
             representative_mismatch_penalty,
         ) {
-            continue;
+            break;
         }
 
         let next_j;
