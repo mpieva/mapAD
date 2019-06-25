@@ -661,6 +661,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &hit_intervals,
             representative_mismatch_penalty,
         ) {
+            // Since we operate on a priority stack, it's safe to assume that there are no
+            // better scoring frames on the stack, so we are going to stop the search.
             break;
         }
 
