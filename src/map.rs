@@ -312,6 +312,7 @@ impl DArray {
         }
     }
 
+    #[inline]
     fn get(&self, index: isize) -> f32 {
         *self.d_array.get(index as usize).unwrap_or(&0.0)
     }
