@@ -20,11 +20,11 @@ fn criterion_benchmark(c: &mut Criterion) {
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
                 if from == b'C' && to == b'T' {
-                    return 0.0;
+                    return -0.5;
                 } else if from != to {
                     return -1.0;
                 } else {
-                    return 1.0;
+                    return 0.0;
                 }
             }
         }
@@ -45,7 +45,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
 
         let sa = suffix_array(&ref_seq);
         let bwtr = bwt(&ref_seq, &sa);
@@ -91,11 +91,11 @@ fn bench_multiple_reads(c: &mut Criterion) {
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
                 if from == b'C' && to == b'T' {
-                    return 0.0;
+                    return -0.5;
                 } else if from != to {
                     return -1.0;
                 } else {
-                    return 1.0;
+                    return 0.0;
                 }
             }
         }
@@ -116,7 +116,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
         drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
 
         let sa = suffix_array(&ref_seq);
         let bwtr = bwt(&ref_seq, &sa);
@@ -169,11 +169,11 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             }
             fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
                 if from == b'C' && to == b'T' {
-                    return 0.0;
+                    return -0.5;
                 } else if from != to {
                     return -1.0;
                 } else {
-                    return 1.0;
+                    return 0.0;
                 }
             }
         }
@@ -194,7 +194,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
-        let alphabet = alphabets::dna::n_alphabet();
+        let alphabet = alphabets::dna::alphabet();
 
         let sa = suffix_array(&ref_seq);
         let bwtr = bwt(&ref_seq, &sa);
