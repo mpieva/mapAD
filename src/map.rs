@@ -660,7 +660,7 @@ fn stop_searching_suboptimal_hits(
     forwards_lower_bound: f32,
 ) -> bool {
     if let Some(best_scoring_interval) = hit_intervals.peek() {
-        if stack_frame.z + backwards_lower_bound + forwards_lower_bound
+        if stack_frame.z - backwards_lower_bound - forwards_lower_bound
             < best_scoring_interval.z + representative_mismatch_penalty
         {
             return true;
