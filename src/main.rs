@@ -73,14 +73,6 @@ fn main() {
                         .value_name("BAM FILE"),
                 )
                 .arg(
-                    Arg::with_name("difference_model")
-                        .long("model")
-                        .default_value("vindija")
-                        .help("Specify the sequence difference model used to score alignments")
-                        .possible_values(&["vindija", "briggs"])
-                        .value_name("MODEL")
-                )
-                .arg(
                     Arg::with_name("poisson_prob")
                         .short("p")
                         .conflicts_with("max_diff")
@@ -93,7 +85,7 @@ fn main() {
                     Arg::with_name("five_prime_overhang")
                         .required(true)
                         .short("f")
-                        .help("")
+                        .help("5' overhang length parameter")
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
                 )
@@ -101,7 +93,7 @@ fn main() {
                     Arg::with_name("three_prime_overhang")
                         .required(true)
                         .short("t")
-                        .help("")
+                        .help("3' overhang length parameter")
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
                 )
@@ -109,7 +101,7 @@ fn main() {
                     Arg::with_name("ds_deamination_rate")
                         .short("d")
                         .default_value("0.02")
-                        .help("")
+                        .help("Deamination rate in double-stranded stem of a read")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
@@ -117,7 +109,7 @@ fn main() {
                     Arg::with_name("ss_deamination_rate")
                         .short("s")
                         .default_value("0.45")
-                        .help("")
+                        .help("Deamination rate in single-stranded ends of a read")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
@@ -125,7 +117,7 @@ fn main() {
                     Arg::with_name("divergence")
                         .short("D")
                         .default_value("0.005")
-                        .help("")
+                        .help("Divergence rate of the reference and target organisms")
                         .value_name("RATE")
                         .validator(probability_validator),
                 ),
