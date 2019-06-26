@@ -741,7 +741,7 @@ fn stop_searching_suboptimal_hits(
 /// Finds all suffix array intervals for the current pattern with up to z mismatch penalties
 pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     pattern: &[u8],
-    _base_qualities: &[u8],
+    base_qualities: &[u8],
     z: f32,
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -971,6 +971,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 pattern.len(),
                 c,
                 pattern[stack_frame.j as usize],
+                base_qualities[stack_frame.j as usize],
             );
 
             check_and_push(
@@ -1093,10 +1094,14 @@ mod tests {
     fn test_inexact_search() {
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return 0.0;
                 } else if from != to {
@@ -1106,7 +1111,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -1151,10 +1156,14 @@ mod tests {
     fn test_reverse_strand_search() {
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -10.0;
                 } else if from != to {
@@ -1164,7 +1173,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -1206,10 +1215,14 @@ mod tests {
     fn test_d() {
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -1.0;
                 } else if from != to {
@@ -1219,7 +1232,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -1291,10 +1304,14 @@ mod tests {
     fn test_gapped_alignment() {
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -10.0;
                 } else if from != to {
@@ -1304,7 +1321,7 @@ mod tests {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,

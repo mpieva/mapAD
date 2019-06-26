@@ -1,11 +1,10 @@
-// TODO: All the calculations here can be done in advance (even statically)
+// TODO: Use lookup tables instead of computing scores on-demand
 
+/// Sequence difference models are expected to yield only non-positive values (and 0.0), for example log probabilities.
 pub trait SequenceDifferenceModel {
-    fn new() -> Self;
-    fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32;
-
+    fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32;
     fn get_representative_mismatch_penalty(&self) -> f32 {
-        self.get(25, 50, b'T', b'A')
+        self.get(40, 80, b'T', b'A', 40)
     }
 
     /// Needed for the calculation of D arrays
@@ -13,7 +12,7 @@ pub trait SequenceDifferenceModel {
         b"ACGT"
             .iter()
             .filter(|&&base| base != to)
-            .map(|&base| self.get(i, read_length, base, to))
+            .map(|&base| self.get(i, read_length, base, to, 40))
             .filter(|&penalty| penalty < 0.0)
             .fold(std::f32::MIN, |acc, v| acc.max(v))
     }
@@ -60,8 +59,8 @@ pub struct VindijaPWM {
     observed_substitution_probability_default: f32,
 }
 
-impl SequenceDifferenceModel for VindijaPWM {
-    fn new() -> Self {
+impl VindijaPWM {
+    pub fn new() -> Self {
         VindijaPWM {
             // The following values are roughly derived with
             // the naked eye from Prüfer et al. (2017), Fig. S3.
@@ -70,7 +69,10 @@ impl SequenceDifferenceModel for VindijaPWM {
             observed_substitution_probability_default: 0.0005,
         }
     }
-    fn get(&self, i: usize, read_length: usize, from: u8, to: u8) -> f32 {
+}
+
+impl SequenceDifferenceModel for VindijaPWM {
+    fn get(&self, i: usize, read_length: usize, from: u8, to: u8, _base_quality: u8) -> f32 {
         let position_probability = match from {
             b'C' => {
                 let i = i.min(read_length - (i + 1));
@@ -111,6 +113,24 @@ mod tests {
         let vindija_pwm = VindijaPWM::new();
         let read_length = 35;
 
+        //        println!("Vindija PWM");
+        //        for i in 0..read_length {
+        //            println!(
+        //                "{i})\tC->T: {c_t}\t\tC->C: {c_c}\t\tA->A: {a_a}\t\t G->A: {g_a}",
+        //                i = i,
+        //                c_t = vindija_pwm.get(i, read_length, b'C', b'T', 40),
+        //                c_c = vindija_pwm.get(i, read_length, b'C', b'C', 40),
+        //                a_a = vindija_pwm.get(i, read_length, b'A', b'A', 40),
+        //                g_a = vindija_pwm.get(i, read_length, b'G', b'A', 40),
+        //            );
+        //        }
+
+        assert_approx_eq!(-1.321928, vindija_pwm.get(0, read_length, b'C', b'T', 40));
+        assert_approx_eq!(-0.736965, vindija_pwm.get(0, read_length, b'C', b'C', 40));
+        assert_approx_eq!(-5.643856, vindija_pwm.get(15, read_length, b'C', b'T', 40));
+        assert_approx_eq!(-10.965784, vindija_pwm.get(15, read_length, b'G', b'C', 40));
+        assert_approx_eq!(-0.000721, vindija_pwm.get(15, read_length, b'A', b'A', 40));
+    }
         //        for i in 0..read_length {
         //            println!(
         //                "{i})\tC->T: {c_t}\t\tC->C: {c_c}\t\tA->A: {a_a}\t\t G->A: {g_a}",
