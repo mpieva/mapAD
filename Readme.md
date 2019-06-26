@@ -80,7 +80,7 @@ consumption.
 - [x] Incorporation of one or more of the ancient DNA damage models
   - [x] Add framework to specify PSSMs in the code
   - [x] simply penalize C-T changes according to Vindija pattern
-  - [ ] Briggs et al. (2007)
+  - [x] Briggs et al. (2007)
   - [ ] ~~Skoglund et al. (2014)~~
   - [ ] Peyrégne (unpublished)
 - [x] Recursive -> iterative k-mismatch-search
