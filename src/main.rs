@@ -1,12 +1,25 @@
 use clap::{
-    crate_description, crate_name, crate_version, value_t_or_exit, App, AppSettings, Arg,
-    SubCommand,
+    crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
 };
 
-use thrust::sequence_difference_models::{SequenceDifferenceModel, VindijaPWM};
+use thrust::sequence_difference_models::{
+    BriggsEtAl2007aDNA, LibraryPrep, SequenceDifferenceModel, VindijaPWM,
+};
 use thrust::{index, map, utils};
 
 fn main() {
+    let probability_validator = |v: String| {
+        let error_message = String::from("Please specify a value between 0 and 1");
+        let v: f32 = match v.parse() {
+            Ok(s) => s,
+            Err(_) => return Err(error_message),
+        };
+        if (v >= 0.0) && (v <= 1.0) {
+            return Ok(());
+        }
+        Err(error_message)
+    };
+
     let matches = App::new(crate_name!())
         .about(crate_description!())
         .version(crate_version!())
@@ -60,24 +73,61 @@ fn main() {
                         .value_name("BAM FILE"),
                 )
                 .arg(
+                    Arg::with_name("difference_model")
+                        .long("model")
+                        .default_value("vindija")
+                        .help("Specify the sequence difference model used to score alignments")
+                        .possible_values(&["vindija", "briggs"])
+                        .value_name("MODEL")
+                )
+                .arg(
                     Arg::with_name("poisson_prob")
                         .short("p")
                         .conflicts_with("max_diff")
                         .default_value("0.04")
                         .help("Minimum probability of the number of mismatches under 0.02 base error rate")
                         .value_name("PROBABILITY")
-                        .validator(|v| {
-                            let error_message =
-                                String::from("Please specify a probability between 0 and 1");
-                            let v: f32 = match v.parse() {
-                                Ok(s) => s,
-                                Err(_) => return Err(error_message),
-                            };
-                            if (v >= 0.0) && (v <= 1.0) {
-                                return Ok(());
-                            }
-                            Err(error_message)
-                        }),
+                        .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("five_prime_overhang")
+                        .required(true)
+                        .short("f")
+                        .help("")
+                        .value_name("PROBABILITY")
+                        .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("three_prime_overhang")
+                        .required(true)
+                        .short("t")
+                        .help("")
+                        .value_name("PROBABILITY")
+                        .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("ds_deamination_rate")
+                        .short("d")
+                        .default_value("0.02")
+                        .help("")
+                        .value_name("RATE")
+                        .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("ss_deamination_rate")
+                        .short("s")
+                        .default_value("0.45")
+                        .help("")
+                        .value_name("RATE")
+                        .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("divergence")
+                        .short("D")
+                        .default_value("0.005")
+                        .help("")
+                        .value_name("RATE")
+                        .validator(probability_validator),
                 ),
         )
         .get_matches();
@@ -97,10 +147,28 @@ fn main() {
             }
         }
         ("map", Some(map_matches)) => {
-            let difference_model = VindijaPWM::new();
+            let difference_model = BriggsEtAl2007aDNA {
+                // TODO: Make double stranded library prep available
+                library_prep: LibraryPrep::SingleStranded {
+                    five_prime_overhang: value_t!(map_matches.value_of("five_prime_overhang"), f32)
+                        .unwrap_or_else(|e| e.exit()),
+                    three_prime_overhang: value_t!(
+                        map_matches.value_of("three_prime_overhang"),
+                        f32
+                    )
+                    .unwrap_or_else(|e| e.exit()),
+                },
+                ds_deamination_rate: value_t!(map_matches.value_of("ds_deamination_rate"), f32)
+                    .unwrap_or_else(|e| e.exit()),
+                ss_deamination_rate: value_t!(map_matches.value_of("ss_deamination_rate"), f32)
+                    .unwrap_or_else(|e| e.exit()),
+                divergence: value_t!(map_matches.value_of("divergence"), f32)
+                    .unwrap_or_else(|e| e.exit()),
+            };
             let alignment_parameters = utils::AlignmentParameters {
                 base_error_rate: 0.02,
-                poisson_threshold: value_t_or_exit!(map_matches.value_of("poisson_prob"), f64),
+                poisson_threshold: value_t!(map_matches.value_of("poisson_prob"), f64)
+                    .unwrap_or_else(|e| e.exit()),
                 penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(), // TODO
                 penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(), // TODO
                 difference_model,

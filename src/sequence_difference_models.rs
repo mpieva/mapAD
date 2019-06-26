@@ -18,36 +18,82 @@ pub trait SequenceDifferenceModel {
     }
 }
 
-///// Briggs, A. W. et al. Patterns of damage in genomic DNA sequences from a Neandertal. PNAS 104, 14616–14621 (2007)
-//struct BriggsEtAl2007aDNA {
-//    limit: u32,
-//    lparam: Option<u32>,
-//    rparam: Option<u32>,
-//    ds_deam: f32,
-//    ss_deam: f32,
-//    div: f32,
-//    gap: u32,
-//    hit_limit: u32,
-//    cnt_limit: u32,
-//}
-//
-//impl DnaDamageModel for BriggsEtAl2007aDNA {
-//    fn get(&self, i: usize, from: u8, to: u8) -> f32 {}
-//
-//    fn default() -> Self {
-//        BriggsEtAl2007aDNA {
-//            limit: 12, // about two mismatches?
-//            lparam: None,
-//            rparam: None,
-//            ds_deam: 0.02,
-//            ss_deam: 0.45,
-//            div: 0.015 / 3.0, // approx. human-chimp
-//            gap: 11,
-//            hit_limit: 64,
-//            cnt_limit: 256,
-//        }
-//    }
-//}
+/// Library preparation methods commonly used for ancient DNA. Values are overhang probabilities.
+pub enum LibraryPrep {
+    SingleStranded {
+        five_prime_overhang: f32,
+        three_prime_overhang: f32,
+    },
+    DoubleStranded(f32),
+}
+
+/// Briggs, A. W. et al. Patterns of damage in genomic DNA sequences from a Neandertal. PNAS 104, 14616–14621 (2007)
+pub struct BriggsEtAl2007aDNA {
+    pub library_prep: LibraryPrep,
+    // Deamination rate in double-stranded stems
+    pub ds_deamination_rate: f32,
+    // Deamination rate in single-stranded overhangs
+    pub ss_deamination_rate: f32,
+    pub divergence: f32,
+}
+
+impl SequenceDifferenceModel for BriggsEtAl2007aDNA {
+    fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32 {
+        let (p_fwd, p_rev) = match self.library_prep {
+            LibraryPrep::SingleStranded {
+                five_prime_overhang,
+                three_prime_overhang,
+            } => {
+                let five_prime_overhang = five_prime_overhang.powi((i + 1) as i32);
+                let three_prime_overhang = three_prime_overhang.powi((read_length - i) as i32);
+                (
+                    (five_prime_overhang + three_prime_overhang)
+                        - (five_prime_overhang * three_prime_overhang),
+                    0.0,
+                )
+            }
+            LibraryPrep::DoubleStranded(overhang) => (
+                overhang.powi(i as i32 + 1),
+                overhang.powi((read_length - i) as i32),
+            ),
+        };
+
+        let sequencing_error = 10_f32.powf(-1.0 * f32::from(base_quality) / 10.0);
+        let divergence_and_seq_err =
+            sequencing_error + self.divergence - sequencing_error * self.divergence;
+
+        let c_to_t = self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
+        let g_to_a = self.ss_deamination_rate * p_rev + self.ds_deamination_rate * (1.0 - p_rev);
+        match from {
+            b'A' => match to {
+                b'A' => 1.0 - 3.0 * divergence_and_seq_err,
+                _ => divergence_and_seq_err,
+            },
+            b'C' => match to {
+                b'C' => {
+                    1.0 - 3.0 * divergence_and_seq_err - c_to_t
+                        + 4.0 * divergence_and_seq_err * c_to_t
+                }
+                b'T' => divergence_and_seq_err + c_to_t - 4.0 * divergence_and_seq_err * c_to_t,
+                _ => divergence_and_seq_err,
+            },
+            b'G' => match to {
+                b'A' => divergence_and_seq_err + g_to_a - 4.0 * divergence_and_seq_err * g_to_a,
+                b'G' => {
+                    1.0 - 3.0 * divergence_and_seq_err - g_to_a
+                        + 4.0 * divergence_and_seq_err * g_to_a
+                }
+                _ => divergence_and_seq_err,
+            },
+            b'T' => match to {
+                b'T' => 1.0 - 3.0 * divergence_and_seq_err,
+                _ => divergence_and_seq_err,
+            },
+            _ => divergence_and_seq_err,
+        }
+        .log2()
+    }
+}
 
 /// Very simple model of ancient DNA degradation for starters.
 /// It only takes C->T deaminations into account and assumes
@@ -131,21 +177,36 @@ mod tests {
         assert_approx_eq!(-10.965784, vindija_pwm.get(15, read_length, b'G', b'C', 40));
         assert_approx_eq!(-0.000721, vindija_pwm.get(15, read_length, b'A', b'A', 40));
     }
+
+    #[test]
+    fn test_briggs_model() {
+        let briggs_model = BriggsEtAl2007aDNA {
+            library_prep: (LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.63,
+                three_prime_overhang: 0.8,
+            }),
+            ds_deamination_rate: 0.07,
+            ss_deamination_rate: 0.6,
+            divergence: 0.001,
+        };
+        let read_length = 35;
+
+        //        println!("Briggs model");
         //        for i in 0..read_length {
         //            println!(
         //                "{i})\tC->T: {c_t}\t\tC->C: {c_c}\t\tA->A: {a_a}\t\t G->A: {g_a}",
         //                i = i,
-        //                c_t = vindija_pwm.get(i, read_length, b'C', b'T'),
-        //                c_c = vindija_pwm.get(i, read_length, b'C', b'C'),
-        //                a_a = vindija_pwm.get(i, read_length, b'A', b'A'),
-        //                g_a = vindija_pwm.get(i, read_length, b'G', b'A'),
+        //                c_t = briggs_model.get(i, read_length, b'C', b'T', 40),
+        //                c_c = briggs_model.get(i, read_length, b'C', b'C', 40),
+        //                a_a = briggs_model.get(i, read_length, b'A', b'A', 40),
+        //                g_a = briggs_model.get(i, read_length, b'G', b'A', 40),
         //            );
         //        }
 
-        assert_approx_eq!(-1.321928, vindija_pwm.get(0, read_length, b'C', b'T'));
-        assert_approx_eq!(-0.736965, vindija_pwm.get(0, read_length, b'C', b'C'));
-        assert_approx_eq!(-5.643856, vindija_pwm.get(15, read_length, b'C', b'T'));
-        assert_approx_eq!(-10.965784, vindija_pwm.get(15, read_length, b'G', b'C'));
-        assert_approx_eq!(-0.000721, vindija_pwm.get(15, read_length, b'A', b'A'));
+        assert_approx_eq!(-1.310067, briggs_model.get(0, read_length, b'C', b'T', 40));
+        assert_approx_eq!(-0.750255, briggs_model.get(0, read_length, b'C', b'C', 40));
+        assert_approx_eq!(-3.695316, briggs_model.get(15, read_length, b'C', b'T', 40));
+        assert_approx_eq!(-9.828412, briggs_model.get(15, read_length, b'G', b'C', 40));
+        assert_approx_eq!(-0.004768, briggs_model.get(15, read_length, b'A', b'A', 40));
     }
 }
