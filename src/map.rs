@@ -254,7 +254,8 @@ impl FastaIdPositions {
 }
 
 /// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
-/// This allows for pruning the search tree.
+/// This allows for pruning the search tree. The values are minimal expected penalties towards
+/// the respective ends of the query. In contrast to alignment scores, these values are _positive_.
 #[derive(Debug)]
 struct DArray {
     d_array: SmallVec<[f32; 32]>,
@@ -299,10 +300,10 @@ impl DArray {
             z
         });
 
+        // FIXME: It's not optimal to call collect() twice. Side-effects seem to make this necessary.
         DArray {
             d_array: match direction {
                 Direction::Forward => pattern.collect(),
-                // FIXME: Don't call collect() twice. Side-effects seem to make this necessary, though.
                 Direction::Backward => pattern
                     .collect::<SmallVec<[f32; 32]>>()
                     .into_iter()
@@ -650,7 +651,7 @@ fn print_debug(
 }
 
 /// If the best scoring interval has a total sum of penalties z, do not search
-/// for hits scored worse than z + representative_mismatch.
+/// for hits with a minimal expected scored worse than z + representative_mismatch.
 /// This speeds up the alignment considerably.
 fn stop_searching_suboptimal_hits(
     stack_frame: &MismatchSearchStackFrame,
