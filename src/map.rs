@@ -278,6 +278,7 @@ struct DArray {
 impl DArray {
     fn new<T: SequenceDifferenceModel + Sync>(
         pattern: &[u8],
+        base_qualities: &[u8],
         pattern_length: usize,
         read_length: usize,
         direction: Direction,
@@ -306,7 +307,12 @@ impl DArray {
             if interval.size < 1 {
                 z -= alignment_parameters
                     .difference_model
-                    .get_min_penalty(directed_pattern_index(index), read_length, base)
+                    .get_min_penalty(
+                        directed_pattern_index(index),
+                        read_length,
+                        base,
+                        base_qualities[index],
+                    )
                     .max(alignment_parameters.penalty_gap_open)
                     .max(alignment_parameters.penalty_gap_extend);
                 interval = fmd_index.init_interval();
@@ -754,6 +760,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     let d_part_pattern = &pattern[..center_of_read as usize];
     let d_backwards = DArray::new(
         d_part_pattern,
+        &base_qualities[..center_of_read as usize],
         d_part_pattern.len(),
         pattern.len(),
         Direction::Forward,
@@ -764,6 +771,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     let d_part_pattern = &pattern[center_of_read as usize..];
     let d_forwards = DArray::new(
         d_part_pattern,
+        &base_qualities[center_of_read as usize..],
         d_part_pattern.len(),
         pattern.len(),
         Direction::Backward,
@@ -1256,9 +1264,11 @@ mod tests {
         let fmd_index = FMDIndex::from(fm_index);
 
         let pattern = "GTTC".as_bytes().to_owned();
+        let base_qualities = vec![40; pattern.len()];
 
         let d_backward = DArray::new(
             &pattern,
+            &base_qualities,
             pattern.len(),
             pattern.len(),
             Direction::Forward,
@@ -1267,6 +1277,7 @@ mod tests {
         );
         let d_forward = DArray::new(
             &pattern,
+            &base_qualities,
             pattern.len(),
             pattern.len(),
             Direction::Backward,
@@ -1281,6 +1292,7 @@ mod tests {
 
         let d_backward = DArray::new(
             &pattern,
+            &base_qualities,
             pattern.len(),
             pattern.len(),
             Direction::Forward,
@@ -1289,6 +1301,7 @@ mod tests {
         );
         let d_forward = DArray::new(
             &pattern,
+            &base_qualities,
             pattern.len(),
             pattern.len(),
             Direction::Backward,

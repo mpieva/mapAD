@@ -8,11 +8,11 @@ pub trait SequenceDifferenceModel {
     }
 
     /// Needed for the calculation of D arrays
-    fn get_min_penalty(&self, i: usize, read_length: usize, to: u8) -> f32 {
+    fn get_min_penalty(&self, i: usize, read_length: usize, to: u8, base_quality: u8) -> f32 {
         b"ACGT"
             .iter()
             .filter(|&&base| base != to)
-            .map(|&base| self.get(i, read_length, base, to, 40))
+            .map(|&base| self.get(i, read_length, base, to, base_quality))
             .filter(|&penalty| penalty < 0.0)
             .fold(std::f32::MIN, |acc, v| acc.max(v))
     }
