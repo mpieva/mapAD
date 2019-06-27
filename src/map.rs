@@ -731,9 +731,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             backwards_lower_bound,
             forwards_lower_bound,
         ) {
-            // Since we operate on a priority stack, it's safe to assume that there are no
-            // better scoring frames on the stack, so we are going to stop the search.
-            break;
+            continue;
         }
 
         let next_j;
