@@ -583,8 +583,7 @@ fn check_and_push(
     edit_operations: &Option<EditOperationsTrack>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
-    backwards_lower_bound: f32,
-    forwards_lower_bound: f32,
+    lower_bound: f32,
     representative_mismatch_penalty: f32,
 ) {
     // Empty interval
@@ -593,7 +592,7 @@ fn check_and_push(
     }
 
     // Too many mismatches
-    if stack_frame.z < backwards_lower_bound + forwards_lower_bound {
+    if stack_frame.z < lower_bound {
         return;
     }
 
@@ -601,8 +600,7 @@ fn check_and_push(
         &stack_frame,
         intervals,
         representative_mismatch_penalty,
-        backwards_lower_bound,
-        forwards_lower_bound,
+        lower_bound,
     ) {
         return;
     }
@@ -658,13 +656,10 @@ fn stop_searching_suboptimal_hits(
     stack_frame: &MismatchSearchStackFrame,
     hit_intervals: &BinaryHeap<HitInterval>,
     representative_mismatch_penalty: f32,
-    backwards_lower_bound: f32,
-    forwards_lower_bound: f32,
+    lower_bound: f32,
 ) -> bool {
     if let Some(best_scoring_interval) = hit_intervals.peek() {
-        if stack_frame.z - backwards_lower_bound - forwards_lower_bound
-            < best_scoring_interval.z + representative_mismatch_penalty
-        {
+        if stack_frame.z - lower_bound < best_scoring_interval.z + representative_mismatch_penalty {
             return true;
         }
     }
@@ -724,14 +719,13 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
 
     while let Some(stack_frame) = stack.pop() {
         // In the meantime, have we found a match whose score we perhaps aren't close enough to?
-        let backwards_lower_bound = d_backwards.get(stack_frame.backward_index);
-        let forwards_lower_bound = d_forwards.get(stack_frame.forward_index);
+        let lower_bound =
+            d_backwards.get(stack_frame.backward_index) + d_forwards.get(stack_frame.forward_index);
         if stop_searching_suboptimal_hits(
             &stack_frame,
             &hit_intervals,
             representative_mismatch_penalty,
-            backwards_lower_bound,
-            forwards_lower_bound,
+            lower_bound,
         ) {
             // Since we operate on a priority stack, it's safe to assume that there are no
             // better scoring frames on the stack, so we are going to stop the search.
@@ -762,8 +756,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         };
 
         // Re-calculate the lower bounds for extension
-        let backwards_lower_bound = d_backwards.get(next_backward_index);
-        let forwards_lower_bound = d_forwards.get(next_forward_index - pattern.len() as isize / 2);
+        let lower_bound = d_backwards.get(next_backward_index)
+            + d_forwards.get(next_forward_index - pattern.len() as isize / 2);
 
         //
         // Insertion in read / deletion in reference
@@ -795,9 +789,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     stack_frame.open_gap_forwards
                 },
                 alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
-                priority: stack_frame.alignment_score + penalty
-                    - forwards_lower_bound
-                    - backwards_lower_bound,
+                priority: stack_frame.alignment_score + penalty - lower_bound,
                 edit_operations: None,
                 //            debug_helper: if stack_frame.forward {
                 //                format!("{}(_)", stack_frame.debug_helper)
@@ -811,8 +803,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             &stack_frame.edit_operations,
             &mut stack,
             &mut hit_intervals,
-            backwards_lower_bound,
-            forwards_lower_bound,
+            lower_bound,
             representative_mismatch_penalty,
         );
 
@@ -879,9 +870,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
-                    priority: stack_frame.alignment_score + penalty
-                        - forwards_lower_bound
-                        - backwards_lower_bound,
+                    priority: stack_frame.alignment_score + penalty - lower_bound,
                     edit_operations: None,
                     //                debug_helper: if stack_frame.forward {
                     //                    format!("{}({})", stack_frame.debug_helper, c as char)
@@ -895,8 +884,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
-                backwards_lower_bound,
-                forwards_lower_bound,
+                lower_bound,
                 representative_mismatch_penalty,
             );
 
@@ -930,9 +918,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
-                    priority: stack_frame.alignment_score + penalty
-                        - forwards_lower_bound
-                        - backwards_lower_bound,
+                    priority: stack_frame.alignment_score + penalty - lower_bound,
                     edit_operations: None,
                     //                    debug_helper: if stack_frame.forward {
                     //                        format!(
@@ -953,8 +939,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
-                backwards_lower_bound,
-                forwards_lower_bound,
+                lower_bound,
                 representative_mismatch_penalty,
             );
         }
