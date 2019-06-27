@@ -189,6 +189,7 @@ struct MismatchSearchStackFrame {
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
+    priority: f32,
     edit_operations: Option<EditOperationsTrack>,
     //    debug_helper: String, // Remove this before measuring performance (it's slow)
 }
@@ -201,9 +202,9 @@ impl PartialOrd for MismatchSearchStackFrame {
 
 impl Ord for MismatchSearchStackFrame {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.alignment_score > other.alignment_score {
+        if self.priority > other.priority {
             Ordering::Greater
-        } else if self.alignment_score < other.alignment_score {
+        } else if self.priority < other.priority {
             Ordering::Less
         } else {
             Ordering::Equal
@@ -213,7 +214,7 @@ impl Ord for MismatchSearchStackFrame {
 
 impl PartialEq for MismatchSearchStackFrame {
     fn eq(&self, other: &Self) -> bool {
-        (self.alignment_score - other.alignment_score).abs() < std::f32::EPSILON
+        (self.priority - other.priority).abs() < std::f32::EPSILON
     }
 }
 
@@ -613,7 +614,7 @@ fn check_and_push(
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
-            alignment_score: stack_frame.alignment_score - pattern.len() as f32,
+            alignment_score: stack_frame.alignment_score, // - pattern.len() as f32,
             z: stack_frame.z,
             edit_operations,
         });
@@ -716,6 +717,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0.0,
+        priority: 0.0,
         edit_operations: Some(EditOperationsTrack::new()),
         //        debug_helper: String::from("."),
     });
@@ -790,7 +792,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 } else {
                     stack_frame.open_gap_forwards
                 },
-                alignment_score: stack_frame.alignment_score + penalty + 1.0,
+                alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
+                priority: stack_frame.alignment_score + penalty
+                    - forwards_lower_bound
+                    - backwards_lower_bound,
                 edit_operations: None,
                 //            debug_helper: if stack_frame.forward {
                 //                format!("{}(_)", stack_frame.debug_helper)
@@ -871,7 +876,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     } else {
                         stack_frame.open_gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score + penalty + 1.0,
+                    alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
+                    priority: stack_frame.alignment_score + penalty
+                        - forwards_lower_bound
+                        - backwards_lower_bound,
                     edit_operations: None,
                     //                debug_helper: if stack_frame.forward {
                     //                    format!("{}({})", stack_frame.debug_helper, c as char)
@@ -919,7 +927,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     } else {
                         stack_frame.open_gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score + penalty + 1.0,
+                    alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
+                    priority: stack_frame.alignment_score + penalty
+                        - forwards_lower_bound
+                        - backwards_lower_bound,
                     edit_operations: None,
                     //                    debug_helper: if stack_frame.forward {
                     //                        format!(
@@ -1357,6 +1368,7 @@ mod tests {
     fn test_ord_impl() {
         let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
+            priority: -5.0,
             j: 0,
             z: 0.0,
             current_interval: BiInterval {
@@ -1374,6 +1386,7 @@ mod tests {
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
+            priority: -20.0,
             j: 0,
             z: 0.0,
             current_interval: BiInterval {
@@ -1409,12 +1422,8 @@ mod tests {
 
         let alphabet = alphabets::dna::alphabet();
 
-        // correct
-        // separator
-        // incorrect
-        let mut ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAG\
-                           AAAAAAAAAAAAAAAAAAAA\
-                           TTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
+        // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
+        let mut ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAGAAAAAAAAAAAAAAAAAAAATTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()
             .to_owned();
 
@@ -1448,16 +1457,24 @@ mod tests {
             &fmd_index,
         );
 
-        let alignment_scores = intervals.iter().map(|f| f.alignment_score).collect::<Vec<_>>();
-        assert_eq!(vec![-11.320463, -38.763348, -11.3488865], alignment_scores);
+        let alignment_scores = intervals
+            .iter()
+            .map(|f| f.alignment_score)
+            .collect::<Vec<_>>();
+        assert_eq!(vec![-11.320482, -38.763355, -11.348894], alignment_scores);
 
         let mut positions: Vec<usize> = intervals
-            .into_iter()
+            .iter()
             .map(|f| f.interval.forward().occ(&sar))
             .flatten()
             .collect();
         positions.sort();
         assert_eq!(vec![0, 62, 63], positions);
+
+        assert_eq!(
+            vec![0],
+            intervals.peek().unwrap().interval.forward().occ(&sar)
+        );
     }
 
 }
