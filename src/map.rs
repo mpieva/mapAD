@@ -1394,4 +1394,70 @@ mod tests {
         assert!(!(map_params_large < map_params_small));
         assert_ne!(map_params_large, map_params_small);
     }
+
+    #[test]
+    fn test_corner_cases() {
+        let difference_model = VindijaPWM::new();
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.01,
+            penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
+            penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
+            difference_model,
+        };
+
+        let alphabet = alphabets::dna::alphabet();
+
+        // correct
+        // separator
+        // incorrect
+        let mut ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAG\
+                           AAAAAAAAAAAAAAAAAAAA\
+                           TTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
+            .as_bytes()
+            .to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let sar = suffix_array(&ref_seq);
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+
+        let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
+            .as_bytes()
+            .to_owned();
+        let base_qualities = vec![40; pattern.len()];
+
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            (allowed_mismatches.get(pattern.len())
+                * parameters
+                    .difference_model
+                    .get_representative_mismatch_penalty())
+            .abs(),
+            &parameters,
+            &fmd_index,
+        );
+
+        let alignment_scores = intervals.iter().map(|f| f.alignment_score).collect::<Vec<_>>();
+        assert_eq!(vec![-11.320463, -38.763348, -11.3488865], alignment_scores);
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&sar))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(vec![0, 62, 63], positions);
+    }
+
 }
