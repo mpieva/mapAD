@@ -3,7 +3,7 @@ use clap::{
 };
 
 use thrust::sequence_difference_models::{
-    BriggsEtAl2007aDNA, LibraryPrep, SequenceDifferenceModel, VindijaPWM,
+    BriggsEtAl2007aDNA, LibraryPrep, SequenceDifferenceModel,
 };
 use thrust::{index, map, utils};
 
