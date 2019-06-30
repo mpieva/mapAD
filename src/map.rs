@@ -103,6 +103,18 @@ impl Direction {
             Backward => Forward,
         }
     }
+
+    fn is_forward(self) -> bool {
+        use self::Direction::*;
+        match self {
+            Forward => true,
+            Backward => false,
+        }
+    }
+
+    fn is_backward(self) -> bool {
+        !self.is_forward()
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -185,7 +197,7 @@ struct MismatchSearchStackFrame {
     current_interval: BiInterval,
     backward_index: isize,
     forward_index: isize,
-    forward: bool, // TODO: Switch to Direction enum
+    direction: Direction,
     open_gap_backwards: bool,
     open_gap_forwards: bool,
     alignment_score: f32,
@@ -708,7 +720,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         current_interval: fmd_index.init_interval(),
         backward_index: center_of_read - 1,
         forward_index: center_of_read,
-        forward: true,
+        direction: Direction::Forward,
         open_gap_backwards: false,
         open_gap_forwards: false,
         alignment_score: 0.0,
@@ -743,16 +755,19 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         ); // FIXME
 
         // Determine direction of progress for next iteration on this stack frame
-        let fmd_ext_interval = if stack_frame.forward {
-            next_forward_index = stack_frame.forward_index + 1;
-            next_backward_index = stack_frame.backward_index;
-            next_j = next_backward_index;
-            stack_frame.current_interval.swapped()
-        } else {
-            next_forward_index = stack_frame.forward_index;
-            next_backward_index = stack_frame.backward_index - 1;
-            next_j = next_forward_index;
-            stack_frame.current_interval
+        let fmd_ext_interval = match stack_frame.direction {
+            Direction::Forward => {
+                next_forward_index = stack_frame.forward_index + 1;
+                next_backward_index = stack_frame.backward_index;
+                next_j = next_backward_index;
+                stack_frame.current_interval.swapped()
+            }
+            Direction::Backward => {
+                next_forward_index = stack_frame.forward_index;
+                next_backward_index = stack_frame.backward_index - 1;
+                next_j = next_forward_index;
+                stack_frame.current_interval
+            }
         };
 
         // Re-calculate the lower bounds for extension
@@ -762,8 +777,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
         //
         // Insertion in read / deletion in reference
         //
-        let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
-            || (stack_frame.open_gap_forwards && !stack_frame.forward)
+        let penalty = if (stack_frame.open_gap_backwards && stack_frame.direction.is_forward())
+            || (stack_frame.open_gap_forwards && stack_frame.direction.is_backward())
         {
             parameters.penalty_gap_extend
         } else {
@@ -776,14 +791,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 z: stack_frame.z + penalty,
                 backward_index: next_backward_index,
                 forward_index: next_forward_index,
-                forward: !stack_frame.forward,
+                direction: stack_frame.direction.reverse(),
                 // Mark opened gap at the corresponding end
-                open_gap_backwards: if !stack_frame.forward {
+                open_gap_backwards: if stack_frame.direction.is_backward() {
                     stack_frame.open_gap_backwards
                 } else {
                     true
                 },
-                open_gap_forwards: if stack_frame.forward {
+                open_gap_forwards: if stack_frame.direction.is_forward() {
                     true
                 } else {
                     stack_frame.open_gap_forwards
@@ -836,7 +851,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                 }
             };
             // Special treatment of forward extension
-            let c = if stack_frame.forward {
+            let c = if stack_frame.direction.is_forward() {
                 interval_prime = interval_prime.swapped();
                 dna::complement(c)
             } else {
@@ -846,8 +861,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
             //
             // Deletion in read / insertion in reference
             //
-            let penalty = if (stack_frame.open_gap_backwards && stack_frame.forward)
-                || (stack_frame.open_gap_forwards && !stack_frame.forward)
+            let penalty = if (stack_frame.open_gap_backwards && stack_frame.direction.is_forward())
+                || (stack_frame.open_gap_forwards && stack_frame.direction.is_backward())
             {
                 parameters.penalty_gap_extend
             } else {
@@ -859,12 +874,12 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     z: stack_frame.z + penalty,
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
-                    open_gap_backwards: if !stack_frame.forward {
+                    open_gap_backwards: if stack_frame.direction.is_backward() {
                         true
                     } else {
                         stack_frame.open_gap_backwards
                     },
-                    open_gap_forwards: if stack_frame.forward {
+                    open_gap_forwards: if stack_frame.direction.is_forward() {
                         true
                     } else {
                         stack_frame.open_gap_forwards
@@ -905,14 +920,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel>(
                     current_interval: interval_prime,
                     backward_index: next_backward_index,
                     forward_index: next_forward_index,
-                    forward: !stack_frame.forward,
+                    direction: stack_frame.direction.reverse(),
                     // Mark closed gap at the corresponding end
-                    open_gap_backwards: if !stack_frame.forward {
+                    open_gap_backwards: if stack_frame.direction.is_backward() {
                         false
                     } else {
                         stack_frame.open_gap_backwards
                     },
-                    open_gap_forwards: if stack_frame.forward {
+                    open_gap_forwards: if stack_frame.direction.is_forward() {
                         false
                     } else {
                         stack_frame.open_gap_forwards
@@ -1366,7 +1381,7 @@ mod tests {
             },
             backward_index: 5,
             forward_index: 5,
-            forward: false,
+            direction: Direction::Backward,
             open_gap_backwards: false,
             open_gap_forwards: false,
             edit_operations: None,
@@ -1384,7 +1399,7 @@ mod tests {
             },
             backward_index: 5,
             forward_index: 5,
-            forward: false,
+            direction: Direction::Backward,
             open_gap_backwards: false,
             open_gap_forwards: false,
             edit_operations: None,
