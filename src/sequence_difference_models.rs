@@ -98,6 +98,7 @@ impl SequenceDifferenceModel for BriggsEtAl2007aDNA {
 /// Very simple model of ancient DNA degradation for starters.
 /// It only takes C->T deaminations into account and assumes
 /// symmetry between 5' and 3' ends of the deamination pattern.
+#[derive(Default)]
 pub struct VindijaPWM {
     // "Sparse" position probability matrix
     ppm_read_ends_symmetric_ct: [f32; 7],
