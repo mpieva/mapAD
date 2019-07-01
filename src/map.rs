@@ -404,7 +404,7 @@ fn map_reads<T: SequenceDifferenceModel>(
 
     let mut out = bam::Writer::from_path(out_file_path, &header)?;
 
-    let mut allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
+    let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
     debug!("Map reads");
     for record in reads_fq_reader.records() {
@@ -1440,7 +1440,7 @@ mod tests {
         );
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()

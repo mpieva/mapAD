@@ -16,25 +16,42 @@ pub struct AllowedMismatches<'a, T: SequenceDifferenceModel> {
 
 impl<'a, T: SequenceDifferenceModel> AllowedMismatches<'a, T> {
     pub fn new(alignment_parameters: &AlignmentParameters<T>) -> AllowedMismatches<T> {
+        let cache = (0..128)
+            .map(|read_length| {
+                (
+                    read_length,
+                    AllowedMismatches::<T>::calculate_max_num_mismatches(
+                        read_length,
+                        alignment_parameters.poisson_threshold,
+                        alignment_parameters.base_error_rate,
+                    ),
+                )
+            })
+            .collect::<HashMap<usize, f32>>();
+
         AllowedMismatches {
             alignment_parameters,
-            cache: HashMap::new(),
+            cache,
         }
     }
 
-    pub fn get(&mut self, read_length: usize) -> f32 {
+    pub fn get(&self, read_length: usize) -> f32 {
         match self.cache.get(&read_length) {
-            None => {
-                let max_num_mismatches = self.calculate_max_num_mismatches(read_length);
-                self.cache.insert(read_length, max_num_mismatches);
-                max_num_mismatches
-            }
+            None => AllowedMismatches::<T>::calculate_max_num_mismatches(
+                read_length,
+                self.alignment_parameters.poisson_threshold,
+                self.alignment_parameters.base_error_rate,
+            ),
             Some(v) => *v,
         }
     }
 
-    fn calculate_max_num_mismatches(&self, read_length: usize) -> f32 {
-        let lambda = read_length as f64 * self.alignment_parameters.base_error_rate;
+    fn calculate_max_num_mismatches(
+        read_length: usize,
+        poisson_threshold: f64,
+        base_error_rate: f64,
+    ) -> f32 {
+        let lambda = read_length as f64 * base_error_rate;
         let exp_minus_lambda = (-lambda).exp();
 
         let mut lambda_to_the_power_of_k = 1.0;
@@ -53,7 +70,7 @@ impl<'a, T: SequenceDifferenceModel> AllowedMismatches<'a, T> {
                 // BWA allows k+1 mismatches, and so do we
                 (k + 1, sum)
             }))
-            .take_while(|(_k, sum)| 1.0 - sum > self.alignment_parameters.poisson_threshold)
+            .take_while(|(_k, sum)| 1.0 - sum > poisson_threshold)
             .map(|(k, _sum)| k)
             .last()
             .unwrap_or(0) as f32
@@ -74,7 +91,7 @@ mod tests {
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,
         };
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         assert_eq!(6.0, allowed_mismatches.get(156));
         assert_eq!(6.0, allowed_mismatches.get(124));
@@ -101,7 +118,7 @@ mod tests {
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,
         };
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         //        let mut old_val = 0.0;
         //        let mut count = 0;
