@@ -97,6 +97,6 @@ consumption.
 - [x] Problem: BFS does not work well with negative scores which we get with log-probs (-> slow). Perhaps add +1?
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
-- [ ] Multithreading
+- [x] Multithreading
 - [ ] Cluster-enabled version
 - [ ] _Paired-end sequencing_
