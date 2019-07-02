@@ -275,7 +275,7 @@ struct DArray {
 }
 
 impl DArray {
-    fn new<T: SequenceDifferenceModel>(
+    fn new<T: SequenceDifferenceModel + Sync>(
         pattern: &[u8],
         pattern_length: usize,
         read_length: usize,
@@ -333,7 +333,7 @@ impl DArray {
 }
 
 /// Loads index files and launches the mapping process
-pub fn run<T: SequenceDifferenceModel>(
+pub fn run<T: SequenceDifferenceModel + Sync>(
     reads_path: &str,
     reference_path: &str,
     out_file_path: &str,
@@ -374,7 +374,7 @@ pub fn run<T: SequenceDifferenceModel>(
 }
 
 /// Maps reads and writes them to a file in BAM format
-fn map_reads<T: SequenceDifferenceModel>(
+fn map_reads<T: SequenceDifferenceModel + Sync>(
     alignment_parameters: &AlignmentParameters<T>,
     reads_path: &str,
     out_file_path: &str,
@@ -679,7 +679,7 @@ fn stop_searching_suboptimal_hits(
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatch penalties
-pub fn k_mismatch_search<T: SequenceDifferenceModel>(
+pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     pattern: &[u8],
     _base_qualities: &[u8],
     z: f32,
