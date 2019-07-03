@@ -6,8 +6,8 @@ use std::fs::File;
 use clap::{crate_name, crate_version};
 use either::Either;
 use log::debug;
-use smallvec::SmallVec;
 use rayon::prelude::*;
+use smallvec::SmallVec;
 
 use bio::alphabets::dna;
 use bio::data_structures::bwt::Occ;
