@@ -59,37 +59,35 @@ impl SequenceDifferenceModel for BriggsEtAl2007aDNA {
         };
 
         let sequencing_error = 10_f32.powf(-1.0 * f32::from(base_quality) / 10.0);
-        let divergence_and_seq_err =
+
+        // Probability of the independent events of sequencing errors or divergence which are both
+        // modeled independently of positions and specific bases
+        let independent_error =
             sequencing_error + self.divergence - sequencing_error * self.divergence;
 
         let c_to_t = self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
         let g_to_a = self.ss_deamination_rate * p_rev + self.ds_deamination_rate * (1.0 - p_rev);
+
         match from {
             b'A' => match to {
-                b'A' => 1.0 - 3.0 * divergence_and_seq_err,
-                _ => divergence_and_seq_err,
+                b'A' => 1.0 - 3.0 * independent_error,
+                _ => independent_error,
             },
             b'C' => match to {
-                b'C' => {
-                    1.0 - 3.0 * divergence_and_seq_err - c_to_t
-                        + 4.0 * divergence_and_seq_err * c_to_t
-                }
-                b'T' => divergence_and_seq_err + c_to_t - 4.0 * divergence_and_seq_err * c_to_t,
-                _ => divergence_and_seq_err,
+                b'C' => 1.0 - 3.0 * independent_error - c_to_t + 4.0 * independent_error * c_to_t,
+                b'T' => independent_error + c_to_t - 4.0 * independent_error * c_to_t,
+                _ => independent_error,
             },
             b'G' => match to {
-                b'A' => divergence_and_seq_err + g_to_a - 4.0 * divergence_and_seq_err * g_to_a,
-                b'G' => {
-                    1.0 - 3.0 * divergence_and_seq_err - g_to_a
-                        + 4.0 * divergence_and_seq_err * g_to_a
-                }
-                _ => divergence_and_seq_err,
+                b'A' => independent_error + g_to_a - 4.0 * independent_error * g_to_a,
+                b'G' => 1.0 - 3.0 * independent_error - g_to_a + 4.0 * independent_error * g_to_a,
+                _ => independent_error,
             },
             b'T' => match to {
-                b'T' => 1.0 - 3.0 * divergence_and_seq_err,
-                _ => divergence_and_seq_err,
+                b'T' => 1.0 - 3.0 * independent_error,
+                _ => independent_error,
             },
-            _ => divergence_and_seq_err,
+            _ => independent_error,
         }
         .log2()
     }
