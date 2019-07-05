@@ -59,7 +59,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -134,7 +134,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let patterns = vec![
             "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
@@ -216,7 +216,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let patterns = vec![
             "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
