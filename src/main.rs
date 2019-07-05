@@ -3,7 +3,7 @@ use clap::{
 };
 
 use thrust::sequence_difference_models::{
-    BriggsEtAl2007aDNA, LibraryPrep, SequenceDifferenceModel,
+    LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel,
 };
 use thrust::{index, map, utils};
 
@@ -33,7 +33,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("index")
-                .about("Indexes a genome file")  // TODO
+                .about("Indexes a genome file")
                 .version(crate_version!())
                 .arg(
                     Arg::with_name("reference")
@@ -46,7 +46,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("map")
-                .about("Maps reads to an indexed genome")  // TODO
+                .about("Maps reads to an indexed genome")
                 .version(crate_version!())
                 .arg(
                     Arg::with_name("reads")
@@ -74,12 +74,23 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("poisson_prob")
+                        .required(true)
                         .short("p")
                         .conflicts_with("max_diff")
-                        .default_value("0.04")
+                        // .default_value("0.04")
                         .help("Minimum probability of the number of mismatches under 0.02 base error rate")
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("library")
+                        .required(true)
+                        .short("l")
+                        .long("library")
+                        // .default_value("single_stranded")
+                        .possible_values(&["single_stranded", "double_stranded"])
+                        .help("Library preparation method")
+                        .value_name("METHOD")
                 )
                 .arg(
                     Arg::with_name("five_prime_overhang")
@@ -91,7 +102,7 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("three_prime_overhang")
-                        .required(true)
+                        .required_if("library", "single_stranded")
                         .short("t")
                         .help("3' overhang length parameter")
                         .value_name("PROBABILITY")
@@ -99,24 +110,27 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("ds_deamination_rate")
+                        .required(true)
                         .short("d")
-                        .default_value("0.02")
+                        // .default_value("0.02")
                         .help("Deamination rate in double-stranded stem of a read")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
                 .arg(
                     Arg::with_name("ss_deamination_rate")
+                        .required(true)
                         .short("s")
-                        .default_value("0.45")
+                        // .default_value("0.45")
                         .help("Deamination rate in single-stranded ends of a read")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
                 .arg(
                     Arg::with_name("divergence")
+                        .required(true)
                         .short("D")
-                        .default_value("0.005")
+                        // .default_value("0.005")
                         .help("Divergence rate of the reference and target organisms")
                         .value_name("RATE")
                         .validator(probability_validator),
@@ -139,9 +153,8 @@ fn main() {
             }
         }
         ("map", Some(map_matches)) => {
-            let difference_model = BriggsEtAl2007aDNA {
-                // TODO: Make double stranded library prep available
-                library_prep: LibraryPrep::SingleStranded {
+            let library_prep = match map_matches.value_of("library").unwrap() {
+                "single_stranded" => LibraryPrep::SingleStranded {
                     five_prime_overhang: value_t!(map_matches.value_of("five_prime_overhang"), f32)
                         .unwrap_or_else(|e| e.exit()),
                     three_prime_overhang: value_t!(
@@ -150,6 +163,14 @@ fn main() {
                     )
                     .unwrap_or_else(|e| e.exit()),
                 },
+                "double_stranded" => LibraryPrep::DoubleStranded(
+                    value_t!(map_matches.value_of("five_prime_overhang"), f32)
+                        .unwrap_or_else(|e| e.exit()),
+                ),
+                _ => unreachable!(),
+            };
+            let difference_model = SimpleAncientDnaModel {
+                library_prep,
                 ds_deamination_rate: value_t!(map_matches.value_of("ds_deamination_rate"), f32)
                     .unwrap_or_else(|e| e.exit()),
                 ss_deamination_rate: value_t!(map_matches.value_of("ss_deamination_rate"), f32)

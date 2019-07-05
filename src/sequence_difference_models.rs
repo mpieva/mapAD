@@ -27,8 +27,8 @@ pub enum LibraryPrep {
     DoubleStranded(f32),
 }
 
-/// Briggs, A. W. et al. Patterns of damage in genomic DNA sequences from a Neandertal. PNAS 104, 14616–14621 (2007)
-pub struct BriggsEtAl2007aDNA {
+/// Model of deamination (aDNA degradation), divergence, and sequencing error
+pub struct SimpleAncientDnaModel {
     pub library_prep: LibraryPrep,
     // Deamination rate in double-stranded stems
     pub ds_deamination_rate: f32,
@@ -37,7 +37,7 @@ pub struct BriggsEtAl2007aDNA {
     pub divergence: f32,
 }
 
-impl SequenceDifferenceModel for BriggsEtAl2007aDNA {
+impl SequenceDifferenceModel for SimpleAncientDnaModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32 {
         let (p_fwd, p_rev) = match self.library_prep {
             LibraryPrep::SingleStranded {
@@ -60,11 +60,11 @@ impl SequenceDifferenceModel for BriggsEtAl2007aDNA {
 
         let sequencing_error = 10_f32.powf(-1.0 * f32::from(base_quality) / 10.0);
 
-        // Probability of the independent events of sequencing errors or divergence which are both
-        // modeled independently of positions and specific bases
+        // Probability of seeing a mutation or sequencing error
         let independent_error =
             sequencing_error + self.divergence - sequencing_error * self.divergence;
 
+        // Probabilities of seeing C->T or G->A substitutions
         let c_to_t = self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
         let g_to_a = self.ss_deamination_rate * p_rev + self.ds_deamination_rate * (1.0 - p_rev);
 
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_briggs_model() {
-        let briggs_model = BriggsEtAl2007aDNA {
+        let briggs_model = SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.63,
                 three_prime_overhang: 0.8,
