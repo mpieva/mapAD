@@ -1,7 +1,7 @@
 use crate::sequence_difference_models::SequenceDifferenceModel;
 use std::collections::HashMap;
 
-pub struct AlignmentParameters<T: SequenceDifferenceModel> {
+pub struct AlignmentParameters<T: SequenceDifferenceModel + Sync> {
     pub base_error_rate: f64,
     pub poisson_threshold: f64,
     pub difference_model: T,
@@ -9,12 +9,12 @@ pub struct AlignmentParameters<T: SequenceDifferenceModel> {
     pub penalty_gap_extend: f32,
 }
 
-pub struct AllowedMismatches<'a, T: SequenceDifferenceModel> {
+pub struct AllowedMismatches<'a, T: SequenceDifferenceModel + Sync> {
     alignment_parameters: &'a AlignmentParameters<T>,
     cache: HashMap<usize, f32>,
 }
 
-impl<'a, T: SequenceDifferenceModel> AllowedMismatches<'a, T> {
+impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
     pub fn new(alignment_parameters: &AlignmentParameters<T>) -> AllowedMismatches<T> {
         let cache = (0..128)
             .map(|read_length| {

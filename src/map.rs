@@ -6,6 +6,7 @@ use std::fs::File;
 use clap::{crate_name, crate_version};
 use either::Either;
 use log::debug;
+use rayon::prelude::*;
 use smallvec::SmallVec;
 
 use bio::alphabets::dna;
@@ -275,7 +276,7 @@ struct DArray {
 }
 
 impl DArray {
-    fn new<T: SequenceDifferenceModel>(
+    fn new<T: SequenceDifferenceModel + Sync>(
         pattern: &[u8],
         pattern_length: usize,
         read_length: usize,
@@ -333,7 +334,7 @@ impl DArray {
 }
 
 /// Loads index files and launches the mapping process
-pub fn run<T: SequenceDifferenceModel>(
+pub fn run<T: SequenceDifferenceModel + Sync>(
     reads_path: &str,
     reference_path: &str,
     out_file_path: &str,
@@ -374,7 +375,7 @@ pub fn run<T: SequenceDifferenceModel>(
 }
 
 /// Maps reads and writes them to a file in BAM format
-fn map_reads<T: SequenceDifferenceModel>(
+fn map_reads<T: SequenceDifferenceModel + Sync>(
     alignment_parameters: &AlignmentParameters<T>,
     reads_path: &str,
     out_file_path: &str,
@@ -402,102 +403,161 @@ fn map_reads<T: SequenceDifferenceModel>(
         header.push_record(&header_record);
     }
 
-    let mut out = bam::Writer::from_path(out_file_path, &header)?;
-
     let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
-    debug!("Map reads");
-    for record in reads_fq_reader.records() {
-        let record = record?;
+    // Mapping is performed in parallel by passing this closure to the thread pool
+    let mapping_parallel = |record: &fastq::Record| {
         let pattern = record.seq().to_ascii_uppercase();
 
         // Hardcoded value (33) that should be ok only for Illumina reads
         let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
 
-        let mut intervals = k_mismatch_search(
-            &pattern,
-            &base_qualities,
-            (allowed_mismatches.get(pattern.len())
-                * alignment_parameters
-                    .difference_model
-                    .get_representative_mismatch_penalty())
-            .abs(),
-            alignment_parameters,
-            &fmd_index,
-        );
+        (
+            record.to_owned(),
+            k_mismatch_search(
+                &pattern,
+                &base_qualities,
+                (allowed_mismatches.get(pattern.len())
+                    * alignment_parameters
+                        .difference_model
+                        .get_representative_mismatch_penalty())
+                .abs(),
+                alignment_parameters,
+                &fmd_index,
+            ),
+        )
+    };
 
-        //
-        // Create BAM records
-        //
-        if let Some(best_alignment) = intervals.pop() {
-            let cigar = best_alignment
-                .edit_operations
-                .build_cigar(record.seq().len());
-            let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
-            let mut max_out_lines_per_read = 1;
-            // Aligns to reference strand
-            for &position in best_alignment
-                .interval
-                .forward()
-                .occ(suffix_array)
-                .iter()
-                .filter(|&&position| position < fmd_index.bwt().len() / 2)
-                .take(max_out_lines_per_read)
-            {
-                max_out_lines_per_read -= 1;
-                let (tid, position) = identifier_position_map.get_reference_identifier(position);
-                let record = create_bam_record(
-                    record.id().as_bytes(),
-                    record.seq(),
-                    record.qual().iter(),
-                    position,
-                    Some(&best_alignment),
-                    Some(&cigar),
-                    Some(mapping_quality),
-                    tid,
-                );
-                out.write(&record)?;
-            }
-            // Aligns to reverse strand
-            for &position in best_alignment
-                .interval
-                .revcomp()
-                .occ(suffix_array)
-                .iter()
-                .filter(|&&position| position < fmd_index.bwt().len() / 2)
-                .take(max_out_lines_per_read)
-            {
-                let (tid, position) = identifier_position_map.get_reference_identifier(position);
-                let mut record = create_bam_record(
-                    record.id().as_bytes(),
-                    &dna::revcomp(record.seq()),
-                    record.qual().iter().rev(),
-                    position,
-                    Some(&best_alignment),
-                    Some(&cigar),
-                    Some(mapping_quality),
-                    tid,
-                );
-                record.set_reverse();
-                out.write(&record)?;
-            }
-        } else {
-            // No match found
-            let mut record = create_bam_record(
+    const CHUNK_SIZE: usize = 1000;
+    let mut in_buffer: Vec<fastq::Record> = Vec::with_capacity(CHUNK_SIZE);
+    let mut out_buffer: Vec<_>;
+    let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
+
+    debug!("Map reads");
+    for (i, record) in reads_fq_reader.records().enumerate() {
+        in_buffer.push(record.unwrap());
+        if i % (CHUNK_SIZE - 1) == 0 {
+            // Map in parallel
+            out_buffer = in_buffer.par_iter().map(mapping_parallel).collect();
+            in_buffer.clear();
+            // Convert to BAM serially
+            out_buffer
+                .iter_mut()
+                .map(|(record, hit_interval)| {
+                    intervals_to_bam(
+                        record,
+                        hit_interval,
+                        fmd_index,
+                        suffix_array,
+                        identifier_position_map,
+                        &mut out_file,
+                    )
+                })
+                .collect::<Result<(), bam::WriteError>>()?;
+            out_buffer.clear();
+        }
+    }
+    // Process remaining reads in the in_buffer
+    // Map in parallel
+    out_buffer = in_buffer.par_iter().map(mapping_parallel).collect();
+    // Convert to BAM serially
+    out_buffer
+        .iter_mut()
+        .map(|(record, hit_interval)| {
+            intervals_to_bam(
+                record,
+                hit_interval,
+                fmd_index,
+                suffix_array,
+                identifier_position_map,
+                &mut out_file,
+            )
+        })
+        .collect::<Result<(), bam::WriteError>>()?;
+
+    debug!("Done");
+    Ok(())
+}
+
+/// Convert suffix array intervals to positions and BAM records and write them to BAM file eventually
+fn intervals_to_bam(
+    record: &fastq::Record,
+    intervals: &mut BinaryHeap<HitInterval>,
+    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    suffix_array: &Vec<usize>,
+    identifier_position_map: &FastaIdPositions,
+    out_file: &mut bam::Writer,
+) -> Result<(), bam::WriteError> {
+    if let Some(best_alignment) = intervals.pop() {
+        let cigar = best_alignment
+            .edit_operations
+            .build_cigar(record.seq().len());
+        let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
+
+        // Max. number of alignments per read that will be reported
+        let mut max_out_lines_per_read = 1;
+
+        // Read aligns to reference strand
+        for &position in best_alignment
+            .interval
+            .forward()
+            .occ(suffix_array)
+            .iter()
+            .filter(|&&position| position < fmd_index.bwt().len() / 2)
+            .take(max_out_lines_per_read)
+        {
+            max_out_lines_per_read -= 1;
+            let (tid, position) = identifier_position_map.get_reference_identifier(position);
+            let record = create_bam_record(
                 record.id().as_bytes(),
                 record.seq(),
                 record.qual().iter(),
-                -1,
-                None,
-                None,
-                None,
-                -1,
+                position,
+                Some(&best_alignment),
+                Some(&cigar),
+                Some(mapping_quality),
+                tid,
             );
-            record.set_unmapped();
-            out.write(&record)?;
+            out_file.write(&record)?;
         }
+        // Read aligns to reverse strand
+        for &position in best_alignment
+            .interval
+            .revcomp()
+            .occ(suffix_array)
+            .iter()
+            .filter(|&&position| position < fmd_index.bwt().len() / 2)
+            .take(max_out_lines_per_read)
+        {
+            let (tid, position) = identifier_position_map.get_reference_identifier(position);
+            let mut record = create_bam_record(
+                record.id().as_bytes(),
+                &dna::revcomp(record.seq()),
+                record.qual().iter().rev(),
+                position,
+                Some(&best_alignment),
+                Some(&cigar),
+                Some(mapping_quality),
+                tid,
+            );
+            record.set_reverse();
+            out_file.write(&record)?;
+        }
+    } else {
+        // No match found, report unmapped read
+        let mut record = create_bam_record(
+            record.id().as_bytes(),
+            record.seq(),
+            record.qual().iter(),
+            -1,
+            None,
+            None,
+            None,
+            -1,
+        );
+        record.set_unmapped();
+        out_file.write(&record)?;
     }
-    debug!("Done");
     Ok(())
 }
 
@@ -679,7 +739,7 @@ fn stop_searching_suboptimal_hits(
 }
 
 /// Finds all suffix array intervals for the current pattern with up to z mismatch penalties
-pub fn k_mismatch_search<T: SequenceDifferenceModel>(
+pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     pattern: &[u8],
     _base_qualities: &[u8],
     z: f32,
