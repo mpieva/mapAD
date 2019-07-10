@@ -415,7 +415,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     let mapping_parallel = |record: &fastq::Record| {
         let pattern = record.seq().to_ascii_uppercase();
 
-        // Hardcoded value (33) that should be ok only for Illumina reads
+        // Hardcoded offset (33) that should be ok for Illumina reads
         let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
 
         (
@@ -485,7 +485,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     Ok(())
 }
 
-/// Convert suffix array intervals to positions and BAM records and write them to BAM file eventually
+/// Convert suffix array intervals to positions and BAM records and write them to a BAM file eventually
 fn intervals_to_bam(
     record: &fastq::Record,
     intervals: &mut BinaryHeap<HitInterval>,
