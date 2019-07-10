@@ -599,7 +599,11 @@ fn estimate_mapping_quality(
                         .log10()
                     + bonus)
             }
-            None => (37_f32 * 2_f32.powf(best_alignment.alignment_score)) + 1.0,
+            None => {
+                (37_f32
+                    * 2_f32.powf(best_alignment.alignment_score)
+                    * best_alignment.edit_operations.edit_operations.len() as f32)
+            }
         }
     }
     // 37 should be the highest MAPQ value
