@@ -61,8 +61,9 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
         let sequencing_error = 10_f32.powf(-1.0 * f32::from(base_quality) / 10.0);
 
         // Probability of seeing a mutation or sequencing error
+        // Artificial boundary at 0.25 to ensure the model's output won't be negative
         let independent_error =
-            sequencing_error + self.divergence - sequencing_error * self.divergence;
+            (sequencing_error + self.divergence - sequencing_error * self.divergence).min(0.25);
 
         // Probabilities of seeing C->T or G->A substitutions
         let c_to_t = self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
