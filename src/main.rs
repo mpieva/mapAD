@@ -175,8 +175,10 @@ fn main() {
                     .unwrap_or_else(|e| e.exit()),
                 ss_deamination_rate: value_t!(map_matches.value_of("ss_deamination_rate"), f32)
                     .unwrap_or_else(|e| e.exit()),
+                // Divergence is divided by three because it is used for testing each of the three possible substitutions
                 divergence: value_t!(map_matches.value_of("divergence"), f32)
-                    .unwrap_or_else(|e| e.exit()),
+                    .unwrap_or_else(|e| e.exit())
+                    / 3.0,
             };
             let alignment_parameters = utils::AlignmentParameters {
                 base_error_rate: 0.02,
