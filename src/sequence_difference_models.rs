@@ -179,34 +179,225 @@ mod tests {
     }
 
     #[test]
-    fn test_briggs_model() {
-        let briggs_model = SimpleAncientDnaModel {
+    fn test_simple_adna_model() {
+        let adna_model = SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
-                five_prime_overhang: 0.63,
-                three_prime_overhang: 0.8,
+                five_prime_overhang: 0.475,
+                three_prime_overhang: 0.475,
             }),
-            ds_deamination_rate: 0.07,
-            ss_deamination_rate: 0.6,
-            divergence: 0.001,
+            ds_deamination_rate: 0.001,
+            ss_deamination_rate: 0.9,
+            divergence: 0.02 / 3.0,
         };
-        let read_length = 35;
 
-        //        println!("Briggs model");
-        //        for i in 0..read_length {
-        //            println!(
-        //                "{i})\tC->T: {c_t}\t\tC->C: {c_c}\t\tA->A: {a_a}\t\t G->A: {g_a}",
-        //                i = i,
-        //                c_t = briggs_model.get(i, read_length, b'C', b'T', 40),
-        //                c_c = briggs_model.get(i, read_length, b'C', b'C', 40),
-        //                a_a = briggs_model.get(i, read_length, b'A', b'A', 40),
-        //                g_a = briggs_model.get(i, read_length, b'G', b'A', 40),
-        //            );
-        //        }
+        // 'C' -> 'T'
+        assert_approx_eq!(-1.504131, adna_model.get(0, 25, b'C', b'T', 10));
+        assert_approx_eq!(-2.285697, adna_model.get(1, 25, b'C', b'T', 40));
+        assert_approx_eq!(-2.625292, adna_model.get(2, 25, b'C', b'T', 10));
+        assert_approx_eq!(-4.257998, adna_model.get(3, 25, b'C', b'T', 40));
+        assert_approx_eq!(-5.113328, adna_model.get(4, 25, b'C', b'T', 40));
+        assert_approx_eq!(-3.151698, adna_model.get(5, 25, b'C', b'T', 10));
+        assert_approx_eq!(-6.320596, adna_model.get(6, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.642854, adna_model.get(7, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.825267, adna_model.get(8, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.920301, adna_model.get(9, 25, b'C', b'T', 40));
+        assert_approx_eq!(-3.228001, adna_model.get(10, 25, b'C', b'T', 10));
+        assert_approx_eq!(-6.987523, adna_model.get(11, 25, b'C', b'T', 40));
+        assert_approx_eq!(-3.229167, adna_model.get(12, 25, b'C', b'T', 10));
+        assert_approx_eq!(-6.987523, adna_model.get(13, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.966826, adna_model.get(14, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.920301, adna_model.get(15, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.825267, adna_model.get(16, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.642854, adna_model.get(17, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.320596, adna_model.get(18, 25, b'C', b'T', 40));
+        assert_approx_eq!(-5.813153, adna_model.get(19, 25, b'C', b'T', 40));
+        assert_approx_eq!(-5.113328, adna_model.get(20, 25, b'C', b'T', 40));
+        assert_approx_eq!(-4.257998, adna_model.get(21, 25, b'C', b'T', 40));
+        assert_approx_eq!(-3.300748, adna_model.get(22, 25, b'C', b'T', 40));
+        assert_approx_eq!(-2.285697, adna_model.get(23, 25, b'C', b'T', 40));
+        assert_approx_eq!(-1.504131, adna_model.get(24, 25, b'C', b'T', 10));
 
-        assert_approx_eq!(-1.310067, briggs_model.get(0, read_length, b'C', b'T', 40));
-        assert_approx_eq!(-0.750255, briggs_model.get(0, read_length, b'C', b'C', 40));
-        assert_approx_eq!(-3.695316, briggs_model.get(15, read_length, b'C', b'T', 40));
-        assert_approx_eq!(-9.828412, briggs_model.get(15, read_length, b'G', b'C', 40));
-        assert_approx_eq!(-0.004768, briggs_model.get(15, read_length, b'A', b'A', 40));
+        // Reference 'C', not substituted
+        assert_approx_eq!(-1.199396, adna_model.get(0, 25, b'C', b'C', 10));
+        assert_approx_eq!(-0.355901, adna_model.get(1, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.675932, adna_model.get(2, 25, b'C', b'C', 10));
+        assert_approx_eq!(-0.098193, adna_model.get(3, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.062537, adna_model.get(4, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.566023, adna_model.get(5, 25, b'C', b'C', 10));
+        assert_approx_eq!(-0.038071, adna_model.get(6, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.034366, adna_model.get(7, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.032611, adna_model.get(8, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.031781, adna_model.get(9, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.553695, adna_model.get(10, 25, b'C', b'C', 10));
+        assert_approx_eq!(-0.031227, adna_model.get(11, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.553513, adna_model.get(12, 25, b'C', b'C', 10));
+        assert_approx_eq!(-0.031227, adna_model.get(13, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.031395, adna_model.get(14, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.031781, adna_model.get(15, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.032611, adna_model.get(16, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.034366, adna_model.get(17, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.038071, adna_model.get(18, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.045904, adna_model.get(19, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.062537, adna_model.get(20, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.098193, adna_model.get(21, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.176268, adna_model.get(22, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.355901, adna_model.get(23, 25, b'C', b'C', 40));
+        assert_approx_eq!(-1.199396, adna_model.get(24, 25, b'C', b'C', 10));
+
+        // 'G' -> 'A'
+        assert_approx_eq!(-3.230046, adna_model.get(0, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.013649, adna_model.get(1, 25, b'G', b'A', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(2, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.013649, adna_model.get(3, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(4, 25, b'G', b'A', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(5, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.013649, adna_model.get(6, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(7, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(8, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(9, 25, b'G', b'A', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(10, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.013649, adna_model.get(11, 25, b'G', b'A', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(12, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.013649, adna_model.get(13, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(14, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(15, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(16, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(17, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(18, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(19, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(20, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(21, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(22, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(23, 25, b'G', b'A', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(24, 25, b'G', b'A', 10));
+
+        // Reference 'G', not substituted
+        assert_approx_eq!(-0.553375, adna_model.get(0, 25, b'G', b'G', 10));
+        assert_approx_eq!(-0.031019, adna_model.get(1, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.553375, adna_model.get(2, 25, b'G', b'G', 10));
+        assert_approx_eq!(-0.031019, adna_model.get(3, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(4, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.553375, adna_model.get(5, 25, b'G', b'G', 10));
+        assert_approx_eq!(-0.031019, adna_model.get(6, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(7, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(8, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(9, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.553375, adna_model.get(10, 25, b'G', b'G', 10));
+        assert_approx_eq!(-0.031019, adna_model.get(11, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.553375, adna_model.get(12, 25, b'G', b'G', 10));
+        assert_approx_eq!(-0.031019, adna_model.get(13, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(14, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(15, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(16, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(17, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(18, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(19, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(20, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(21, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(22, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(23, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.553375, adna_model.get(24, 25, b'G', b'G', 10));
+
+        // Random samples
+        assert_approx_eq!(-3.237864, adna_model.get(5, 25, b'A', b'C', 10));
+        assert_approx_eq!(-3.230046, adna_model.get(10, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(23, 25, b'A', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(9, 25, b'A', b'T', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(10, 25, b'A', b'C', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(18, 25, b'C', b'G', 40));
+        assert_approx_eq!(-2.285697, adna_model.get(23, 25, b'C', b'T', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(21, 25, b'C', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(21, 25, b'T', b'G', 40));
+        assert_approx_eq!(-0.552156, adna_model.get(5, 25, b'A', b'A', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(9, 25, b'G', b'C', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(9, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(17, 25, b'G', b'C', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(5, 25, b'T', b'G', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(21, 25, b'A', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(21, 25, b'T', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(23, 25, b'C', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(19, 25, b'T', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(15, 25, b'G', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(3, 25, b'C', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(15, 25, b'C', b'A', 40));
+        assert_approx_eq!(-0.031227, adna_model.get(11, 25, b'C', b'C', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(20, 25, b'A', b'C', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(17, 25, b'C', b'G', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(12, 25, b'A', b'C', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(18, 25, b'A', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(7, 25, b'C', b'A', 40));
+        assert_approx_eq!(-0.553375, adna_model.get(0, 25, b'G', b'G', 10));
+        assert_approx_eq!(-3.237864, adna_model.get(24, 25, b'A', b'T', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(6, 25, b'A', b'T', 40));
+        assert_approx_eq!(-0.029585, adna_model.get(19, 25, b'A', b'A', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(2, 25, b'A', b'G', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(20, 25, b'T', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(4, 25, b'C', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(1, 25, b'C', b'A', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(0, 25, b'G', b'A', 10));
+        assert_approx_eq!(-0.029585, adna_model.get(7, 25, b'T', b'T', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(15, 25, b'G', b'C', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(2, 25, b'G', b'C', 10));
+        assert_approx_eq!(-3.237864, adna_model.get(0, 25, b'C', b'G', 10));
+        assert_approx_eq!(-6.825267, adna_model.get(8, 25, b'C', b'T', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(1, 25, b'G', b'T', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(19, 25, b'T', b'C', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(14, 25, b'C', b'A', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(10, 25, b'A', b'G', 10));
+        assert_approx_eq!(-3.237864, adna_model.get(12, 25, b'T', b'C', 10));
+        assert_approx_eq!(-0.029585, adna_model.get(14, 25, b'A', b'A', 40));
+        assert_approx_eq!(-0.029585, adna_model.get(1, 25, b'A', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(7, 25, b'G', b'C', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(2, 25, b'T', b'A', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(11, 25, b'C', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(19, 25, b'C', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(6, 25, b'T', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(6, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.029585, adna_model.get(11, 25, b'A', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(19, 25, b'T', b'A', 40));
+        assert_approx_eq!(-0.029585, adna_model.get(3, 25, b'T', b'T', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(3, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.029585, adna_model.get(1, 25, b'T', b'T', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(22, 25, b'G', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(17, 25, b'A', b'C', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(1, 25, b'A', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(7, 25, b'T', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(13, 25, b'T', b'G', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(12, 25, b'T', b'A', 10));
+        assert_approx_eq!(-0.553695, adna_model.get(10, 25, b'C', b'C', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(7, 25, b'A', b'C', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(5, 25, b'G', b'T', 10));
+        assert_approx_eq!(-0.355901, adna_model.get(1, 25, b'C', b'C', 40));
+        assert_approx_eq!(-0.032611, adna_model.get(16, 25, b'C', b'C', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(9, 25, b'A', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(4, 25, b'T', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(8, 25, b'A', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(1, 25, b'G', b'G', 40));
+        assert_approx_eq!(-6.825267, adna_model.get(16, 25, b'C', b'T', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(16, 25, b'A', b'T', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(11, 25, b'G', b'G', 40));
+        assert_approx_eq!(-0.031019, adna_model.get(8, 25, b'G', b'G', 40));
+        assert_approx_eq!(-3.151698, adna_model.get(5, 25, b'C', b'T', 10));
+        assert_approx_eq!(-7.013649, adna_model.get(21, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(8, 25, b'C', b'G', 40));
+        assert_approx_eq!(-3.230046, adna_model.get(24, 25, b'G', b'A', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(7, 25, b'C', b'G', 40));
+        assert_approx_eq!(-7.013649, adna_model.get(18, 25, b'G', b'A', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(1, 25, b'A', b'T', 40));
+        assert_approx_eq!(-0.029585, adna_model.get(14, 25, b'T', b'T', 40));
+        assert_approx_eq!(-6.642854, adna_model.get(17, 25, b'C', b'T', 40));
+        assert_approx_eq!(-6.320596, adna_model.get(18, 25, b'C', b'T', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(0, 25, b'A', b'G', 10));
+        assert_approx_eq!(-0.031019, adna_model.get(4, 25, b'G', b'G', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(24, 25, b'T', b'A', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(14, 25, b'T', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(16, 25, b'T', b'A', 40));
+        assert_approx_eq!(-0.566023, adna_model.get(5, 25, b'C', b'C', 10));
+        assert_approx_eq!(-3.237864, adna_model.get(12, 25, b'G', b'C', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(14, 25, b'A', b'G', 40));
+        assert_approx_eq!(-7.207481, adna_model.get(17, 25, b'T', b'C', 40));
+        assert_approx_eq!(-1.504131, adna_model.get(0, 25, b'C', b'T', 10));
+        assert_approx_eq!(-7.207481, adna_model.get(15, 25, b'T', b'A', 40));
+        assert_approx_eq!(-3.237864, adna_model.get(5, 25, b'C', b'G', 10));
     }
 }
