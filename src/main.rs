@@ -2,10 +2,10 @@ use clap::{
     crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
 };
 
-use thrust::sequence_difference_models::{
-    LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel,
+use thrust::{
+    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
+    {index, map, utils},
 };
-use thrust::{index, map, utils};
 
 fn main() {
     let probability_validator = |v: String| {

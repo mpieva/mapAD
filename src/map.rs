@@ -1,7 +1,4 @@
-use std::cmp::Ordering;
-use std::collections::binary_heap::BinaryHeap;
-use std::error::Error;
-use std::fs::File;
+use std::{cmp::Ordering, collections::binary_heap::BinaryHeap, error::Error, fs::File};
 
 use clap::{crate_name, crate_version};
 use either::Either;
@@ -9,9 +6,13 @@ use log::debug;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
-use bio::alphabets::dna;
-use bio::data_structures::bwt::Occ;
-use bio::data_structures::fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable};
+use bio::{
+    alphabets::dna,
+    data_structures::{
+        bwt::Occ,
+        fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable},
+    },
+};
 
 use bincode;
 use bio::io::fastq;
@@ -19,8 +20,10 @@ use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
 use snap;
 
-use crate::sequence_difference_models::SequenceDifferenceModel;
-use crate::utils::{AlignmentParameters, AllowedMismatches};
+use crate::{
+    sequence_difference_models::SequenceDifferenceModel,
+    utils::{AlignmentParameters, AllowedMismatches},
+};
 
 /// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {

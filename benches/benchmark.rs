@@ -1,13 +1,19 @@
-use bio::alphabets;
-use bio::data_structures::bwt::{bwt, less, Occ};
-use bio::data_structures::fmindex::{FMDIndex, FMIndex};
-use bio::data_structures::suffix_array::suffix_array;
+use bio::{
+    alphabets,
+    data_structures::{
+        bwt::{bwt, less, Occ},
+        fmindex::{FMDIndex, FMIndex},
+        suffix_array::suffix_array,
+    },
+};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use thrust::map::k_mismatch_search;
-use thrust::sequence_difference_models::SequenceDifferenceModel;
-use thrust::utils::{AlignmentParameters, AllowedMismatches};
+use thrust::{
+    map::k_mismatch_search,
+    sequence_difference_models::SequenceDifferenceModel,
+    utils::{AlignmentParameters, AllowedMismatches},
+};
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {

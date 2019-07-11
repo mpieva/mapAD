@@ -1,16 +1,21 @@
-use std::error::Error;
-use std::fs::File;
+use std::{error::Error, fs::File};
 
 use log::debug;
-use rand::prelude::{Rng, SeedableRng, StdRng};
-use rand::seq::SliceRandom;
+use rand::{
+    prelude::{Rng, SeedableRng, StdRng},
+    seq::SliceRandom,
+};
 
-use bio::alphabets::{dna, Alphabet};
-use bio::data_structures::bwt::{bwt, less, Occ};
-use bio::data_structures::suffix_array::suffix_array;
+use bio::{
+    alphabets::{dna, Alphabet},
+    data_structures::{
+        bwt::{bwt, less, Occ},
+        suffix_array::suffix_array,
+    },
+    io::fasta,
+};
 
 use bincode;
-use bio::io::fasta;
 use snap;
 
 use crate::map::{FastaIdPosition, FastaIdPositions};
