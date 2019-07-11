@@ -15,10 +15,14 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -0.5;
                 } else if from != to {
@@ -28,7 +32,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -55,10 +59,10 @@ fn criterion_benchmark(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let pattern = "GTTT".as_bytes().to_owned();
-        let base_qualities = [0, 0, 0, 0];
+        let base_qualities = vec![40; pattern.len()];
 
         b.iter(|| {
             k_mismatch_search(
@@ -86,10 +90,14 @@ fn bench_multiple_reads(c: &mut Criterion) {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -0.5;
                 } else if from != to {
@@ -99,7 +107,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -126,7 +134,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let patterns = vec![
             "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
@@ -134,7 +142,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
                 .to_owned();
             100
         ];
-        let base_qualities = [0, 0, 0, 0];
+        let base_qualities = vec![40; patterns[0].len()];
 
         for pattern in patterns.iter() {
             b.iter(|| {
@@ -164,10 +172,14 @@ fn bench_exogenous_reads(c: &mut Criterion) {
 
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
-            fn new() -> Self {
-                TestDifferenceModel {}
-            }
-            fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8) -> f32 {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
                 if from == b'C' && to == b'T' {
                     return -0.5;
                 } else if from != to {
@@ -177,7 +189,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
                 }
             }
         }
-        let difference_model = TestDifferenceModel::new();
+        let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -204,7 +216,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let mut allowed_mismatches = AllowedMismatches::new(&parameters);
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
 
         let patterns = vec![
             "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
@@ -212,7 +224,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
                 .to_owned();
             100
         ];
-        let base_qualities = [0, 0, 0, 0];
+        let base_qualities = vec![40; patterns[0].len()];
 
         for pattern in patterns.iter() {
             b.iter(|| {
