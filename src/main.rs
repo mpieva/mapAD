@@ -1,5 +1,5 @@
 use clap::{
-    crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
+    crate_description, crate_version, value_t, App, AppSettings, Arg, SubCommand,
 };
 
 use mapad::{
@@ -20,7 +20,7 @@ fn main() {
         Err(error_message)
     };
 
-    let matches = App::new(crate_name!())
+    let matches = App::new("mapAD")
         .about(crate_description!())
         .version(crate_version!())
         .setting(AppSettings::SubcommandRequiredElseHelp)
