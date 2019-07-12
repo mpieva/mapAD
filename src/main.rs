@@ -1,6 +1,4 @@
-use clap::{
-    crate_description, crate_version, value_t, App, AppSettings, Arg, SubCommand,
-};
+use clap::{crate_description, crate_version, value_t, App, AppSettings, Arg, SubCommand};
 
 use mapad::{
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
