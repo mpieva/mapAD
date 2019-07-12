@@ -5,15 +5,20 @@ Apparently, GitLab-CI pipelines currently fail due to storage size reasons - not
 
 # mapAD
 
-This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. The name "mapAD" is 
-an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
-project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
+This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. 
+This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
 
-Thrust is based on the bidirectional FMD-index ([Li, 2012](https://academic.oup.com/bioinformatics/article/28/14/1838/218887)) 
+mapAD is based on the bidirectional FMD-index ([Li, 2012](https://academic.oup.com/bioinformatics/article/28/14/1838/218887)) 
 with backtracking and lower-bound pruning of the search space. 
 Improved algorithms and error models will be incorporated step by step as needed. 
 
 Ancient DNA damage models can be included via the `SequenceDifferenceModel` trait. 
+The default (and only) impl is based on Udo Stenzel's ANFO/r-candy. 
+
+mapAD should be ready to test. Please note that it only reports one (the best) alignment per read so far.  
+The program needs ~ 160GB RAM to align against the human reference genome hg19. The mapping speed is 
+roughly comparable to BWA aln (ancient parameters).  
+To parallelize alignments, it will use all idle CPU cores on the machine it is run on. 
 
 ## Build and Install
 
@@ -39,8 +44,6 @@ Besides Rust, no additional dependencies are needed to compile.
 
     `./mapad index --reference /path/to/reference/hg19.fasta`
     
-    `./mapad map --reads /path/to/reads/reads.fastq --reference /path/to/reference/hg19.fasta --output out.bam`
-
 ###### Optional
 The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
 
@@ -55,6 +58,10 @@ For AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 To increase its verbosity, invoke the program like this:
 
 `mapad -vvv index ...` or `mapAD -vvv map ...`
+
+## Usage
+The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively. 
+Adding ` --help` will print a list of available and required command line options. 
 
 ## Performance/ Hardware Requirements
 
@@ -80,14 +87,13 @@ consumption.
 - [x] Incorporation of one or more of the ancient DNA damage models
   - [x] Add framework to specify PSSMs in the code
   - [x] simply penalize C-T changes according to Vindija pattern
-  - [x] Briggs et al. (2007)
-  - [ ] ~~Skoglund et al. (2014)~~
+  - [x] Model inspired by Udo Stenzel's ANFO/r-candy
   - [ ] Peyrégne (unpublished)
 - [x] Recursive -> iterative k-mismatch-search
 - [x] Extend match starting from the presumably lowest deaminated region (center) of a read
 - [x] Calculate alignment score (with respect to damage/difference pattern, see above)
 - [x] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
-- [ ] Revisit mapping quality estimation (base-quality aware)
+- [ ] Revisit mapping quality estimation
 - [ ] BAM-IO
   - [x] BAM output
   - [ ] BAM input
