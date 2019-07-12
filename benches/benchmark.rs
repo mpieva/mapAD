@@ -9,7 +9,7 @@ use bio::{
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use thrust::{
+use mapad::{
     map::k_mismatch_search,
     sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, AllowedMismatches},

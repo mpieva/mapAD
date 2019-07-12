@@ -1,11 +1,11 @@
-[![pipeline status](https://vcs.eva.mpg.de/christian_heide/thrust/badges/master/pipeline.svg)](https://vcs.eva.mpg.de/christian_heide/thrust/commits/master) 
-[![coverage report](https://vcs.eva.mpg.de/christian_heide/thrust/badges/master/coverage.svg)](https://vcs.eva.mpg.de/christian_heide/thrust/commits/master)
+[![pipeline status](https://vcs.eva.mpg.de/christian_heide/mapAD/badges/master/pipeline.svg)](https://vcs.eva.mpg.de/christian_heide/mapAD/commits/master) 
+[![coverage report](https://vcs.eva.mpg.de/christian_heide/mapAD/badges/master/coverage.svg)](https://vcs.eva.mpg.de/christian_heide/mapAD/commits/master)
 
 Apparently, GitLab-CI pipelines currently fail due to storage size reasons - not because of failing unit tests.
 
-# thrust
+# mapAD
 
-This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. The name "thrust" is 
+This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. The name "mapAD" is 
 an hommage to Udo Stenzel's "R-Candy", in which tradition it stands, and Rust, the programming language used for this 
 project. This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
 
@@ -23,23 +23,23 @@ Besides Rust, no additional dependencies are needed to compile.
 
     `curl https://sh.rustup.rs -sSf | sh`
 
-1. Git clone thrust or simply download a release zip file:
+1. Git clone mapAD or simply download a release zip file:
 
-    `git clone https://vcs.eva.mpg.de/christian_heide/thrust.git && cd thrust`
+    `git clone https://vcs.eva.mpg.de/christian_heide/mapAD.git && cd mapAD`
 
 3. Build:
 
     `cargo build --release`
     
-    The resulting binary file `thrust` is now in the subfolder `target/release/`.
+    The resulting binary file `mapad` is now in the subfolder `target/release/`.
 
 4. Run!
 
     `cd target/release/`
 
-    `./thrust index --reference /path/to/reference/hg19.fasta`
+    `./mapad index --reference /path/to/reference/hg19.fasta`
     
-    `./thrust map --reads /path/to/reads/reads.fastq --reference /path/to/reference/hg19.fasta --output out.bam`
+    `./mapad map --reads /path/to/reads/reads.fastq --reference /path/to/reference/hg19.fasta --output out.bam`
 
 ###### Optional
 The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
@@ -54,7 +54,7 @@ For AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 
 To increase its verbosity, invoke the program like this:
 
-`thrust -vvv index ...` or `thrust -vvv map ...`
+`mapad -vvv index ...` or `mapAD -vvv map ...`
 
 ## Performance/ Hardware Requirements
 

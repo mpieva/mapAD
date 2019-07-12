@@ -1,5 +1,5 @@
 [package]
-name = "thrust"
+name = "mapad"
 version = "0.0.1"
 description = "An aDNA aware short-read mapper"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]

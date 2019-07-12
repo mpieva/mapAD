@@ -2,7 +2,7 @@ use clap::{
     crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
 };
 
-use thrust::{
+use mapad::{
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
     {index, map, utils},
 };
