@@ -315,6 +315,7 @@ impl DArray {
                         read_length,
                         base,
                         base_qualities[index],
+                        true,
                     )
                     .max(alignment_parameters.penalty_gap_open)
                     .max(alignment_parameters.penalty_gap_extend);
@@ -383,6 +384,21 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
     Ok(())
 }
 
+#[inline]
+/// Transformations of the input sequence which are used throughout the program.
+/// Currently, the input sequence is just converted to uppercase letters.
+fn transform_pattern_sequence(record: &fastq::Record) -> Vec<u8> {
+    record.seq().to_ascii_uppercase()
+}
+
+#[inline]
+/// Transformations of the base quality inputs which are used throughout the program.
+/// Currently, the PHRED-scaled base qualities are assumed to be encoded with ASCII
+/// codes starting from 33, so we subtract 33 to transform them to a range starting at 0.
+fn transform_base_qualities(record: &fastq::Record) -> Vec<u8> {
+    record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>()
+}
+
 /// Maps reads and writes them to a file in BAM format
 fn map_reads<T: SequenceDifferenceModel + Sync>(
     alignment_parameters: &AlignmentParameters<T>,
@@ -416,10 +432,10 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
 
     // Mapping is performed in parallel by passing this closure to the thread pool
     let mapping_parallel = |record: &fastq::Record| {
-        let pattern = record.seq().to_ascii_uppercase();
+        let pattern = transform_pattern_sequence(record);
 
         // Hardcoded offset (33) that should be ok for Illumina reads
-        let base_qualities = record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>();
+        let base_qualities = transform_base_qualities(record);
 
         (
             record.to_owned(),
@@ -459,6 +475,10 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                         fmd_index,
                         suffix_array,
                         identifier_position_map,
+                        compute_maximal_possible_score(
+                            record,
+                            &alignment_parameters.difference_model,
+                        ),
                         &mut out_file,
                     )
                 })
@@ -479,6 +499,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                 fmd_index,
                 suffix_array,
                 identifier_position_map,
+                compute_maximal_possible_score(record, &alignment_parameters.difference_model),
                 &mut out_file,
             )
         })
@@ -495,13 +516,14 @@ fn intervals_to_bam(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
+    optimal_score: f32,
     out_file: &mut bam::Writer,
 ) -> Result<(), bam::WriteError> {
     if let Some(best_alignment) = intervals.pop() {
         let cigar = best_alignment
             .edit_operations
             .build_cigar(record.seq().len());
-        let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
+        let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals, optimal_score);
 
         // Max. number of alignments per read that will be reported
         let mut max_out_lines_per_read = 1;
@@ -570,48 +592,57 @@ fn intervals_to_bam(
     Ok(())
 }
 
+/// Computes theoretically maximal possible alignment score per read.
+/// With this, actual alignment scores can be viewed as fraction of this
+/// optimal score to overcome dependencies on read length, base composition,
+/// and the used scoring function.
+fn compute_maximal_possible_score<T: SequenceDifferenceModel + Sync>(
+    record: &fastq::Record,
+    difference_model: &T,
+) -> f32 {
+    let pattern = transform_pattern_sequence(record);
+    let base_qualities = transform_base_qualities(record);
+
+    pattern.iter().zip(base_qualities).enumerate().fold(
+        0.0,
+        |optimal_score, (i, (&base, quality))| {
+            optimal_score + difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
+        },
+    )
+}
+
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
 /// and its base qualities
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
     other_alignments: &BinaryHeap<HitInterval>,
+    optimal_score: f32,
 ) -> u8 {
-    // Multi-mapping
-    if best_alignment.interval.size > 1 {
-        (-10_f32
-            * (1.0
-                - (2_f32.powf(best_alignment.alignment_score)
-                    / best_alignment.interval.size as f32))
-                .log10())
-    } else {
-        // "Unique" mapping
-        match other_alignments.peek() {
-            Some(second_alignment) => {
-                let total_number: usize = other_alignments
+    const MAX_MAPQ: f32 = 37.0;
+
+    let alignment_probability = {
+        let ratio_best = 2_f32.powf(best_alignment.alignment_score - optimal_score);
+        if best_alignment.interval.size > 1 {
+            // Multi-mapping
+            ratio_best / best_alignment.interval.size as f32
+        } else if other_alignments.is_empty() {
+            // Unique mapping
+            ratio_best
+        } else {
+            // Pseudo-unique mapping
+            let weighted_suboptimal_alignments =
+                other_alignments
                     .iter()
-                    .take_while(|hit_interval| {
-                        hit_interval.alignment_score.round()
-                            >= second_alignment.alignment_score.round()
-                    })
-                    .map(|hit_interval| hit_interval.interval.size)
-                    .sum();
-                let bonus =
-                    (best_alignment.alignment_score - second_alignment.alignment_score).abs();
-                (-10_f32
-                    * (1.0 - (2_f32.powf(best_alignment.alignment_score) / total_number as f32))
-                        .log10()
-                    + bonus)
-            }
-            None => {
-                (37_f32
-                    * 2_f32.powf(best_alignment.alignment_score)
-                    * best_alignment.edit_operations.edit_operations.len() as f32)
-            }
+                    .fold(0.0, |acc, suboptimal_alignment| {
+                        acc + 2_f32.powf(suboptimal_alignment.alignment_score - optimal_score)
+                            * suboptimal_alignment.interval.size as f32
+                    });
+
+            // Due to rounding errors, we need to prevent alignment_probability from exceeding 1.0
+            (ratio_best.powi(2) / (ratio_best + weighted_suboptimal_alignments)).min(1.0)
         }
-    }
-    // 37 should be the highest MAPQ value
-    .min(37.0)
-    .round() as u8
+    };
+    (-10.0 * (1.0 - alignment_probability).log10().min(MAX_MAPQ).round()) as u8
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
