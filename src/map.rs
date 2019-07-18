@@ -925,12 +925,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     match_size: fmd_ext_interval.match_size + 1,
                 }
             };
+
             // Special treatment of forward extension
-            let c = if stack_frame.direction.is_forward() {
-                interval_prime = interval_prime.swapped();
-                dna::complement(c)
-            } else {
-                c
+            let c = match stack_frame.direction {
+                Direction::Forward => {
+                    interval_prime = interval_prime.swapped();
+                    dna::complement(c)
+                }
+                Direction::Backward => c,
             };
 
             //
