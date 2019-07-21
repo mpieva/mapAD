@@ -1,3 +1,5 @@
+use either::Either;
+
 // TODO: Use lookup tables instead of computing scores on-demand
 
 /// Sequence difference models are expected to yield only non-positive values (and 0.0), for example log probabilities.
@@ -8,13 +10,24 @@ pub trait SequenceDifferenceModel {
     }
 
     /// Needed for the calculation of D arrays
-    fn get_min_penalty(&self, i: usize, read_length: usize, to: u8, base_quality: u8) -> f32 {
-        b"ACGT"
-            .iter()
-            .filter(|&&base| base != to)
-            .map(|&base| self.get(i, read_length, base, to, base_quality))
-            .filter(|&penalty| penalty < 0.0)
-            .fold(std::f32::MIN, |acc, v| acc.max(v))
+    fn get_min_penalty(
+        &self,
+        i: usize,
+        read_length: usize,
+        to: u8,
+        base_quality: u8,
+        only_mismatches: bool,
+    ) -> f32 {
+        let iterator = b"ACGT".iter();
+
+        if only_mismatches {
+            Either::Left(iterator.filter(|&&base| base != to))
+        } else {
+            Either::Right(iterator)
+        }
+        .map(|&base| self.get(i, read_length, base, to, base_quality))
+        .filter(|&penalty| penalty < 0.0)
+        .fold(std::f32::MIN, |acc, v| acc.max(v))
     }
 }
 
