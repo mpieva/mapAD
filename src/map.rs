@@ -539,17 +539,15 @@ fn intervals_to_bam(
         {
             max_out_lines_per_read -= 1;
             let (tid, position) = identifier_position_map.get_reference_identifier(position);
-            let record = create_bam_record(
-                record.id().as_bytes(),
-                record.seq(),
-                record.qual().iter(),
+            let bam_record = create_bam_record(
+                record,
                 position,
                 Some(&best_alignment),
                 Some(&cigar),
                 Some(mapping_quality),
                 tid,
             );
-            out_file.write(&record)?;
+            out_file.write(&bam_record)?;
         }
         // Read aligns to reverse strand
         for &position in best_alignment
@@ -561,33 +559,22 @@ fn intervals_to_bam(
             .take(max_out_lines_per_read)
         {
             let (tid, position) = identifier_position_map.get_reference_identifier(position);
-            let mut record = create_bam_record(
-                record.id().as_bytes(),
-                &dna::revcomp(record.seq()),
-                record.qual().iter().rev(),
+            let mut bam_record = create_bam_record(
+                record,
                 position,
                 Some(&best_alignment),
                 Some(&cigar),
                 Some(mapping_quality),
                 tid,
             );
-            record.set_reverse();
-            out_file.write(&record)?;
+            bam_record.set_reverse();
+            out_file.write(&bam_record)?;
         }
     } else {
         // No match found, report unmapped read
-        let mut record = create_bam_record(
-            record.id().as_bytes(),
-            record.seq(),
-            record.qual().iter(),
-            -1,
-            None,
-            None,
-            None,
-            -1,
-        );
-        record.set_unmapped();
-        out_file.write(&record)?;
+        let mut bam_record = create_bam_record(record, -1, None, None, None, -1);
+        bam_record.set_unmapped();
+        out_file.write(&bam_record)?;
     }
     Ok(())
 }
@@ -651,10 +638,8 @@ fn estimate_mapping_quality(
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
-fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
-    input_name: &[u8],
-    input_seq: &[u8],
-    input_quality: T,
+fn create_bam_record(
+    input_record: &fastq::Record,
     position: i32,
     hit_interval: Option<&HitInterval>,
     cigar: Option<&bam::record::CigarString>,
@@ -664,13 +649,10 @@ fn create_bam_record<'a, T: Iterator<Item = &'a u8>>(
     let mut bam_record = bam::record::Record::new();
 
     bam_record.set(
-        input_name,
+        input_record.id().as_bytes(),
         cigar,
-        input_seq,
-        input_quality
-            .map(|&x| x - 33)
-            .collect::<Vec<_>>()
-            .as_slice(),
+        &transform_pattern_sequence(input_record),
+        &transform_base_qualities(input_record),
     );
 
     bam_record.set_tid(tid);
