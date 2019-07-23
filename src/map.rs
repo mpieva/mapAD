@@ -637,12 +637,17 @@ fn estimate_mapping_quality(
                         acc + 2_f32.powf(suboptimal_alignment.alignment_score - optimal_score)
                             * suboptimal_alignment.interval.size as f32
                     });
-
-            // Due to rounding errors, we need to prevent alignment_probability from exceeding 1.0
-            (ratio_best.powi(2) / (ratio_best + weighted_suboptimal_alignments)).min(1.0)
+            ratio_best.powi(2) / (ratio_best + weighted_suboptimal_alignments)
         }
-    };
-    (-10.0 * (1.0 - alignment_probability).log10().min(MAX_MAPQ).round()) as u8
+    }
+    // Guard against rounding errors
+    .max(0.0)
+    .min(1.0);
+
+    // Produce Phred score
+    (-10.0 * (1.0 - alignment_probability).log10())
+        .min(MAX_MAPQ)
+        .round() as u8
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
