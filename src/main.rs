@@ -132,6 +132,15 @@ fn main() {
                         .help("Divergence rate of the reference and target organisms")
                         .value_name("RATE")
                         .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("indel_rate")
+                        .required(true)
+                        .short("i")
+                        .default_value("0.00001")
+                        .help("Expected rate of indels between reads and reference")
+                        .value_name("RATE")
+                        .validator(probability_validator),
                 ),
         )
         .get_matches();
@@ -182,8 +191,10 @@ fn main() {
                 base_error_rate: 0.02,
                 poisson_threshold: value_t!(map_matches.value_of("poisson_prob"), f64)
                     .unwrap_or_else(|e| e.exit()),
-                penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(), // TODO
-                penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(), // TODO
+                penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
+                    .unwrap_or_else(|e| e.exit())
+                    .log2(),
+                penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // TODO
                 difference_model,
             };
             if let Err(e) = map::run(
