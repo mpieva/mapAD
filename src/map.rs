@@ -193,7 +193,13 @@ impl EditOperationsTrack {
     }
 }
 
-/// Stores information about partial alignments on the priority stack
+/// Stores information about partial alignments on the priority stack.
+/// There are three different measures of alignment quality (TODO: see what we can remove):
+/// z: Initialized with the maximal allowed penalty, penalties are subtracted.
+/// As soon as 0 is reached, the search is stopped
+/// alignment_score: Initialized with 0, penalties are simply added
+/// priority: alignment_score + expected minimal amount of penalties.
+/// This is used as key for the priority stack.
 #[derive(Debug)]
 struct MismatchSearchStackFrame {
     j: isize,
