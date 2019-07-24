@@ -390,17 +390,17 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
     Ok(())
 }
 
-#[inline]
 /// Transformations of the input sequence which are used throughout the program.
 /// Currently, the input sequence is just converted to uppercase letters.
+#[inline]
 fn transform_pattern_sequence(record: &fastq::Record) -> Vec<u8> {
     record.seq().to_ascii_uppercase()
 }
 
-#[inline]
 /// Transformations of the base quality inputs which are used throughout the program.
 /// Currently, the PHRED-scaled base qualities are assumed to be encoded with ASCII
 /// codes starting from 33, so we subtract 33 to transform them to a range starting at 0.
+#[inline]
 fn transform_base_qualities(record: &fastq::Record) -> Vec<u8> {
     record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>()
 }
