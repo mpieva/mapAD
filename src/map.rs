@@ -33,7 +33,7 @@ struct UnderlyingDataFMDIndex {
 }
 
 impl UnderlyingDataFMDIndex {
-    fn load(path: &str) -> Result<UnderlyingDataFMDIndex, Box<Error>> {
+    fn load(path: &str) -> Result<UnderlyingDataFMDIndex, bincode::Error> {
         debug!("Load BWT");
         let bwt: Vec<u8> = {
             let d_bwt = snap::Reader::new(File::open(format!("{}.tbw", path))?);
@@ -349,7 +349,7 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
     reference_path: &str,
     out_file_path: &str,
     alignment_parameters: &AlignmentParameters<T>,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     debug!("Load FMD-index");
     let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
     debug!("Reconstruct FMD-index");
@@ -407,7 +407,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
 
     let mut header = bam::Header::new();
