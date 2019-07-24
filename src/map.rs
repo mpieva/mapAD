@@ -896,7 +896,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 } else {
                     stack_frame.open_gap_forwards
                 },
-                alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
+                alignment_score: stack_frame.alignment_score + penalty,
                 priority: stack_frame.alignment_score + penalty - lower_bound,
                 edit_operations: None,
                 //            debug_helper: if stack_frame.forward {
@@ -979,7 +979,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     } else {
                         stack_frame.open_gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
+                    alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty - lower_bound,
                     edit_operations: None,
                     //                debug_helper: if stack_frame.forward {
@@ -1028,7 +1028,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     } else {
                         stack_frame.open_gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score + penalty, // + 1.0,
+                    alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty - lower_bound,
                     edit_operations: None,
                     //                    debug_helper: if stack_frame.forward {
