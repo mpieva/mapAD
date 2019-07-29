@@ -23,7 +23,7 @@ use crate::map::{FastaIdPosition, FastaIdPositions};
 const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 
 /// Entry point function to launch the indexing process
-pub fn run(reference_path: &str) -> Result<(), Box<Error>> {
+pub fn run(reference_path: &str) -> Result<(), Box<dyn Error>> {
     let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
 
     let alphabet = dna::alphabet();
@@ -41,7 +41,7 @@ fn index<T: Rng>(
     alphabet: &Alphabet,
     name: &str,
     rng: &mut T,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     debug!("Read input reference sequence");
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
