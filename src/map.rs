@@ -1071,10 +1071,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
 #[cfg(test)]
 mod tests {
-    use bio::alphabets;
-    use bio::data_structures::bwt::{bwt, less};
-    use bio::data_structures::fmindex::{FMDIndex, FMIndex};
-    use bio::data_structures::suffix_array::suffix_array;
+    use bio::{
+        alphabets,
+        data_structures::{
+            bwt::{bwt, less},
+            fmindex::{FMDIndex, FMIndex},
+            suffix_array::suffix_array,
+        },
+    };
 
     use super::*;
 
