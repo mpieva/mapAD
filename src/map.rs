@@ -61,7 +61,6 @@ impl UnderlyingDataFMDIndex {
 pub struct HitInterval {
     interval: BiInterval,
     alignment_score: f32,
-    z: f32,
     edit_operations: EditOperationsTrack,
 }
 
@@ -194,16 +193,13 @@ impl EditOperationsTrack {
 }
 
 /// Stores information about partial alignments on the priority stack.
-/// There are three different measures of alignment quality (TODO: see what we can remove):
-/// z: Initialized with the maximal allowed penalty, penalties are subtracted.
-/// As soon as 0 is reached, the search is stopped
+/// There are two different measures of alignment quality:
 /// alignment_score: Initialized with 0, penalties are simply added
 /// priority: alignment_score + expected minimal amount of penalties.
 /// This is used as key for the priority stack.
 #[derive(Debug)]
 struct MismatchSearchStackFrame {
     j: isize,
-    z: f32,
     current_interval: BiInterval,
     backward_index: isize,
     forward_index: isize,
@@ -347,6 +343,13 @@ impl DArray {
     fn get(&self, index: isize) -> f32 {
         *self.d_array.get(index as usize).unwrap_or(&0.0)
     }
+}
+
+#[derive(Copy, Clone)]
+struct Penalties {
+    max_allowed_penalties: f32,
+    lower_bound: f32,
+    representative_mismatch_penalty: f32,
 }
 
 /// Loads index files and launches the mapping process
@@ -691,8 +694,7 @@ fn check_and_push(
     edit_operations: &Option<EditOperationsTrack>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
-    lower_bound: f32,
-    representative_mismatch_penalty: f32,
+    penalties: &Penalties,
 ) {
     // Empty interval
     if stack_frame.current_interval.size < 1 {
@@ -700,16 +702,11 @@ fn check_and_push(
     }
 
     // Too many mismatches
-    if stack_frame.z < lower_bound {
+    if stack_frame.alignment_score + penalties.lower_bound < penalties.max_allowed_penalties {
         return;
     }
 
-    if stop_searching_suboptimal_hits(
-        &stack_frame,
-        intervals,
-        representative_mismatch_penalty,
-        lower_bound,
-    ) {
+    if stop_searching_suboptimal_hits(&stack_frame, intervals, penalties) {
         return;
     }
 
@@ -721,10 +718,9 @@ fn check_and_push(
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score,
-            z: stack_frame.z,
             edit_operations,
         });
-        print_debug(&stack_frame, intervals, representative_mismatch_penalty); // FIXME
+        print_debug(&stack_frame, intervals, penalties); // FIXME
         return;
     }
 
@@ -736,23 +732,22 @@ fn check_and_push(
 fn print_debug(
     stack_frame: &MismatchSearchStackFrame,
     intervals: &BinaryHeap<HitInterval>,
-    representative_mismatch_penalty: f32,
+    penalties: &Penalties,
 ) {
     let switch = false; // TODO: Switch me on/off!
 
     if switch {
-        let best_z = match intervals.peek() {
-            Some(v) => v.z,
+        let best_as = match intervals.peek() {
+            Some(v) => v.alignment_score,
             None => 0.0,
         };
 
         eprintln!(
-            "{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}",
             stack_frame.alignment_score,
             stack_frame.j,
-            stack_frame.z,
-            best_z,
-            best_z + representative_mismatch_penalty,
+            best_as,
+            best_as + penalties.representative_mismatch_penalty,
         );
     }
 }
@@ -763,11 +758,12 @@ fn print_debug(
 fn stop_searching_suboptimal_hits(
     stack_frame: &MismatchSearchStackFrame,
     hit_intervals: &BinaryHeap<HitInterval>,
-    representative_mismatch_penalty: f32,
-    lower_bound: f32,
+    penalties: &Penalties,
 ) -> bool {
     if let Some(best_scoring_interval) = hit_intervals.peek() {
-        if stack_frame.z - lower_bound < best_scoring_interval.z + representative_mismatch_penalty {
+        if stack_frame.alignment_score + penalties.lower_bound
+            < best_scoring_interval.alignment_score + penalties.representative_mismatch_penalty
+        {
             return true;
         }
     }
@@ -814,7 +810,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read,
-        z,
         current_interval: fmd_index.init_interval(),
         backward_index: center_of_read - 1,
         forward_index: center_of_read,
@@ -831,12 +826,14 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         // In the meantime, have we found a match whose score we perhaps aren't close enough to?
         let lower_bound =
             d_backwards.get(stack_frame.backward_index) + d_forwards.get(stack_frame.forward_index);
-        if stop_searching_suboptimal_hits(
-            &stack_frame,
-            &hit_intervals,
-            representative_mismatch_penalty,
+
+        let penalties = Penalties {
+            max_allowed_penalties,
             lower_bound,
-        ) {
+            representative_mismatch_penalty,
+        };
+
+        if stop_searching_suboptimal_hits(&stack_frame, &hit_intervals, &penalties) {
             // Since we operate on a priority stack, it's safe to assume that there are no
             // better scoring frames on the stack, so we are going to stop the search.
             break;
@@ -846,11 +843,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         let next_backward_index;
         let next_forward_index;
 
-        print_debug(
-            &stack_frame,
-            &hit_intervals,
-            representative_mismatch_penalty,
-        ); // FIXME
+        print_debug(&stack_frame, &hit_intervals, &penalties); // FIXME
 
         // Determine direction of progress for next iteration on this stack frame
         let fmd_ext_interval = match stack_frame.direction {
@@ -871,6 +864,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         // Re-calculate the lower bounds for extension
         let lower_bound = d_backwards.get(next_backward_index)
             + d_forwards.get(next_forward_index - pattern.len() as isize / 2);
+        let penalties = Penalties {
+            lower_bound,
+            ..penalties
+        };
 
         //
         // Insertion in read / deletion in reference
@@ -886,7 +883,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         check_and_push(
             MismatchSearchStackFrame {
                 j: next_j,
-                z: stack_frame.z + penalty,
                 backward_index: next_backward_index,
                 forward_index: next_forward_index,
                 direction: stack_frame.direction.reverse(),
@@ -916,8 +912,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             &stack_frame.edit_operations,
             &mut stack,
             &mut hit_intervals,
-            lower_bound,
-            representative_mismatch_penalty,
+            &penalties,
         );
 
         // Bidirectional extension of the (hit) interval
@@ -971,7 +966,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
             check_and_push(
                 MismatchSearchStackFrame {
-                    z: stack_frame.z + penalty,
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
                     open_gap_backwards: if stack_frame.direction.is_backward() {
@@ -999,8 +993,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
-                lower_bound,
-                representative_mismatch_penalty,
+                &penalties,
             );
 
             //
@@ -1017,7 +1010,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             check_and_push(
                 MismatchSearchStackFrame {
                     j: next_j,
-                    z: stack_frame.z + penalty.min(0.0),
                     current_interval: interval_prime,
                     backward_index: next_backward_index,
                     forward_index: next_forward_index,
@@ -1055,8 +1047,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
-                lower_bound,
-                representative_mismatch_penalty,
+                &penalties,
             );
         }
 
@@ -1121,13 +1112,13 @@ mod tests {
         let pattern_1 = b"TA";
         let sai_1 = fmd_index.backward_search(pattern_1.iter());
         let positions_1 = sai_1.occ(&suffix_array);
-        assert_eq!(vec![10, 3], positions_1);
+        assert_eq!(positions_1, vec![10, 3]);
 
         // Test non-occurring pattern
         let pattern_2 = b"GG";
         let sai_2 = fmd_index.backward_search(pattern_2.iter());
         let positions_2 = sai_2.occ(&suffix_array);
-        assert_eq!(Vec::<usize>::new(), positions_2);
+        assert_eq!(positions_2, Vec::<usize>::new());
     }
 
     #[test]
@@ -1143,11 +1134,11 @@ mod tests {
                 _base_quality: u8,
             ) -> f32 {
                 if from == b'C' && to == b'T' {
-                    return 0.0;
+                    return 0.5;
                 } else if from != to {
                     return -1.0;
                 } else {
-                    return 1.0;
+                    return 0.0;
                 }
             }
         }
@@ -1181,7 +1172,7 @@ mod tests {
         let intervals = k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_eq!(vec![2.0], alignment_score);
+        assert_eq!(alignment_score, vec![-1.0]);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1189,7 +1180,7 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![2, 6, 10, 19, 23, 27], positions);
+        assert_eq!(positions, vec![2, 6, 10, 19, 23, 27]);
     }
 
     #[test]
@@ -1248,7 +1239,7 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![8], positions);
+        assert_eq!(positions, vec![8]);
     }
 
     #[test]
@@ -1317,8 +1308,8 @@ mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&[0.0, 0.0, 1.0, 1.0], &*d_backward.d_array);
-        assert_eq!(&[1.0, 1.0, 1.0, 0.0], &*d_forward.d_array);
+        assert_eq!(&*d_backward.d_array, &[0.0, 0.0, -1.0, -1.0]);
+        assert_eq!(&*d_forward.d_array, &[-1.0, -1.0, -1.0, 0.0]);
 
         let pattern = "GATC".as_bytes().to_owned();
 
@@ -1341,8 +1332,8 @@ mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&[0.0, 1.0, 1.0, 2.0], &*d_backward.d_array);
-        assert_eq!(&[2.0, 1.0, 1.0, 0.0], &*d_forward.d_array);
+        assert_eq!(&*d_backward.d_array, &[0.0, -1.0, -1.0, -2.0]);
+        assert_eq!(&*d_forward.d_array, &[-2.0, -1.0, -1.0, 0.0]);
     }
 
     #[test]
@@ -1362,7 +1353,7 @@ mod tests {
                 } else if from != to {
                     return -10.0;
                 } else {
-                    return 1.0;
+                    return 0.0;
                 }
             }
         }
@@ -1401,7 +1392,7 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![0, 2, 5], positions);
+        assert_eq!(positions, vec![0, 2, 5]);
     }
 
     #[test]
@@ -1432,13 +1423,30 @@ mod tests {
         let fmd_index = FMDIndex::from(fm_index);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
+        let base_qualities = vec![40; pattern.len()];
+
+        let intervals =
+            k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
+
+        let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
+        assert_approx_eq!(alignment_score[0], -5.3629);
+
+        let mut positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&sar))
+            .flatten()
+            .collect();
+        positions.sort();
+        assert_eq!(positions, vec![0]);
+
+        let pattern = "CCCCCC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
         let intervals =
             k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(-5.3629, alignment_score[0]);
+        assert_approx_eq!(alignment_score[0], -2.6080124);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1446,23 +1454,7 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![0], positions);
-
-        let pattern = "CCCCCC".as_bytes().to_owned();
-        let base_qualities = vec![0; pattern.len()];
-
-        let intervals = k_mismatch_search(&pattern, &base_qualities, 30.0, &parameters, &fmd_index);
-
-        let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(-2.6080124, alignment_score[0]);
-
-        let mut positions: Vec<usize> = intervals
-            .into_iter()
-            .map(|f| f.interval.forward().occ(&sar))
-            .flatten()
-            .collect();
-        positions.sort();
-        assert_eq!(vec![0], positions);
+        assert_eq!(positions, vec![0]);
 
         //
         // Test "normal" mismatch
@@ -1487,7 +1479,7 @@ mod tests {
             k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(-10.969394, alignment_score[0]);
+        assert_approx_eq!(alignment_score[0], -10.969394);
     }
 
     #[test]
@@ -1496,7 +1488,6 @@ mod tests {
             alignment_score: -5.0,
             priority: -5.0,
             j: 0,
-            z: 0.0,
             current_interval: BiInterval {
                 lower: 5,
                 lower_rev: 5,
@@ -1514,7 +1505,6 @@ mod tests {
             alignment_score: -20.0,
             priority: -20.0,
             j: 0,
-            z: 0.0,
             current_interval: BiInterval {
                 lower: 5,
                 lower_rev: 5,
@@ -1586,7 +1576,7 @@ mod tests {
             .iter()
             .map(|f| f.alignment_score)
             .collect::<Vec<_>>();
-        assert_eq!(vec![-11.320482, -38.763355, -11.348894], alignment_scores);
+        assert_eq!(alignment_scores, vec![-11.320482, -38.763355, -11.348894]);
 
         let mut positions: Vec<usize> = intervals
             .iter()
@@ -1594,11 +1584,11 @@ mod tests {
             .flatten()
             .collect();
         positions.sort();
-        assert_eq!(vec![0, 62, 63], positions);
+        assert_eq!(positions, vec![0, 62, 63]);
 
         assert_eq!(
-            vec![0],
-            intervals.peek().unwrap().interval.forward().occ(&sar)
+            intervals.peek().unwrap().interval.forward().occ(&sar),
+            vec![0]
         );
     }
 
