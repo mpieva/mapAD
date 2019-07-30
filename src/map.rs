@@ -721,7 +721,7 @@ fn check_and_push(
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
-            alignment_score: stack_frame.alignment_score, // - pattern.len() as f32,
+            alignment_score: stack_frame.alignment_score,
             z: stack_frame.z,
             edit_operations,
         });
