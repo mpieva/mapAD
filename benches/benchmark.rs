@@ -15,29 +15,23 @@ use mapad::{
     utils::{AlignmentParameters, AllowedMismatches},
 };
 
+struct TestDifferenceModel {}
+impl SequenceDifferenceModel for TestDifferenceModel {
+    fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8, _base_quality: u8) -> f32 {
+        if from == b'C' && to == b'T' {
+            return -0.5;
+        } else if from != to {
+            return -1.0;
+        } else {
+            return 0.0;
+        }
+    }
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -0.5;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
@@ -94,25 +88,6 @@ fn bench_multiple_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -0.5;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
@@ -176,25 +151,6 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -0.5;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
