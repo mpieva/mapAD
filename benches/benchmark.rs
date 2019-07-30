@@ -68,7 +68,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             k_mismatch_search(
                 &pattern,
                 &base_qualities,
-                allowed_mismatches.get(pattern.len()),
+                -allowed_mismatches.get(pattern.len()),
                 &parameters,
                 &fmd_index,
             )
@@ -130,7 +130,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
                 k_mismatch_search(
                     &pattern,
                     &base_qualities,
-                    allowed_mismatches.get(pattern.len()),
+                    -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
                 )
@@ -193,7 +193,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
                 k_mismatch_search(
                     &pattern,
                     &base_qualities,
-                    allowed_mismatches.get(pattern.len()),
+                    -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
                 )

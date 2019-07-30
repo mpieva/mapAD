@@ -314,7 +314,7 @@ impl DArray {
         let pattern = pattern.enumerate().map(|(index, &base)| {
             interval = extend_interval(fmd_index, &interval, base);
             if interval.size < 1 {
-                z -= alignment_parameters
+                z += alignment_parameters
                     .difference_model
                     .get_min_penalty(
                         directed_pattern_index(index),
@@ -448,11 +448,10 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
             k_mismatch_search(
                 &pattern,
                 &base_qualities,
-                (allowed_mismatches.get(pattern.len())
+                allowed_mismatches.get(pattern.len())
                     * alignment_parameters
                         .difference_model
-                        .get_representative_mismatch_penalty())
-                .abs(),
+                        .get_representative_mismatch_penalty(),
                 alignment_parameters,
                 &fmd_index,
             ),
@@ -775,11 +774,11 @@ fn stop_searching_suboptimal_hits(
     false
 }
 
-/// Finds all suffix array intervals for the current pattern with up to z mismatch penalties
+/// Finds all suffix array intervals for the current pattern with up to `max_allowed_penalties` mismatch penalties
 pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     pattern: &[u8],
     base_qualities: &[u8],
-    z: f32,
+    max_allowed_penalties: f32,
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> BinaryHeap<HitInterval> {
@@ -903,7 +902,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     stack_frame.open_gap_forwards
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
-                priority: stack_frame.alignment_score + penalty - lower_bound,
+                priority: stack_frame.alignment_score + penalty + lower_bound,
                 edit_operations: None,
                 //            debug_helper: if stack_frame.forward {
                 //                format!("{}(_)", stack_frame.debug_helper)
@@ -986,7 +985,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
-                    priority: stack_frame.alignment_score + penalty - lower_bound,
+                    priority: stack_frame.alignment_score + penalty + lower_bound,
                     edit_operations: None,
                     //                debug_helper: if stack_frame.forward {
                     //                    format!("{}({})", stack_frame.debug_helper, c as char)
@@ -1035,7 +1034,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                         stack_frame.open_gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
-                    priority: stack_frame.alignment_score + penalty - lower_bound,
+                    priority: stack_frame.alignment_score + penalty + lower_bound,
                     edit_operations: None,
                     //                    debug_helper: if stack_frame.forward {
                     //                        format!(
@@ -1179,7 +1178,7 @@ mod tests {
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, 1.0, &parameters, &fmd_index);
+        let intervals = k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_eq!(vec![2.0], alignment_score);
@@ -1394,7 +1393,7 @@ mod tests {
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, 2.0, &parameters, &fmd_index);
+        let intervals = k_mismatch_search(&pattern, &base_qualities, -2.0, &parameters, &fmd_index);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1435,7 +1434,8 @@ mod tests {
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, 30.0, &parameters, &fmd_index);
+        let intervals =
+            k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(-5.3629, alignment_score[0]);
@@ -1483,7 +1483,8 @@ mod tests {
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, 30.0, &parameters, &fmd_index);
+        let intervals =
+            k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(-10.969394, alignment_score[0]);
@@ -1573,11 +1574,10 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            (allowed_mismatches.get(pattern.len())
+            allowed_mismatches.get(pattern.len())
                 * parameters
                     .difference_model
-                    .get_representative_mismatch_penalty())
-            .abs(),
+                    .get_representative_mismatch_penalty(),
             &parameters,
             &fmd_index,
         );
