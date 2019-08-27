@@ -57,7 +57,7 @@ For AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use
 
 To increase its verbosity, invoke the program like this:
 
-`mapad -vvv index ...` or `mapAD -vvv map ...`
+`mapad -vvv index ...` or `mapad -vvv map ...`
 
 ## Usage
 The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively. 
