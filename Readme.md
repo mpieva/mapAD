@@ -63,6 +63,24 @@ To increase its verbosity, invoke the program like this:
 The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively. 
 Adding ` --help` will print a list of available and required command line options. 
 
+### Example
+The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference. 
+```
+mapad -vv map \
+--library single_stranded \
+-p 0.02 \
+-f 0.475 \
+-t 0.475 \
+-d 0.001 \
+-s 0.9 \
+-D 0.02 \
+-i 0.00001 \
+--reads "${input_fastq}" \
+--reference "/mnt/scratch/chris/thrust_test/index_hg19_chr22_thrust/chr22.fa" \
+--output "${output_bam}"
+```
+Note that the expected mutation rate of 2% (`-D 0.02`) is quite high here. 
+
 ## Performance/ Hardware Requirements
 
 In #5 (tracking issue) benchmark results for mapping are shown.
