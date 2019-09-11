@@ -51,8 +51,8 @@ fn main() {
                         .required(true)
                         .short("r")
                         .long("reads")
-                        .help("FASTQ file containing adapter-trimmed and quality-controlled reads")
-                        .value_name("FASTQ FILE"),
+                        .help("BAM file containing adapter-trimmed and quality-controlled reads")
+                        .value_name("BAM FILE"),
                 )
                 .arg(
                     Arg::with_name("reference")
