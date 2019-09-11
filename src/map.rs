@@ -15,8 +15,7 @@ use bio::{
 };
 
 use bincode;
-use bio::io::fastq;
-use rust_htslib::bam;
+use rust_htslib::{bam, bam::Read};
 use serde::{Deserialize, Serialize};
 use snap;
 
@@ -396,16 +395,18 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
 /// Transformations of the input sequence which are used throughout the program.
 /// Currently, the input sequence is just converted to uppercase letters.
 #[inline]
-fn transform_pattern_sequence(record: &fastq::Record) -> Vec<u8> {
-    record.seq().to_ascii_uppercase()
+fn transform_pattern_sequence(record: &bam::Record) -> Vec<u8> {
+    record.seq().as_bytes().to_ascii_uppercase()
 }
 
 /// Transformations of the base quality inputs which are used throughout the program.
 /// Currently, the PHRED-scaled base qualities are assumed to be encoded with ASCII
 /// codes starting from 33, so we subtract 33 to transform them to a range starting at 0.
 #[inline]
-fn transform_base_qualities(record: &fastq::Record) -> Vec<u8> {
-    record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>()
+fn transform_base_qualities(record: &bam::Record) -> &[u8] {
+    // Subtracting offsets is not required for BAM files
+    // record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>()
+    record.qual()
 }
 
 /// Maps reads and writes them to a file in BAM format
@@ -417,7 +418,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
 ) -> Result<(), Box<dyn Error>> {
-    let reads_fq_reader = fastq::Reader::from_file(reads_path)?;
+    let mut reads_fq_reader = bam::Reader::from_path(reads_path)?;
 
     let mut header = bam::Header::new();
     for identifier_position in identifier_position_map.iter() {
@@ -440,7 +441,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
 
     // Mapping is performed in parallel by passing this closure to the thread pool
-    let mapping_parallel = |record: &fastq::Record| {
+    let mapping_parallel = |record: &bam::Record| {
         let pattern = transform_pattern_sequence(record);
 
         // Hardcoded offset (33) that should be ok for Illumina reads
@@ -462,7 +463,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     };
 
     const CHUNK_SIZE: usize = 1000;
-    let mut in_buffer: Vec<fastq::Record> = Vec::with_capacity(CHUNK_SIZE);
+    let mut in_buffer: Vec<bam::Record> = Vec::with_capacity(CHUNK_SIZE);
     let mut out_buffer: Vec<_>;
     let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
 
@@ -519,7 +520,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
 
 /// Convert suffix array intervals to positions and BAM records and write them to a BAM file eventually
 fn intervals_to_bam(
-    record: &fastq::Record,
+    record: &bam::Record,
     intervals: &mut BinaryHeap<HitInterval>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
@@ -592,7 +593,7 @@ fn intervals_to_bam(
 /// optimal score to overcome dependencies on read length, base composition,
 /// and the used scoring function.
 fn compute_maximal_possible_score<T: SequenceDifferenceModel + Sync>(
-    record: &fastq::Record,
+    record: &bam::Record,
     difference_model: &T,
 ) -> f32 {
     let pattern = transform_pattern_sequence(record);
@@ -600,7 +601,7 @@ fn compute_maximal_possible_score<T: SequenceDifferenceModel + Sync>(
 
     pattern.iter().zip(base_qualities).enumerate().fold(
         0.0,
-        |optimal_score, (i, (&base, quality))| {
+        |optimal_score, (i, (&base, &quality))| {
             optimal_score + difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
         },
     )
@@ -647,7 +648,7 @@ fn estimate_mapping_quality(
 
 /// Create and return a BAM record of either a hit or an unmapped read
 fn create_bam_record(
-    input_record: &fastq::Record,
+    input_record: &bam::Record,
     position: i32,
     hit_interval: Option<&HitInterval>,
     cigar: Option<&bam::record::CigarString>,
@@ -657,7 +658,7 @@ fn create_bam_record(
     let mut bam_record = bam::record::Record::new();
 
     bam_record.set(
-        input_record.id().as_bytes(),
+        input_record.qname(),
         cigar,
         &transform_pattern_sequence(input_record),
         &transform_base_qualities(input_record),
