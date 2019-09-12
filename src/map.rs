@@ -462,7 +462,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
         )
     };
 
-    const CHUNK_SIZE: usize = 1000;
+    const CHUNK_SIZE: usize = 10000;
     let mut in_buffer: Vec<bam::Record> = Vec::with_capacity(CHUNK_SIZE);
     let mut out_buffer: Vec<_>;
     let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
