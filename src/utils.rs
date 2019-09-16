@@ -7,6 +7,7 @@ pub struct AlignmentParameters<T: SequenceDifferenceModel + Sync> {
     pub difference_model: T,
     pub penalty_gap_open: f32,
     pub penalty_gap_extend: f32,
+    pub chunk_size: usize,
 }
 
 pub struct AllowedMismatches<'a, T: SequenceDifferenceModel + Sync> {

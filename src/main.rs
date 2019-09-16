@@ -141,6 +141,14 @@ fn main() {
                         .help("Expected rate of indels between reads and reference")
                         .value_name("RATE")
                         .validator(probability_validator),
+                )
+                .arg(
+                    Arg::with_name("chunk_size")
+                        .required(true)
+                        .long("batch_size")
+                        .default_value("500000")
+                        .help("The number of reads that are processed in parallel")
+                        .value_name("INT")
                 ),
         )
         .get_matches();
@@ -196,6 +204,8 @@ fn main() {
                     .log2(),
                 penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // TODO
                 difference_model,
+                chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
+                    .unwrap_or_else(|e| e.exit()),
             };
             if let Err(e) = map::run(
                 map_matches.value_of("reads").unwrap(),

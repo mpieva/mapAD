@@ -385,10 +385,10 @@ impl<'a, R> ChunkIterator<'a, R>
 where
     R: Read,
 {
-    fn from_reader(records: bam::Records<'a, R>) -> Self {
+    fn from_reader(records: bam::Records<'a, R>, chunk_size: usize) -> Self {
         Self {
             // TODO: Make chunk size configurable
-            chunk_size: 1_000_000,
+            chunk_size,
             records: records.peekable(),
         }
     }
@@ -509,7 +509,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
 
     debug!("Map reads");
-    ChunkIterator::from_reader(reads_fq_reader.records())
+    ChunkIterator::from_reader(reads_fq_reader.records(), alignment_parameters.chunk_size)
         .map(|chunk| {
             println!("Mapping chunk of reads in parallel");
             let results = chunk
