@@ -483,29 +483,6 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     }
 
     let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
-
-    // Mapping is performed in parallel by passing this closure to the thread pool
-    let mapping_parallel = |record: &bam::Record| {
-        let pattern = transform_pattern_sequence(record);
-
-        // Hardcoded offset (33) that should be ok for Illumina reads
-        let base_qualities = transform_base_qualities(record);
-
-        (
-            record.to_owned(),
-            k_mismatch_search(
-                &pattern,
-                &base_qualities,
-                allowed_mismatches.get(pattern.len())
-                    * alignment_parameters
-                        .difference_model
-                        .get_representative_mismatch_penalty(),
-                alignment_parameters,
-                &fmd_index,
-            ),
-        )
-    };
-
     let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
 
     debug!("Map reads");
@@ -514,16 +491,32 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
             println!("Mapping chunk of reads in parallel");
             let results = chunk
                 .par_iter()
-                .map(mapping_parallel)
+                .map(|record| {
+                    let pattern = transform_pattern_sequence(record);
+                    let base_qualities = transform_base_qualities(record);
+                    (
+                        record,
+                        k_mismatch_search(
+                            &pattern,
+                            &base_qualities,
+                            allowed_mismatches.get(pattern.len())
+                                * alignment_parameters
+                                    .difference_model
+                                    .get_representative_mismatch_penalty(),
+                            alignment_parameters,
+                            &fmd_index,
+                        ),
+                    )
+                })
                 .map(|(record, mut hit_interval)| {
                     intervals_to_bam(
-                        &record,
+                        record,
                         &mut hit_interval,
                         fmd_index,
                         suffix_array,
                         identifier_position_map,
                         compute_maximal_possible_score(
-                            &record,
+                            record,
                             &alignment_parameters.difference_model,
                         ),
                     )

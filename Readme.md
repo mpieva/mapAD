@@ -114,7 +114,7 @@ consumption.
 - [x] Revisit mapping quality estimation
 - [ ] BAM-IO
   - [x] BAM output
-  - [ ] BAM input
+  - [x] BAM input
 - [x] Generate CIGAR string
 - [ ] Evaluate precision, FPR, FNR
 - [x] Only push to heap if necessary (perhaps check conditions in (inlined) function)
