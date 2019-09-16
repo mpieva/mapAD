@@ -23,6 +23,7 @@ use crate::{
     sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, AllowedMismatches},
 };
+use std::iter::Peekable;
 
 /// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {
@@ -351,6 +352,48 @@ struct Penalties {
     representative_mismatch_penalty: f32,
 }
 
+struct ChunkIterator<'a, R>
+where
+    R: Read,
+{
+    chunk_size: usize,
+    records: Peekable<bam::Records<'a, R>>,
+}
+
+impl<'a, R> Iterator for ChunkIterator<'a, R>
+where
+    R: Read,
+{
+    type Item = Vec<bam::Record>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let source_iterator_loan = &mut self.records;
+
+        // If the underlying iterator is exhausted return None, too
+        source_iterator_loan.peek()?;
+
+        Some(
+            source_iterator_loan
+                .take(self.chunk_size)
+                .collect::<Result<Vec<_>, _>>()
+                .expect("Input file is corrupt. Cancelling process."),
+        )
+    }
+}
+
+impl<'a, R> ChunkIterator<'a, R>
+where
+    R: Read,
+{
+    fn from_reader(records: bam::Records<'a, R>) -> Self {
+        Self {
+            // TODO: Make chunk size configurable
+            chunk_size: 1_000_000,
+            records: records.peekable(),
+        }
+    }
+}
+
 /// Loads index files and launches the mapping process
 pub fn run<T: SequenceDifferenceModel + Sync>(
     reads_path: &str,
@@ -419,6 +462,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     identifier_position_map: &FastaIdPositions,
 ) -> Result<(), Box<dyn Error>> {
     let mut reads_fq_reader = bam::Reader::from_path(reads_path)?;
+    let _ = reads_fq_reader.set_threads(4);
 
     let mut header = bam::Header::new();
     for identifier_position in identifier_position_map.iter() {
@@ -462,57 +506,38 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
         )
     };
 
-    const CHUNK_SIZE: usize = 10000;
-    let mut in_buffer: Vec<bam::Record> = Vec::with_capacity(CHUNK_SIZE);
-    let mut out_buffer: Vec<_>;
     let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
 
     debug!("Map reads");
-    for (i, record) in reads_fq_reader.records().enumerate() {
-        in_buffer.push(record.unwrap());
-        if i % (CHUNK_SIZE - 1) == 0 {
-            // Map in parallel
-            out_buffer = in_buffer.par_iter().map(mapping_parallel).collect();
-            in_buffer.clear();
-            // Convert to BAM serially
-            out_buffer
-                .iter_mut()
-                .map(|(record, hit_interval)| {
+    ChunkIterator::from_reader(reads_fq_reader.records())
+        .map(|chunk| {
+            println!("Mapping chunk of reads in parallel");
+            let results = chunk
+                .par_iter()
+                .map(mapping_parallel)
+                .map(|(record, mut hit_interval)| {
                     intervals_to_bam(
-                        record,
-                        hit_interval,
+                        &record,
+                        &mut hit_interval,
                         fmd_index,
                         suffix_array,
                         identifier_position_map,
                         compute_maximal_possible_score(
-                            record,
+                            &record,
                             &alignment_parameters.difference_model,
                         ),
-                        &mut out_file,
                     )
                 })
-                .collect::<Result<(), bam::WriteError>>()?;
-            out_buffer.clear();
-        }
-    }
-    // Process remaining reads in the in_buffer
-    // Map in parallel
-    out_buffer = in_buffer.par_iter().map(mapping_parallel).collect();
-    // Convert to BAM serially
-    out_buffer
-        .iter_mut()
-        .map(|(record, hit_interval)| {
-            intervals_to_bam(
-                record,
-                hit_interval,
-                fmd_index,
-                suffix_array,
-                identifier_position_map,
-                compute_maximal_possible_score(record, &alignment_parameters.difference_model),
-                &mut out_file,
-            )
+                .flatten()
+                .collect::<Vec<_>>();
+
+            println!("Writing BAM records to output file serially");
+            results
+                .iter()
+                .map(|record| out_file.write(record))
+                .collect()
         })
-        .collect::<Result<(), bam::WriteError>>()?;
+        .collect::<Result<(), _>>()?;
 
     debug!("Done");
     Ok(())
@@ -526,8 +551,9 @@ fn intervals_to_bam(
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
     optimal_score: f32,
-    out_file: &mut bam::Writer,
-) -> Result<(), bam::WriteError> {
+) -> Vec<bam::Record> {
+    let mut out = Vec::new();
+
     if let Some(best_alignment) = intervals.pop() {
         let cigar = best_alignment
             .edit_operations
@@ -556,7 +582,7 @@ fn intervals_to_bam(
                 Some(mapping_quality),
                 tid,
             );
-            out_file.write(&bam_record)?;
+            out.push(bam_record);
         }
         // Read aligns to reverse strand
         for &position in best_alignment
@@ -577,15 +603,15 @@ fn intervals_to_bam(
                 tid,
             );
             bam_record.set_reverse();
-            out_file.write(&bam_record)?;
+            out.push(bam_record);
         }
     } else {
         // No match found, report unmapped read
         let mut bam_record = create_bam_record(record, -1, None, None, None, -1);
         bam_record.set_unmapped();
-        out_file.write(&bam_record)?;
+        out.push(bam_record);
     }
-    Ok(())
+    out
 }
 
 /// Computes theoretically maximal possible alignment score per read.
