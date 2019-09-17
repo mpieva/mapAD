@@ -11,28 +11,23 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use mapad::{
     map::k_mismatch_search,
-    sequence_difference_models::SequenceDifferenceModel,
+    sequence_difference_models::{LibraryPrep, SimpleAncientDnaModel},
     utils::{AlignmentParameters, AllowedMismatches},
 };
-
-struct TestDifferenceModel {}
-impl SequenceDifferenceModel for TestDifferenceModel {
-    fn get(&self, _i: usize, _read_length: usize, from: u8, to: u8, _base_quality: u8) -> f32 {
-        if from == b'C' && to == b'T' {
-            return -0.5;
-        } else if from != to {
-            return -1.0;
-        } else {
-            return 0.0;
-        }
-    }
-}
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SimpleAncientDnaModel {
+            library_prep: (LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.475,
+                three_prime_overhang: 0.475,
+            }),
+            ds_deamination_rate: 0.001,
+            ss_deamination_rate: 0.9,
+            divergence: 0.02 / 3.0,
+        };
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -88,7 +83,15 @@ fn bench_multiple_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SimpleAncientDnaModel {
+            library_prep: (LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.475,
+                three_prime_overhang: 0.475,
+            }),
+            ds_deamination_rate: 0.001,
+            ss_deamination_rate: 0.9,
+            divergence: 0.02 / 3.0,
+        };
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
@@ -151,7 +154,15 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SimpleAncientDnaModel {
+            library_prep: (LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.475,
+                three_prime_overhang: 0.475,
+            }),
+            ds_deamination_rate: 0.001,
+            ss_deamination_rate: 0.9,
+            divergence: 0.02 / 3.0,
+        };
 
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
