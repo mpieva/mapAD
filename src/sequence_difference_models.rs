@@ -52,23 +52,36 @@ pub struct SimpleAncientDnaModel {
 
 impl SequenceDifferenceModel for SimpleAncientDnaModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32 {
-        let (p_fwd, p_rev) = match self.library_prep {
-            LibraryPrep::SingleStranded {
-                five_prime_overhang,
-                three_prime_overhang,
-            } => {
-                let five_prime_overhang = five_prime_overhang.powi((i + 1) as i32);
-                let three_prime_overhang = three_prime_overhang.powi((read_length - i) as i32);
-                (
-                    (five_prime_overhang + three_prime_overhang)
-                        - (five_prime_overhang * three_prime_overhang),
-                    0.0,
-                )
-            }
-            LibraryPrep::DoubleStranded(overhang) => (
-                overhang.powi(i as i32 + 1),
-                overhang.powi((read_length - i) as i32),
-            ),
+        // Only C->T and G->A substitutions are part of the deamination model.
+        // Therefore, the following calculations are offloaded into a closure that
+        // is only called when one of those substitutions is observed.
+        let compute_deamination_part = || {
+            let (p_fwd, p_rev) = match self.library_prep {
+                LibraryPrep::SingleStranded {
+                    five_prime_overhang,
+                    three_prime_overhang,
+                } => {
+                    let five_prime_overhang = five_prime_overhang.powi((i + 1) as i32);
+                    let three_prime_overhang = three_prime_overhang.powi((read_length - i) as i32);
+                    (
+                        (five_prime_overhang + three_prime_overhang)
+                            - (five_prime_overhang * three_prime_overhang),
+                        0.0,
+                    )
+                }
+                LibraryPrep::DoubleStranded(overhang) => (
+                    overhang.powi(i as i32 + 1),
+                    overhang.powi((read_length - i) as i32),
+                ),
+            };
+
+            // Probabilities of seeing C->T or G->A substitutions
+            let c_to_t =
+                self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
+            let g_to_a =
+                self.ss_deamination_rate * p_rev + self.ds_deamination_rate * (1.0 - p_rev);
+
+            (c_to_t, g_to_a)
         };
 
         let sequencing_error = 10_f32.powf(-1.0 * f32::from(base_quality) / 10.0);
@@ -78,23 +91,31 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
         let independent_error =
             (sequencing_error + self.divergence - sequencing_error * self.divergence).min(0.25);
 
-        // Probabilities of seeing C->T or G->A substitutions
-        let c_to_t = self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
-        let g_to_a = self.ss_deamination_rate * p_rev + self.ds_deamination_rate * (1.0 - p_rev);
-
         match from {
             b'A' => match to {
                 b'A' => 1.0 - 3.0 * independent_error,
                 _ => independent_error,
             },
             b'C' => match to {
-                b'C' => 1.0 - 3.0 * independent_error - c_to_t + 4.0 * independent_error * c_to_t,
-                b'T' => independent_error + c_to_t - 4.0 * independent_error * c_to_t,
+                b'C' => {
+                    let (c_to_t, _) = compute_deamination_part();
+                    1.0 - 3.0 * independent_error - c_to_t + 4.0 * independent_error * c_to_t
+                }
+                b'T' => {
+                    let (c_to_t, _) = compute_deamination_part();
+                    independent_error + c_to_t - 4.0 * independent_error * c_to_t
+                }
                 _ => independent_error,
             },
             b'G' => match to {
-                b'A' => independent_error + g_to_a - 4.0 * independent_error * g_to_a,
-                b'G' => 1.0 - 3.0 * independent_error - g_to_a + 4.0 * independent_error * g_to_a,
+                b'A' => {
+                    let (_, g_to_a) = compute_deamination_part();
+                    independent_error + g_to_a - 4.0 * independent_error * g_to_a
+                }
+                b'G' => {
+                    let (_, g_to_a) = compute_deamination_part();
+                    1.0 - 3.0 * independent_error - g_to_a + 4.0 * independent_error * g_to_a
+                }
                 _ => independent_error,
             },
             b'T' => match to {
