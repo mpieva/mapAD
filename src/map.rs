@@ -4,7 +4,7 @@ use std::{
 
 use clap::{crate_name, crate_version};
 use either::Either;
-use log::debug;
+use log::{debug, trace};
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
@@ -489,7 +489,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     debug!("Map reads");
     ChunkIterator::from_reader(reads_fq_reader.records(), alignment_parameters.chunk_size)
         .map(|chunk| {
-            println!("Mapping chunk of reads in parallel");
+            trace!("Map chunk of reads in parallel");
             let results = chunk
                 .par_iter()
                 .map(|record| {
@@ -524,7 +524,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                 .flatten()
                 .collect::<Vec<_>>();
 
-            println!("Writing BAM records to output file serially");
+            trace!("Write BAM records to output file serially");
             results
                 .iter()
                 .map(|record| out_file.write(record))
