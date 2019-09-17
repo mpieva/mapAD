@@ -40,6 +40,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             difference_model,
             penalty_gap_open: -1.0,
             penalty_gap_extend: -1.0,
+            chunk_size: 1,
         };
 
         // Reference
@@ -96,6 +97,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
             difference_model,
             penalty_gap_open: -1.0,
             penalty_gap_extend: -1.0,
+            chunk_size: 1,
         };
 
         // Reference
@@ -159,6 +161,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             difference_model,
             penalty_gap_open: -1.0,
             penalty_gap_extend: -1.0,
+            chunk_size: 1,
         };
 
         // Reference

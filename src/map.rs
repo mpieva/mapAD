@@ -1170,6 +1170,7 @@ mod tests {
             difference_model,
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
+            chunk_size: 1,
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1232,6 +1233,7 @@ mod tests {
             difference_model,
             penalty_gap_open: -20.0,
             penalty_gap_extend: -10.0,
+            chunk_size: 1,
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1291,6 +1293,7 @@ mod tests {
             difference_model,
             penalty_gap_open: -1.0,
             penalty_gap_extend: -1.0,
+            chunk_size: 1,
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1385,6 +1388,7 @@ mod tests {
             difference_model,
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
+            chunk_size: 1,
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1426,6 +1430,7 @@ mod tests {
             // Disable gaps
             penalty_gap_open: -200.0,
             penalty_gap_extend: -100.0,
+            chunk_size: 1,
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1554,6 +1559,7 @@ mod tests {
             penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
             penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
             difference_model,
+            chunk_size: 1,
         };
 
         let alphabet = alphabets::dna::alphabet();

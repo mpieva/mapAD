@@ -91,6 +91,7 @@ mod tests {
             difference_model: VindijaPWM::new(),
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,
+            chunk_size: 1,
         };
         let allowed_mismatches = AllowedMismatches::new(&parameters);
 
@@ -118,6 +119,7 @@ mod tests {
             difference_model: VindijaPWM::new(),
             penalty_gap_open: 1.0,
             penalty_gap_extend: 1.0,
+            chunk_size: 1,
         };
         let allowed_mismatches = AllowedMismatches::new(&parameters);
 
