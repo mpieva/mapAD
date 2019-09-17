@@ -493,18 +493,17 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                 .par_iter()
                 .map(|record| {
                     let pattern = transform_pattern_sequence(record);
-                    let base_qualities = transform_base_qualities(record);
                     (
                         record,
                         k_mismatch_search(
                             &pattern,
-                            &base_qualities,
+                            transform_base_qualities(record),
                             allowed_mismatches.get(pattern.len())
                                 * alignment_parameters
                                     .difference_model
                                     .get_representative_mismatch_penalty(),
                             alignment_parameters,
-                            &fmd_index,
+                            fmd_index,
                         ),
                     )
                 })
