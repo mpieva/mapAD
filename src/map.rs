@@ -1,4 +1,6 @@
-use std::{cmp::Ordering, collections::binary_heap::BinaryHeap, error::Error, fs::File};
+use std::{
+    cmp::Ordering, collections::binary_heap::BinaryHeap, error::Error, fs::File, iter::Peekable,
+};
 
 use clap::{crate_name, crate_version};
 use either::Either;
@@ -23,7 +25,6 @@ use crate::{
     sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, AllowedMismatches},
 };
-use std::iter::Peekable;
 
 /// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {
