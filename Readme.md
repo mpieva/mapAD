@@ -3,7 +3,7 @@
 
 Apparently, GitLab-CI pipelines currently fail due to storage size reasons - not because of failing unit tests.
 
-# mapAD
+# mapAD <img src="https://vcs.eva.mpg.de/uploads/-/system/project/avatar/1089/480px-Uracil-3D-balls.png" alt="drawing" width="25"/>
 
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. 
 This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
