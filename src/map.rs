@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering, collections::binary_heap::BinaryHeap, error::Error, fs::File, iter::Peekable,
+    mem,
 };
 
 use clap::{crate_name, crate_version};
@@ -123,9 +124,9 @@ impl Direction {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum EditOperation {
-    Insertion,
-    Deletion,
-    MatchMismatch,
+    Insertion(usize),
+    Deletion(usize),
+    MatchMismatch(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -144,43 +145,59 @@ impl EditOperationsTrack {
     /// Since we start aligning at the center of a read, tracks of edit operations
     /// are not ordered by position in the read.
     fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
-        let mut cigar = Vec::new();
-
         fn add_edit_operation(
-            edit_operation: EditOperation,
+            edit_operation: &EditOperation,
             k: u32,
             cigar: &mut Vec<bam::record::Cigar>,
         ) {
             match edit_operation {
-                EditOperation::MatchMismatch => cigar.push(bam::record::Cigar::Match(k)),
-                EditOperation::Insertion => cigar.push(bam::record::Cigar::Del(k)),
-                EditOperation::Deletion => cigar.push(bam::record::Cigar::Ins(k)),
+                EditOperation::MatchMismatch(_) => cigar.push(bam::record::Cigar::Match(k)),
+                EditOperation::Insertion(_) => cigar.push(bam::record::Cigar::Ins(k)),
+                EditOperation::Deletion(_) => cigar.push(bam::record::Cigar::Del(k)),
             }
         };
 
+        // Restore outer ordering of the edit operation by the positions they carry as values.
+        // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
+        // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
+        let mut cigar_order_outer = vec![Vec::new(); self.edit_operations.len()];
+        for edit_operation in self.edit_operations.iter() {
+            let position = match edit_operation {
+                EditOperation::Insertion(position) => position,
+                EditOperation::Deletion(position) => position,
+                EditOperation::MatchMismatch(position) => position,
+            };
+            cigar_order_outer[*position].push(*edit_operation);
+        }
+
+        // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut n = 1;
         let mut last_edit_operation = None;
-        for &edit_operation in self
-            .edit_operations
+        let mut cigar = Vec::new();
+        cigar_order_outer
             .iter()
-            .rev()
-            .skip(if read_length % 2 == 0 { 0 } else { 1 })
-            .step_by(2)
-            .chain(self.edit_operations.iter().step_by(2))
-        {
-            last_edit_operation = match last_edit_operation {
-                Some(last_edit_op) if last_edit_op == edit_operation => {
-                    n += 1;
-                    last_edit_operation
+            .enumerate()
+            .flat_map(|(i, inner_vec)| {
+                if i < read_length / 2 {
+                    Either::Left(inner_vec.iter().rev())
+                } else {
+                    Either::Right(inner_vec.iter())
                 }
-                Some(last_edit_op) => {
-                    add_edit_operation(last_edit_op, n, &mut cigar);
-                    n = 1;
+            })
+            .for_each(|edit_operation| {
+                last_edit_operation = if let Some(last_edit_operation) = last_edit_operation {
+                    if mem::discriminant(last_edit_operation) == mem::discriminant(edit_operation) {
+                        n += 1;
+                        Some(last_edit_operation)
+                    } else {
+                        add_edit_operation(last_edit_operation, n, &mut cigar);
+                        n = 1;
+                        Some(edit_operation)
+                    }
+                } else {
                     Some(edit_operation)
                 }
-                None => Some(edit_operation),
-            };
-        }
+            });
         if let Some(last_edit_operation) = last_edit_operation {
             add_edit_operation(last_edit_operation, n, &mut cigar);
         }
@@ -928,7 +945,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 ..stack_frame
             },
             pattern,
-            EditOperation::Insertion,
+            EditOperation::Insertion(stack_frame.j as usize),
             &stack_frame.edit_operations,
             &mut stack,
             &mut hit_intervals,
@@ -1009,7 +1026,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     ..stack_frame
                 },
                 pattern,
-                EditOperation::Deletion,
+                EditOperation::Deletion(stack_frame.j as usize),
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
@@ -1063,7 +1080,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     //                    },
                 },
                 pattern,
-                EditOperation::MatchMismatch,
+                EditOperation::MatchMismatch(stack_frame.j as usize),
                 &stack_frame.edit_operations,
                 &mut stack,
                 &mut hit_intervals,
