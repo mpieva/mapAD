@@ -222,8 +222,10 @@ struct MismatchSearchStackFrame {
     backward_index: isize,
     forward_index: isize,
     direction: Direction,
-    open_gap_backwards: bool,
-    open_gap_forwards: bool,
+    open_deletion_backwards: bool,
+    open_insertion_backwards: bool,
+    open_deletion_forwards: bool,
+    open_insertion_forwards: bool,
     alignment_score: f32,
     priority: f32,
     edit_operations: Option<EditOperationsTrack>,
@@ -851,8 +853,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         backward_index: center_of_read - 1,
         forward_index: center_of_read,
         direction: Direction::Forward,
-        open_gap_backwards: false,
-        open_gap_forwards: false,
+        open_deletion_backwards: false,
+        open_insertion_backwards: false,
+        open_deletion_forwards: false,
+        open_insertion_forwards: false,
         alignment_score: 0.0,
         priority: 0.0,
         edit_operations: Some(EditOperationsTrack::new()),
@@ -909,8 +913,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         //
         // Insertion in read / deletion in reference
         //
-        let penalty = if (stack_frame.open_gap_backwards && stack_frame.direction.is_forward())
-            || (stack_frame.open_gap_forwards && stack_frame.direction.is_backward())
+        let penalty = if (stack_frame.open_insertion_forwards && stack_frame.direction.is_forward())
+            || (stack_frame.open_insertion_backwards && stack_frame.direction.is_backward())
         {
             parameters.penalty_gap_extend
         } else {
@@ -924,15 +928,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 forward_index: next_forward_index,
                 direction: stack_frame.direction.reverse(),
                 // Mark opened gap at the corresponding end
-                open_gap_backwards: if stack_frame.direction.is_backward() {
-                    stack_frame.open_gap_backwards
+                open_insertion_backwards: if stack_frame.direction.is_backward() {
+                    stack_frame.open_insertion_backwards
                 } else {
                     true
                 },
-                open_gap_forwards: if stack_frame.direction.is_forward() {
+                open_insertion_forwards: if stack_frame.direction.is_forward() {
                     true
                 } else {
-                    stack_frame.open_gap_forwards
+                    stack_frame.open_insertion_forwards
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
                 priority: stack_frame.alignment_score + penalty + lower_bound,
@@ -993,8 +997,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             //
             // Deletion in read / insertion in reference
             //
-            let penalty = if (stack_frame.open_gap_backwards && stack_frame.direction.is_forward())
-                || (stack_frame.open_gap_forwards && stack_frame.direction.is_backward())
+            let penalty = if (stack_frame.open_deletion_forwards
+                && stack_frame.direction.is_forward())
+                || (stack_frame.open_deletion_backwards && stack_frame.direction.is_backward())
             {
                 parameters.penalty_gap_extend
             } else {
@@ -1005,15 +1010,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 MismatchSearchStackFrame {
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
-                    open_gap_backwards: if stack_frame.direction.is_backward() {
+                    open_deletion_backwards: if stack_frame.direction.is_backward() {
                         true
                     } else {
-                        stack_frame.open_gap_backwards
+                        stack_frame.open_deletion_backwards
                     },
-                    open_gap_forwards: if stack_frame.direction.is_forward() {
+                    open_deletion_forwards: if stack_frame.direction.is_forward() {
                         true
                     } else {
-                        stack_frame.open_gap_forwards
+                        stack_frame.open_deletion_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
@@ -1052,15 +1057,25 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     forward_index: next_forward_index,
                     direction: stack_frame.direction.reverse(),
                     // Mark closed gap at the corresponding end
-                    open_gap_backwards: if stack_frame.direction.is_backward() {
+                    open_deletion_backwards: if stack_frame.direction.is_backward() {
                         false
                     } else {
-                        stack_frame.open_gap_backwards
+                        stack_frame.open_deletion_backwards
                     },
-                    open_gap_forwards: if stack_frame.direction.is_forward() {
+                    open_insertion_backwards: if stack_frame.direction.is_backward() {
                         false
                     } else {
-                        stack_frame.open_gap_forwards
+                        stack_frame.open_insertion_backwards
+                    },
+                    open_deletion_forwards: if stack_frame.direction.is_forward() {
+                        false
+                    } else {
+                        stack_frame.open_deletion_forwards
+                    },
+                    open_insertion_forwards: if stack_frame.direction.is_forward() {
+                        false
+                    } else {
+                        stack_frame.open_insertion_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
