@@ -1802,7 +1802,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -4.0, &parameters, &fmd_index);
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
 
         assert_eq!(
