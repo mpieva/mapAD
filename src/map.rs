@@ -1124,6 +1124,8 @@ mod tests {
 
     use super::*;
 
+    use rust_htslib::bam;
+
     use crate::sequence_difference_models::VindijaPWM;
 
     use assert_approx_eq::assert_approx_eq;
@@ -1554,9 +1556,11 @@ mod tests {
             backward_index: 5,
             forward_index: 5,
             direction: Direction::Backward,
-            open_gap_backwards: false,
-            open_gap_forwards: false,
+            open_deletion_backwards: false,
+            open_insertion_backwards: false,
+            open_deletion_forwards: false,
             edit_operations: None,
+            open_insertion_forwards: false,
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
@@ -1571,9 +1575,11 @@ mod tests {
             backward_index: 5,
             forward_index: 5,
             direction: Direction::Backward,
-            open_gap_backwards: false,
-            open_gap_forwards: false,
+            open_deletion_backwards: false,
+            open_insertion_backwards: false,
+            open_deletion_forwards: false,
             edit_operations: None,
+            open_insertion_forwards: false,
         };
 
         assert!(map_params_large > map_params_small);
@@ -1650,4 +1656,162 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_cigar_indels() {
+        struct TestDifferenceModel {}
+        impl SequenceDifferenceModel for TestDifferenceModel {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -10.0;
+                } else if from != to {
+                    return -10.0;
+                } else {
+                    return 0.0;
+                }
+            }
+        }
+        let difference_model = TestDifferenceModel {};
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+        };
+        let alphabet = alphabets::dna::alphabet();
+
+        //
+        // Deletion
+        //
+        let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "ATTACA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(
+            best_hit.edit_operations.build_cigar(pattern.len()),
+            bam::record::CigarString(vec![
+                bam::record::Cigar::Match(4),
+                bam::record::Cigar::Del(1),
+                bam::record::Cigar::Match(2)
+            ])
+        );
+
+        //
+        // 2-base deletion
+        //
+        let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATCAG".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(
+            best_hit.edit_operations.build_cigar(pattern.len()),
+            bam::record::CigarString(vec![
+                bam::record::Cigar::Match(3),
+                bam::record::Cigar::Del(2),
+                bam::record::Cigar::Match(3)
+            ])
+        );
+
+        //
+        // Insertion
+        //
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATTAGCA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(
+            best_hit.edit_operations.build_cigar(pattern.len()),
+            bam::record::CigarString(vec![
+                bam::record::Cigar::Match(5),
+                bam::record::Cigar::Ins(1),
+                bam::record::Cigar::Match(2)
+            ])
+        );
+
+        //
+        // 2-base insertion
+        //
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATTAGGCA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -4.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(
+            best_hit.edit_operations.build_cigar(pattern.len()),
+            bam::record::CigarString(vec![
+                bam::record::Cigar::Match(5),
+                bam::record::Cigar::Ins(2),
+                bam::record::Cigar::Match(2)
+            ])
+        );
+    }
 }
