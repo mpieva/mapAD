@@ -24,6 +24,7 @@ serde = { version = "1.0.101", features = ["derive"] }
 snap = "0.2.5"
 either = "1.5.3"
 rayon = "1.2.0"
+ego-tree = "*"
 
 [dev-dependencies]
 criterion = "0.3.0"

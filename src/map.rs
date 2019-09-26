@@ -4,6 +4,7 @@ use std::{
 };
 
 use clap::{crate_name, crate_version};
+use ego_tree::{NodeId, Tree};
 use either::Either;
 use log::{debug, trace};
 use rayon::prelude::*;
@@ -26,6 +27,7 @@ use crate::{
     sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, AllowedMismatches},
 };
+use std::collections::BTreeMap;
 
 /// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {
@@ -63,7 +65,7 @@ impl UnderlyingDataFMDIndex {
 pub struct HitInterval {
     interval: BiInterval,
     alignment_score: f32,
-    edit_operations: EditOperationsTrack,
+    cigar: bam::record::CigarString,
 }
 
 impl PartialOrd for HitInterval {
@@ -129,87 +131,6 @@ enum EditOperation {
     MatchMismatch(usize),
 }
 
-#[derive(Debug, Clone)]
-struct EditOperationsTrack {
-    edit_operations: SmallVec<[EditOperation; 64]>,
-}
-
-impl EditOperationsTrack {
-    fn new() -> Self {
-        EditOperationsTrack {
-            edit_operations: SmallVec::new(),
-        }
-    }
-
-    /// Derive Cigar string from oddly-ordered tracks of edit operations.
-    /// Since we start aligning at the center of a read, tracks of edit operations
-    /// are not ordered by position in the read.
-    fn build_cigar(&self, read_length: usize) -> bam::record::CigarString {
-        fn add_edit_operation(
-            edit_operation: &EditOperation,
-            k: u32,
-            cigar: &mut Vec<bam::record::Cigar>,
-        ) {
-            match edit_operation {
-                EditOperation::MatchMismatch(_) => cigar.push(bam::record::Cigar::Match(k)),
-                EditOperation::Insertion(_) => cigar.push(bam::record::Cigar::Ins(k)),
-                EditOperation::Deletion(_) => cigar.push(bam::record::Cigar::Del(k)),
-            }
-        };
-
-        // Restore outer ordering of the edit operation by the positions they carry as values.
-        // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
-        // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
-        let mut cigar_order_outer = vec![Vec::new(); self.edit_operations.len()];
-        for edit_operation in self.edit_operations.iter() {
-            let position = match edit_operation {
-                EditOperation::Insertion(position) => position,
-                EditOperation::Deletion(position) => position,
-                EditOperation::MatchMismatch(position) => position,
-            };
-            cigar_order_outer[*position].push(*edit_operation);
-        }
-
-        // Reconstruct the order of the remaining edit operations and condense CIGAR
-        let mut n = 1;
-        let mut last_edit_operation = None;
-        let mut cigar = Vec::new();
-        cigar_order_outer
-            .iter()
-            .enumerate()
-            .flat_map(|(i, inner_vec)| {
-                if i < read_length / 2 {
-                    Either::Left(inner_vec.iter().rev())
-                } else {
-                    Either::Right(inner_vec.iter())
-                }
-            })
-            .for_each(|edit_operation| {
-                last_edit_operation = if let Some(last_edit_operation) = last_edit_operation {
-                    if mem::discriminant(last_edit_operation) == mem::discriminant(edit_operation) {
-                        n += 1;
-                        Some(last_edit_operation)
-                    } else {
-                        add_edit_operation(last_edit_operation, n, &mut cigar);
-                        n = 1;
-                        Some(edit_operation)
-                    }
-                } else {
-                    Some(edit_operation)
-                }
-            });
-        if let Some(last_edit_operation) = last_edit_operation {
-            add_edit_operation(last_edit_operation, n, &mut cigar);
-        }
-
-        bam::record::CigarString(cigar)
-    }
-
-    fn push(&mut self, edit_operation: EditOperation) {
-        self.edit_operations.push(edit_operation);
-    }
-}
-
 /// Stores information about partial alignments on the priority stack.
 /// There are two different measures of alignment quality:
 /// alignment_score: Initialized with 0, penalties are simply added
@@ -228,7 +149,7 @@ struct MismatchSearchStackFrame {
     open_insertion_forwards: bool,
     alignment_score: f32,
     priority: f32,
-    edit_operations: Option<EditOperationsTrack>,
+    edit_node_id: NodeId,
     //    debug_helper: String, // Remove this before measuring performance (it's slow)
 }
 
@@ -567,9 +488,6 @@ fn intervals_to_bam(
     let mut out = Vec::new();
 
     if let Some(best_alignment) = intervals.pop() {
-        let cigar = best_alignment
-            .edit_operations
-            .build_cigar(record.seq().len());
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals, optimal_score);
 
         // Max. number of alignments per read that will be reported
@@ -590,7 +508,6 @@ fn intervals_to_bam(
                 record,
                 position,
                 Some(&best_alignment),
-                Some(&cigar),
                 Some(mapping_quality),
                 tid,
             );
@@ -610,7 +527,6 @@ fn intervals_to_bam(
                 record,
                 position,
                 Some(&best_alignment),
-                Some(&cigar),
                 Some(mapping_quality),
                 tid,
             );
@@ -619,7 +535,7 @@ fn intervals_to_bam(
         }
     } else {
         // No match found, report unmapped read
-        let mut bam_record = create_bam_record(record, -1, None, None, None, -1);
+        let mut bam_record = create_bam_record(record, -1, None, None, -1);
         bam_record.set_unmapped();
         out.push(bam_record);
     }
@@ -689,11 +605,16 @@ fn create_bam_record(
     input_record: &bam::Record,
     position: i32,
     hit_interval: Option<&HitInterval>,
-    cigar: Option<&bam::record::CigarString>,
     mapq: Option<u8>,
     tid: i32,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
+
+    let cigar = if let Some(hit_interval) = hit_interval {
+        Some(&hit_interval.cigar)
+    } else {
+        None
+    };
 
     bam_record.set(
         input_record.qname(),
@@ -724,13 +645,96 @@ fn create_bam_record(
     bam_record
 }
 
+fn build_cigar(
+    end_node: NodeId,
+    edit_tree: &Tree<Option<EditOperation>>,
+    pattern_len: usize,
+) -> bam::record::CigarString {
+    /// Derive Cigar string from oddly-ordered tracks of edit operations.
+    /// Since we start aligning at the center of a read, tracks of edit operations
+    /// are not ordered by position in the read.
+    fn add_edit_operation(
+        edit_operation: &EditOperation,
+        k: u32,
+        cigar: &mut Vec<bam::record::Cigar>,
+    ) {
+        match edit_operation {
+            EditOperation::MatchMismatch(_) => cigar.push(bam::record::Cigar::Match(k)),
+            EditOperation::Insertion(_) => cigar.push(bam::record::Cigar::Ins(k)),
+            EditOperation::Deletion(_) => cigar.push(bam::record::Cigar::Del(k)),
+        }
+    };
+
+    // Restore outer ordering of the edit operation by the positions they carry as values.
+    // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
+    // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
+    let mut cigar_order_outer: BTreeMap<usize, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
+
+    let mut insert = |edit_operation| {
+        let position = match edit_operation {
+            EditOperation::Insertion(position) => position,
+            EditOperation::Deletion(position) => position,
+            EditOperation::MatchMismatch(position) => position,
+        };
+        cigar_order_outer
+            .entry(position)
+            .or_insert_with(SmallVec::new)
+            .push(edit_operation);
+    };
+    let end_node = edit_tree
+        .get(end_node)
+        .expect("This is not expected to fail");
+    if let Some(last_edit_operation) = end_node.value() {
+        insert(*last_edit_operation);
+    }
+    end_node
+        .ancestors()
+        .map(|node| node.value())
+        .filter(|edit_operation| edit_operation.is_some())
+        .map(|edit_operation| edit_operation.unwrap())
+        .for_each(insert);
+
+    // Reconstruct the order of the remaining edit operations and condense CIGAR
+    let mut n = 1;
+    let mut last_edit_operation = None;
+    let mut cigar = Vec::new();
+    cigar_order_outer
+        .iter()
+        .flat_map(|(&i, inner_vec)| {
+            if i >= pattern_len / 2 {
+                Either::Left(inner_vec.iter().rev())
+            } else {
+                Either::Right(inner_vec.iter())
+            }
+        })
+        .for_each(|edit_operation| {
+            last_edit_operation = if let Some(last_edit_operation) = last_edit_operation {
+                if mem::discriminant(last_edit_operation) == mem::discriminant(edit_operation) {
+                    n += 1;
+                    Some(last_edit_operation)
+                } else {
+                    add_edit_operation(last_edit_operation, n, &mut cigar);
+                    n = 1;
+                    Some(edit_operation)
+                }
+            } else {
+                Some(edit_operation)
+            }
+        });
+    if let Some(last_edit_operation) = last_edit_operation {
+        add_edit_operation(last_edit_operation, n, &mut cigar);
+    }
+
+    bam::record::CigarString(cigar)
+}
+
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
 fn check_and_push(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
     edit_operation: EditOperation,
-    edit_operations: &Option<EditOperationsTrack>,
+    edit_tree: &mut Tree<Option<EditOperation>>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
     penalties: &Penalties,
@@ -749,21 +753,23 @@ fn check_and_push(
         return;
     }
 
-    let mut edit_operations = edit_operations.to_owned().unwrap();
-    edit_operations.push(edit_operation);
+    stack_frame.edit_node_id = edit_tree
+        .get_mut(stack_frame.edit_node_id)
+        .expect("This is not expected to fail")
+        .append(Some(edit_operation))
+        .id();
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score,
-            edit_operations,
+            cigar: build_cigar(stack_frame.edit_node_id, edit_tree, pattern.len()),
         });
         print_debug(&stack_frame, intervals, penalties); // FIXME
         return;
     }
 
-    stack_frame.edit_operations = Some(edit_operations);
     stack.push(stack_frame);
 }
 
@@ -846,6 +852,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
     let mut stack = BinaryHeap::new();
+    let mut edit_tree: Tree<Option<EditOperation>> = Tree::new(None);
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read,
@@ -859,7 +866,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         open_insertion_forwards: false,
         alignment_score: 0.0,
         priority: 0.0,
-        edit_operations: Some(EditOperationsTrack::new()),
+        edit_node_id: edit_tree.root().id(),
         //        debug_helper: String::from("."),
     });
 
@@ -940,7 +947,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
                 priority: stack_frame.alignment_score + penalty + lower_bound,
-                edit_operations: None,
                 //            debug_helper: if stack_frame.forward {
                 //                format!("{}(_)", stack_frame.debug_helper)
                 //            } else {
@@ -950,7 +956,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             },
             pattern,
             EditOperation::Insertion(stack_frame.j as usize),
-            &stack_frame.edit_operations,
+            &mut edit_tree,
             &mut stack,
             &mut hit_intervals,
             &penalties,
@@ -1022,7 +1028,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
-                    edit_operations: None,
                     //                debug_helper: if stack_frame.forward {
                     //                    format!("{}({})", stack_frame.debug_helper, c as char)
                     //                } else {
@@ -1032,7 +1037,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 },
                 pattern,
                 EditOperation::Deletion(stack_frame.j as usize),
-                &stack_frame.edit_operations,
+                &mut edit_tree,
                 &mut stack,
                 &mut hit_intervals,
                 &penalties,
@@ -1079,7 +1084,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
-                    edit_operations: None,
                     //                    debug_helper: if stack_frame.forward {
                     //                        format!(
                     //                            "{}{}",
@@ -1093,10 +1097,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     //                            stack_frame.debug_helper
                     //                        )
                     //                    },
+                    ..stack_frame
                 },
                 pattern,
                 EditOperation::MatchMismatch(stack_frame.j as usize),
-                &stack_frame.edit_operations,
+                &mut edit_tree,
                 &mut stack,
                 &mut hit_intervals,
                 &penalties,
@@ -1559,8 +1564,8 @@ mod tests {
             open_deletion_backwards: false,
             open_insertion_backwards: false,
             open_deletion_forwards: false,
-            edit_operations: None,
             open_insertion_forwards: false,
+            edit_node_id: Tree::new(0).root().id(),
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
@@ -1578,8 +1583,8 @@ mod tests {
             open_deletion_backwards: false,
             open_insertion_backwards: false,
             open_deletion_forwards: false,
-            edit_operations: None,
             open_insertion_forwards: false,
+            edit_node_id: Tree::new(0).root().id(),
         };
 
         assert!(map_params_large > map_params_small);
@@ -1712,7 +1717,7 @@ mod tests {
         let best_hit = intervals.pop().unwrap();
 
         assert_eq!(
-            best_hit.edit_operations.build_cigar(pattern.len()),
+            best_hit.cigar,
             bam::record::CigarString(vec![
                 bam::record::Cigar::Match(4),
                 bam::record::Cigar::Del(1),
@@ -1744,7 +1749,7 @@ mod tests {
         let best_hit = intervals.pop().unwrap();
 
         assert_eq!(
-            best_hit.edit_operations.build_cigar(pattern.len()),
+            best_hit.cigar,
             bam::record::CigarString(vec![
                 bam::record::Cigar::Match(3),
                 bam::record::Cigar::Del(2),
@@ -1775,7 +1780,7 @@ mod tests {
         let best_hit = intervals.pop().unwrap();
 
         assert_eq!(
-            best_hit.edit_operations.build_cigar(pattern.len()),
+            best_hit.cigar,
             bam::record::CigarString(vec![
                 bam::record::Cigar::Match(5),
                 bam::record::Cigar::Ins(1),
@@ -1806,7 +1811,7 @@ mod tests {
         let best_hit = intervals.pop().unwrap();
 
         assert_eq!(
-            best_hit.edit_operations.build_cigar(pattern.len()),
+            best_hit.cigar,
             bam::record::CigarString(vec![
                 bam::record::Cigar::Match(5),
                 bam::record::Cigar::Ins(2),
