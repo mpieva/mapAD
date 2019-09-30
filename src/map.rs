@@ -1,6 +1,9 @@
 use std::{
-    cmp::Ordering, collections::binary_heap::BinaryHeap, error::Error, fs::File, iter::Peekable,
-    mem,
+    cmp::Ordering,
+    collections::{binary_heap::BinaryHeap, BTreeMap},
+    error::Error,
+    fs::File,
+    iter::Peekable,
 };
 
 use clap::{crate_name, crate_version};
@@ -27,7 +30,6 @@ use crate::{
     sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, AllowedMismatches},
 };
-use std::collections::BTreeMap;
 
 /// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {
@@ -66,6 +68,7 @@ pub struct HitInterval {
     interval: BiInterval,
     alignment_score: f32,
     cigar: bam::record::CigarString,
+    md_tag: Vec<u8>,
 }
 
 impl PartialOrd for HitInterval {
@@ -127,8 +130,9 @@ impl Direction {
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum EditOperation {
     Insertion(usize),
-    Deletion(usize),
-    MatchMismatch(usize),
+    Deletion(usize, u8),
+    Match(usize),
+    Mismatch(usize, u8),
 }
 
 /// Stores information about partial alignments on the priority stack.
@@ -640,29 +644,57 @@ fn create_bam_record(
                 &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
             )
             .unwrap();
+        bam_record
+            .push_aux(b"MD", &bam::record::Aux::String(&hit_interval.md_tag))
+            .unwrap();
     }
 
     bam_record
 }
 
-fn build_cigar(
+fn build_edit_operation_fields(
     end_node: NodeId,
     edit_tree: &Tree<Option<EditOperation>>,
     pattern_len: usize,
-) -> bam::record::CigarString {
+) -> (bam::record::CigarString, Vec<u8>) {
     /// Derive Cigar string from oddly-ordered tracks of edit operations.
     /// Since we start aligning at the center of a read, tracks of edit operations
     /// are not ordered by position in the read.
-    fn add_edit_operation(
+    fn add_cigar_edit_operation(
         edit_operation: &EditOperation,
         k: u32,
         cigar: &mut Vec<bam::record::Cigar>,
     ) {
         match edit_operation {
-            EditOperation::MatchMismatch(_) => cigar.push(bam::record::Cigar::Match(k)),
+            EditOperation::Match(_) | EditOperation::Mismatch(_, _) => {
+                cigar.push(bam::record::Cigar::Match(k))
+            }
             EditOperation::Insertion(_) => cigar.push(bam::record::Cigar::Ins(k)),
-            EditOperation::Deletion(_) => cigar.push(bam::record::Cigar::Del(k)),
+            EditOperation::Deletion(_, _) => cigar.push(bam::record::Cigar::Del(k)),
         }
+    };
+
+    fn add_md_edit_operation(
+        edit_operation: Option<&EditOperation>,
+        mut k: u32,
+        md_tag: &mut Vec<u8>,
+    ) -> u32 {
+        match edit_operation {
+            Some(EditOperation::Match(_)) => k += 1,
+            Some(EditOperation::Mismatch(_, reference_base)) => {
+                md_tag.extend_from_slice(format!("{}{}", k, *reference_base as char).as_bytes());
+                k = 0;
+            }
+            Some(EditOperation::Insertion(_)) => {
+                // Insertions are ignored in MD tags
+            }
+            Some(EditOperation::Deletion(_, reference_base)) => {
+                md_tag.extend_from_slice(format!("{}^{}", k, *reference_base as char).as_bytes());
+                k = 0;
+            }
+            None => md_tag.extend_from_slice(format!("{}", k).as_bytes()),
+        }
+        k
     };
 
     // Restore outer ordering of the edit operation by the positions they carry as values.
@@ -670,34 +702,38 @@ fn build_cigar(
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
     let mut cigar_order_outer: BTreeMap<usize, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
 
-    let mut insert = |edit_operation| {
+    let mut insert_expanded_cigar = |edit_operation| {
         let position = match edit_operation {
             EditOperation::Insertion(position) => position,
-            EditOperation::Deletion(position) => position,
-            EditOperation::MatchMismatch(position) => position,
+            EditOperation::Deletion(position, _) => position,
+            EditOperation::Match(position) => position,
+            EditOperation::Mismatch(position, _) => position,
         };
         cigar_order_outer
             .entry(position)
             .or_insert_with(SmallVec::new)
             .push(edit_operation);
     };
+
     let end_node = edit_tree
         .get(end_node)
         .expect("This is not expected to fail");
     if let Some(last_edit_operation) = end_node.value() {
-        insert(*last_edit_operation);
+        insert_expanded_cigar(*last_edit_operation);
     }
+
     end_node
         .ancestors()
         .map(|node| node.value())
-        .filter(|edit_operation| edit_operation.is_some())
-        .map(|edit_operation| edit_operation.unwrap())
-        .for_each(insert);
+        .filter_map(|&edit_operation| edit_operation)
+        .for_each(insert_expanded_cigar);
 
     // Reconstruct the order of the remaining edit operations and condense CIGAR
-    let mut n = 1;
+    let mut num_matches: u32 = 0;
+    let mut num_operations = 1;
     let mut last_edit_operation = None;
     let mut cigar = Vec::new();
+    let mut md_tag = Vec::new();
     cigar_order_outer
         .iter()
         .flat_map(|(&i, inner_vec)| {
@@ -708,24 +744,62 @@ fn build_cigar(
             }
         })
         .for_each(|edit_operation| {
-            last_edit_operation = if let Some(last_edit_operation) = last_edit_operation {
-                if mem::discriminant(last_edit_operation) == mem::discriminant(edit_operation) {
-                    n += 1;
-                    Some(last_edit_operation)
-                } else {
-                    add_edit_operation(last_edit_operation, n, &mut cigar);
-                    n = 1;
-                    Some(edit_operation)
+            num_matches = add_md_edit_operation(Some(&edit_operation), num_matches, &mut md_tag);
+
+            if let Some(lop) = last_edit_operation {
+                // Construct CIGAR string
+                match edit_operation {
+                    EditOperation::Match(_) => match lop {
+                        EditOperation::Match(_) | EditOperation::Mismatch(_, _) => {
+                            num_operations += 1;
+                        }
+                        _ => {
+                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            num_operations = 1;
+                            last_edit_operation = Some(*edit_operation);
+                        }
+                    },
+                    EditOperation::Mismatch(_, _) => match lop {
+                        EditOperation::Mismatch(_, _) | EditOperation::Match(_) => {
+                            num_operations += 1;
+                        }
+                        _ => {
+                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            num_operations = 1;
+                            last_edit_operation = Some(*edit_operation);
+                        }
+                    },
+                    EditOperation::Insertion(_) => match lop {
+                        EditOperation::Insertion(_) => {
+                            num_operations += 1;
+                        }
+                        _ => {
+                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            num_operations = 1;
+                            last_edit_operation = Some(*edit_operation);
+                        }
+                    },
+                    EditOperation::Deletion(_, _) => match lop {
+                        EditOperation::Deletion(_, _) => {
+                            num_operations += 1;
+                        }
+                        _ => {
+                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            num_operations = 1;
+                            last_edit_operation = Some(*edit_operation);
+                        }
+                    },
                 }
             } else {
-                Some(edit_operation)
+                last_edit_operation = Some(*edit_operation);
             }
         });
-    if let Some(last_edit_operation) = last_edit_operation {
-        add_edit_operation(last_edit_operation, n, &mut cigar);
+    if let Some(lop) = last_edit_operation {
+        add_cigar_edit_operation(&lop, num_operations, &mut cigar);
     }
+    let _ = add_md_edit_operation(None, num_matches, &mut md_tag);
 
-    bam::record::CigarString(cigar)
+    (bam::record::CigarString(cigar), md_tag)
 }
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
@@ -761,10 +835,13 @@ fn check_and_push(
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
+        let (cigar, md_tag) =
+            build_edit_operation_fields(stack_frame.edit_node_id, edit_tree, pattern.len());
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score,
-            cigar: build_cigar(stack_frame.edit_node_id, edit_tree, pattern.len()),
+            cigar,
+            md_tag,
         });
         print_debug(&stack_frame, intervals, penalties); // FIXME
         return;
@@ -1036,7 +1113,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     ..stack_frame
                 },
                 pattern,
-                EditOperation::Deletion(stack_frame.j as usize),
+                EditOperation::Deletion(stack_frame.j as usize, c),
                 &mut edit_tree,
                 &mut stack,
                 &mut hit_intervals,
@@ -1100,7 +1177,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     ..stack_frame
                 },
                 pattern,
-                EditOperation::MatchMismatch(stack_frame.j as usize),
+                if c == pattern[stack_frame.j as usize] {
+                    EditOperation::Match(stack_frame.j as usize)
+                } else {
+                    EditOperation::Mismatch(stack_frame.j as usize, c)
+                },
                 &mut edit_tree,
                 &mut stack,
                 &mut hit_intervals,
@@ -1818,5 +1899,160 @@ mod tests {
                 bam::record::Cigar::Match(2)
             ])
         );
+    }
+
+    #[test]
+    fn test_md_tag() {
+        struct TestDifferenceModel {}
+        impl SequenceDifferenceModel for TestDifferenceModel {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -1.0;
+                } else if from != to {
+                    return -2.0;
+                } else {
+                    return 0.0;
+                }
+            }
+        }
+        let difference_model = TestDifferenceModel {};
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+        };
+        let alphabet = alphabets::dna::alphabet();
+
+        //
+        // Mutation
+        //
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATTATA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(&best_hit.md_tag, &"5C1".as_bytes());
+
+        //
+        // Deletion
+        //
+        let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "ATTACA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(&best_hit.md_tag, &"4^G2".as_bytes());
+
+        //
+        // 2-base deletion
+        //
+        let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATCAG".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(&best_hit.md_tag, &"3^T0^A3".as_bytes());
+
+        //
+        // Insertion
+        //
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATTAGCA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(&best_hit.md_tag, &"7".as_bytes());
+
+        //
+        // 2-base insertion
+        //
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATTAGGCA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(&best_hit.md_tag, &"7".as_bytes());
     }
 }
