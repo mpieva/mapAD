@@ -676,6 +676,7 @@ fn build_edit_operation_fields(
 
     fn add_md_edit_operation(
         edit_operation: Option<&EditOperation>,
+        last_edit_operation: Option<&EditOperation>,
         mut k: u32,
         md_tag: &mut Vec<u8>,
     ) -> u32 {
@@ -689,10 +690,23 @@ fn build_edit_operation_fields(
                 // Insertions are ignored in MD tags
             }
             Some(EditOperation::Deletion(_, reference_base)) => {
-                md_tag.extend_from_slice(format!("{}^{}", k, *reference_base as char).as_bytes());
+                match last_edit_operation {
+                    Some(EditOperation::Deletion(_, _)) => {
+                        md_tag.extend_from_slice(format!("{}", *reference_base as char).as_bytes());
+                    }
+                    _ => {
+                        md_tag.extend_from_slice(
+                            format!("{}^{}", k, *reference_base as char).as_bytes(),
+                        );
+                    }
+                }
                 k = 0;
             }
-            None => md_tag.extend_from_slice(format!("{}", k).as_bytes()),
+            None => {
+                if k > 0 {
+                    md_tag.extend_from_slice(format!("{}", k).as_bytes())
+                }
+            }
         }
         k
     };
@@ -744,7 +758,12 @@ fn build_edit_operation_fields(
             }
         })
         .for_each(|edit_operation| {
-            num_matches = add_md_edit_operation(Some(&edit_operation), num_matches, &mut md_tag);
+            num_matches = add_md_edit_operation(
+                Some(&edit_operation),
+                last_edit_operation,
+                num_matches,
+                &mut md_tag,
+            );
 
             if let Some(lop) = last_edit_operation {
                 // Construct CIGAR string
@@ -756,7 +775,7 @@ fn build_edit_operation_fields(
                         _ => {
                             add_cigar_edit_operation(&lop, num_operations, &mut cigar);
                             num_operations = 1;
-                            last_edit_operation = Some(*edit_operation);
+                            last_edit_operation = Some(edit_operation);
                         }
                     },
                     EditOperation::Mismatch(_, _) => match lop {
@@ -766,7 +785,7 @@ fn build_edit_operation_fields(
                         _ => {
                             add_cigar_edit_operation(&lop, num_operations, &mut cigar);
                             num_operations = 1;
-                            last_edit_operation = Some(*edit_operation);
+                            last_edit_operation = Some(edit_operation);
                         }
                     },
                     EditOperation::Insertion(_) => match lop {
@@ -776,7 +795,7 @@ fn build_edit_operation_fields(
                         _ => {
                             add_cigar_edit_operation(&lop, num_operations, &mut cigar);
                             num_operations = 1;
-                            last_edit_operation = Some(*edit_operation);
+                            last_edit_operation = Some(edit_operation);
                         }
                     },
                     EditOperation::Deletion(_, _) => match lop {
@@ -786,18 +805,18 @@ fn build_edit_operation_fields(
                         _ => {
                             add_cigar_edit_operation(&lop, num_operations, &mut cigar);
                             num_operations = 1;
-                            last_edit_operation = Some(*edit_operation);
+                            last_edit_operation = Some(edit_operation);
                         }
                     },
                 }
             } else {
-                last_edit_operation = Some(*edit_operation);
+                last_edit_operation = Some(edit_operation);
             }
         });
     if let Some(lop) = last_edit_operation {
         add_cigar_edit_operation(&lop, num_operations, &mut cigar);
     }
-    let _ = add_md_edit_operation(None, num_matches, &mut md_tag);
+    let _ = add_md_edit_operation(None, None, num_matches, &mut md_tag);
 
     (bam::record::CigarString(cigar), md_tag)
 }
@@ -2005,7 +2024,7 @@ mod tests {
 
         let best_hit = intervals.pop().unwrap();
 
-        assert_eq!(&best_hit.md_tag, &"3^T0^A3".as_bytes());
+        assert_eq!(&best_hit.md_tag, &"3^TA3".as_bytes());
 
         //
         // Insertion
