@@ -1816,6 +1816,7 @@ mod tests {
 
         let best_hit = intervals.pop().unwrap();
 
+        assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
             best_hit.cigar,
             bam::record::CigarString(vec![
@@ -1847,6 +1848,7 @@ mod tests {
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
 
+        assert_eq!(best_hit.alignment_score, -2.0);
         assert_eq!(
             best_hit.cigar,
             bam::record::CigarString(vec![
@@ -1878,6 +1880,7 @@ mod tests {
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
 
+        assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
             best_hit.cigar,
             bam::record::CigarString(vec![
