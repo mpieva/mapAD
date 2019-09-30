@@ -135,6 +135,13 @@ enum EditOperation {
     Mismatch(usize, u8),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum GapState {
+    Insertion,
+    Deletion,
+    Closed,
+}
+
 /// Stores information about partial alignments on the priority stack.
 /// There are two different measures of alignment quality:
 /// alignment_score: Initialized with 0, penalties are simply added
@@ -147,10 +154,8 @@ struct MismatchSearchStackFrame {
     backward_index: isize,
     forward_index: isize,
     direction: Direction,
-    open_deletion_backwards: bool,
-    open_insertion_backwards: bool,
-    open_deletion_forwards: bool,
-    open_insertion_forwards: bool,
+    gap_forwards: GapState,
+    gap_backwards: GapState,
     alignment_score: f32,
     priority: f32,
     edit_node_id: NodeId,
@@ -956,10 +961,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         backward_index: center_of_read - 1,
         forward_index: center_of_read,
         direction: Direction::Forward,
-        open_deletion_backwards: false,
-        open_insertion_backwards: false,
-        open_deletion_forwards: false,
-        open_insertion_forwards: false,
+        gap_backwards: GapState::Closed,
+        gap_forwards: GapState::Closed,
         alignment_score: 0.0,
         priority: 0.0,
         edit_node_id: edit_tree.root().id(),
@@ -1016,8 +1019,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         //
         // Insertion in read / deletion in reference
         //
-        let penalty = if (stack_frame.open_insertion_forwards && stack_frame.direction.is_forward())
-            || (stack_frame.open_insertion_backwards && stack_frame.direction.is_backward())
+        let penalty = if (stack_frame.gap_backwards == GapState::Insertion
+            && stack_frame.direction.is_forward())
+            || (stack_frame.gap_forwards == GapState::Insertion
+                && stack_frame.direction.is_backward())
         {
             parameters.penalty_gap_extend
         } else {
@@ -1031,15 +1036,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 forward_index: next_forward_index,
                 direction: stack_frame.direction.reverse(),
                 // Mark opened gap at the corresponding end
-                open_insertion_backwards: if stack_frame.direction.is_backward() {
-                    stack_frame.open_insertion_backwards
+                gap_backwards: if stack_frame.direction.is_backward() {
+                    stack_frame.gap_backwards
                 } else {
-                    true
+                    GapState::Insertion
                 },
-                open_insertion_forwards: if stack_frame.direction.is_forward() {
-                    true
+                gap_forwards: if stack_frame.direction.is_forward() {
+                    stack_frame.gap_forwards
                 } else {
-                    stack_frame.open_insertion_forwards
+                    GapState::Insertion
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
                 priority: stack_frame.alignment_score + penalty + lower_bound,
@@ -1099,9 +1104,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             //
             // Deletion in read / insertion in reference
             //
-            let penalty = if (stack_frame.open_deletion_forwards
+            let penalty = if (stack_frame.gap_forwards == GapState::Deletion
                 && stack_frame.direction.is_forward())
-                || (stack_frame.open_deletion_backwards && stack_frame.direction.is_backward())
+                || (stack_frame.gap_backwards == GapState::Deletion
+                    && stack_frame.direction.is_backward())
             {
                 parameters.penalty_gap_extend
             } else {
@@ -1112,15 +1118,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 MismatchSearchStackFrame {
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
-                    open_deletion_backwards: if stack_frame.direction.is_backward() {
-                        true
+                    gap_backwards: if stack_frame.direction.is_backward() {
+                        GapState::Deletion
                     } else {
-                        stack_frame.open_deletion_backwards
+                        stack_frame.gap_backwards
                     },
-                    open_deletion_forwards: if stack_frame.direction.is_forward() {
-                        true
+                    gap_forwards: if stack_frame.direction.is_forward() {
+                        GapState::Deletion
                     } else {
-                        stack_frame.open_deletion_forwards
+                        stack_frame.gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
@@ -1158,25 +1164,15 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     forward_index: next_forward_index,
                     direction: stack_frame.direction.reverse(),
                     // Mark closed gap at the corresponding end
-                    open_deletion_backwards: if stack_frame.direction.is_backward() {
-                        false
+                    gap_backwards: if stack_frame.direction.is_backward() {
+                        stack_frame.gap_backwards
                     } else {
-                        stack_frame.open_deletion_backwards
+                        GapState::Closed
                     },
-                    open_insertion_backwards: if stack_frame.direction.is_backward() {
-                        false
+                    gap_forwards: if stack_frame.direction.is_forward() {
+                        stack_frame.gap_forwards
                     } else {
-                        stack_frame.open_insertion_backwards
-                    },
-                    open_deletion_forwards: if stack_frame.direction.is_forward() {
-                        false
-                    } else {
-                        stack_frame.open_deletion_forwards
-                    },
-                    open_insertion_forwards: if stack_frame.direction.is_forward() {
-                        false
-                    } else {
-                        stack_frame.open_insertion_forwards
+                        GapState::Closed
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
@@ -1661,10 +1657,8 @@ mod tests {
             backward_index: 5,
             forward_index: 5,
             direction: Direction::Backward,
-            open_deletion_backwards: false,
-            open_insertion_backwards: false,
-            open_deletion_forwards: false,
-            open_insertion_forwards: false,
+            gap_forwards: GapState::Closed,
+            gap_backwards: GapState::Closed,
             edit_node_id: Tree::new(0).root().id(),
         };
         let map_params_small = MismatchSearchStackFrame {
@@ -1680,10 +1674,8 @@ mod tests {
             backward_index: 5,
             forward_index: 5,
             direction: Direction::Backward,
-            open_deletion_backwards: false,
-            open_insertion_backwards: false,
-            open_deletion_forwards: false,
-            open_insertion_forwards: false,
+            gap_forwards: GapState::Closed,
+            gap_backwards: GapState::Closed,
             edit_node_id: Tree::new(0).root().id(),
         };
 
