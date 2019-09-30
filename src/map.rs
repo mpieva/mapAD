@@ -159,7 +159,6 @@ struct MismatchSearchStackFrame {
     alignment_score: f32,
     priority: f32,
     edit_node_id: NodeId,
-    //    debug_helper: String, // Remove this before measuring performance (it's slow)
 }
 
 impl PartialOrd for MismatchSearchStackFrame {
@@ -1048,11 +1047,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
                 priority: stack_frame.alignment_score + penalty + lower_bound,
-                //            debug_helper: if stack_frame.forward {
-                //                format!("{}(_)", stack_frame.debug_helper)
-                //            } else {
-                //                format!("(_){}", stack_frame.debug_helper)
-                //            },
                 ..stack_frame
             },
             pattern,
@@ -1130,11 +1124,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
-                    //                debug_helper: if stack_frame.forward {
-                    //                    format!("{}({})", stack_frame.debug_helper, c as char)
-                    //                } else {
-                    //                    format!("({}){}", c as char, stack_frame.debug_helper)
-                    //                },
                     ..stack_frame
                 },
                 pattern,
@@ -1176,19 +1165,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
                     priority: stack_frame.alignment_score + penalty + lower_bound,
-                    //                    debug_helper: if stack_frame.forward {
-                    //                        format!(
-                    //                            "{}{}",
-                    //                            stack_frame.debug_helper,
-                    //                            c.to_ascii_lowercase() as char
-                    //                        )
-                    //                    } else {
-                    //                        format!(
-                    //                            "{}{}",
-                    //                            c.to_ascii_lowercase() as char,
-                    //                            stack_frame.debug_helper
-                    //                        )
-                    //                    },
                     ..stack_frame
                 },
                 pattern,
