@@ -965,7 +965,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         alignment_score: 0.0,
         priority: 0.0,
         edit_node_id: edit_tree.root().id(),
-        //        debug_helper: String::from("."),
     });
 
     while let Some(stack_frame) = stack.pop() {
@@ -1886,6 +1885,38 @@ mod tests {
             bam::record::CigarString(vec![
                 bam::record::Cigar::Match(5),
                 bam::record::Cigar::Ins(2),
+                bam::record::Cigar::Match(2)
+            ])
+        );
+
+        //
+        // 3-base insertion
+        //
+        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let fm_index = FMIndex::new(
+            &data_fmd_index.bwt,
+            &data_fmd_index.less,
+            &data_fmd_index.occ,
+        );
+        let fmd_index = FMDIndex::from(fm_index);
+
+        let pattern = "GATTAGTGCA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, -4.0, &parameters, &fmd_index);
+        let best_hit = intervals.pop().unwrap();
+
+        assert_eq!(best_hit.alignment_score, -4.0);
+        assert_eq!(
+            best_hit.cigar,
+            bam::record::CigarString(vec![
+                bam::record::Cigar::Match(5),
+                bam::record::Cigar::Ins(3),
                 bam::record::Cigar::Match(2)
             ])
         );
