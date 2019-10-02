@@ -33,8 +33,8 @@ const DNA_NOT_G: &[u8; 3] = b"ACT";
 const DNA_NOT_T: &[u8; 3] = b"ACG";
 
 /// Entry point function to launch the indexing process
-pub fn run(reference_path: &str) -> Result<(), Box<dyn Error>> {
-    let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
+pub fn run(reference_path: &str, seed: u64) -> Result<(), Box<dyn Error>> {
+    let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
 
     let alphabet = dna::alphabet();
 

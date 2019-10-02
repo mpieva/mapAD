@@ -40,6 +40,15 @@ fn main() {
                         .long("reference")
                         .help("FASTA file containing the genome to be indexed")
                         .value_name("FASTA FILE"),
+                )
+                .arg(
+                    Arg::with_name("seed")
+                        .required(true)
+                        .long("seed")
+                        .help("Ambiguous bases are substituted with random ones. Two independent runs will lead to the same index when the same seed is used.")
+                        .takes_value(true)
+                        .default_value("1234")
+                        .value_name("INT"),
                 ),
         )
         .subcommand(
@@ -163,7 +172,10 @@ fn main() {
 
     match matches.subcommand() {
         ("index", Some(index_matches)) => {
-            if let Err(e) = index::run(index_matches.value_of("reference").unwrap()) {
+            if let Err(e) = index::run(
+                index_matches.value_of("reference").unwrap(),
+                value_t!(index_matches.value_of("seed"), u64).unwrap(),
+            ) {
                 println!("Application error: {}", e);
             }
         }
