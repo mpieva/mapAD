@@ -706,11 +706,7 @@ fn build_edit_operation_fields(
                 }
                 k = 0;
             }
-            None => {
-                if k > 0 {
-                    md_tag.extend_from_slice(format!("{}", k).as_bytes())
-                }
-            }
+            None => md_tag.extend_from_slice(format!("{}", k).as_bytes()),
         }
         k
     };
