@@ -413,7 +413,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     let mut reads_reader = bam::Reader::from_path(reads_path)?;
     let _ = reads_reader.set_threads(4);
 
-    let mut header = bam::Header::new();
+    let mut header = bam::Header::from_template(reads_reader.header());
     for identifier_position in identifier_position_map.iter() {
         let mut header_record = bam::header::HeaderRecord::new(b"SQ");
         header_record.push_tag(b"SN", &identifier_position.identifier);
@@ -643,6 +643,10 @@ fn create_bam_record(
     // Reference sequence of mate (-1 = *)
     bam_record.set_mtid(-1);
 
+    // Add optional tags
+    if let Some(input_read_group) = input_record.aux(b"RG") {
+        bam_record.push_aux(b"RG", &input_read_group).unwrap();
+    }
     if let Some(hit_interval) = hit_interval {
         bam_record
             .push_aux(
