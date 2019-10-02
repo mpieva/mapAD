@@ -21,6 +21,16 @@ use snap;
 use crate::map::{FastaIdPosition, FastaIdPositions};
 
 const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
+const DNA_PURINES: &[u8; 2] = b"AG";
+const DNA_PYRIMIDINES: &[u8; 2] = b"CT";
+const DNA_KETONE: &[u8; 2] = b"GT";
+const DNA_AMINO: &[u8; 2] = b"AC";
+const DNA_STRONG: &[u8; 2] = b"CG";
+const DNA_WEAK: &[u8; 2] = b"AT";
+const DNA_NOT_A: &[u8; 3] = b"CGT";
+const DNA_NOT_C: &[u8; 3] = b"AGT";
+const DNA_NOT_G: &[u8; 3] = b"ACT";
+const DNA_NOT_T: &[u8; 3] = b"ACG";
 
 /// Entry point function to launch the indexing process
 pub fn run(reference_path: &str) -> Result<(), Box<dyn Error>> {
@@ -50,6 +60,17 @@ fn index<T: Rng>(
         .flat_map(|record| record.seq().to_ascii_uppercase())
         // Replace ambiguous bases with random ones
         .map(|c| match c {
+            b'U' => b'T',
+            b'R' => *DNA_PURINES.choose(rng).unwrap(),
+            b'Y' => *DNA_PYRIMIDINES.choose(rng).unwrap(),
+            b'K' => *DNA_KETONE.choose(rng).unwrap(),
+            b'M' => *DNA_AMINO.choose(rng).unwrap(),
+            b'S' => *DNA_STRONG.choose(rng).unwrap(),
+            b'W' => *DNA_WEAK.choose(rng).unwrap(),
+            b'B' => *DNA_NOT_A.choose(rng).unwrap(),
+            b'D' => *DNA_NOT_C.choose(rng).unwrap(),
+            b'H' => *DNA_NOT_G.choose(rng).unwrap(),
+            b'V' => *DNA_NOT_T.choose(rng).unwrap(),
             b'N' => *DNA_UPPERCASE_ALPHABET.choose(rng).unwrap(),
             _ => c,
         })
