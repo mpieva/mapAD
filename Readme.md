@@ -45,15 +45,15 @@ Besides Rust, no additional dependencies are needed to compile.
     `./mapad index --reference /path/to/reference/hg19.fasta`
     
 ###### Optional
-The replacement of step 3 with one of the following commands leads to increased performance on supported CPUs.
+The binary can be tailored to modern CPU architectures to increase its performance:
 
-To build explicitly with SIMD support (should be available on most CPUs) use:
+`RUSTFLAGS="-C target-cpu=haswell" cargo build --release"`
 
-`cargo build --release --features simd-accel`
+or
 
-For AVX support (on recent CPUs like Intel Core i3/i5/i7 or recent AMD ones) use:
+`RUSTFLAGS="-C target-cpu=native" cargo build --release"`
 
-`RUSTFLAGS="-C target-cpu=native" cargo build --release --features "simd-accel avx-accel"`
+Please note that the resulting binary will probably only run on systems with the same or a newer CPU. 
 
 To increase its verbosity, invoke the program like this:
 

@@ -432,7 +432,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     }
 
     let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
-    let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
+    let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
 
     debug!("Map reads");
     ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
@@ -645,18 +645,14 @@ fn create_bam_record(
 
     // Add optional tags
     if let Some(input_read_group) = input_record.aux(b"RG") {
-        bam_record.push_aux(b"RG", &input_read_group).unwrap();
+        bam_record.push_aux(b"RG", &input_read_group);
     }
     if let Some(hit_interval) = hit_interval {
-        bam_record
-            .push_aux(
-                b"AS",
-                &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
-            )
-            .unwrap();
-        bam_record
-            .push_aux(b"MD", &bam::record::Aux::String(&hit_interval.md_tag))
-            .unwrap();
+        bam_record.push_aux(
+            b"AS",
+            &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
+        );
+        bam_record.push_aux(b"MD", &bam::record::Aux::String(&hit_interval.md_tag));
     }
 
     bam_record
