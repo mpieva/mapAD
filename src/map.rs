@@ -410,8 +410,8 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
 ) -> Result<(), Box<dyn Error>> {
-    let mut reads_fq_reader = bam::Reader::from_path(reads_path)?;
-    let _ = reads_fq_reader.set_threads(4);
+    let mut reads_reader = bam::Reader::from_path(reads_path)?;
+    let _ = reads_reader.set_threads(4);
 
     let mut header = bam::Header::new();
     for identifier_position in identifier_position_map.iter() {
@@ -435,7 +435,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     let mut out_file = bam::Writer::from_path(out_file_path, &header)?;
 
     debug!("Map reads");
-    ChunkIterator::from_reader(reads_fq_reader.records(), alignment_parameters.chunk_size)
+    ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
         .map(|chunk| {
             trace!("Map chunk of reads in parallel");
             let results = chunk
@@ -624,22 +624,24 @@ fn create_bam_record(
         None
     };
 
+    // Set mandatory properties of the BAM record
     bam_record.set(
         input_record.qname(),
         cigar,
         &transform_pattern_sequence(input_record),
         &transform_base_qualities(input_record),
     );
-
     bam_record.set_tid(tid);
     bam_record.set_pos(position);
-
     if let Some(mapq) = mapq {
-        bam_record.set_mapq(mapq); // Mapping quality
+        bam_record.set_mapq(mapq);
     }
 
-    bam_record.set_mpos(-1); // Position of mate (-1 = *)
-    bam_record.set_mtid(-1); // Reference sequence of mate (-1 = *)
+    // Position of mate (-1 = *)
+    bam_record.set_mpos(-1);
+
+    // Reference sequence of mate (-1 = *)
+    bam_record.set_mtid(-1);
 
     if let Some(hit_interval) = hit_interval {
         bam_record
