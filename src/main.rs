@@ -18,7 +18,7 @@ fn main() {
         Err(error_message)
     };
 
-    let matches = App::new("mapAD")
+    let matches = App::new(map::CRATE_NAME)
         .about(crate_description!())
         .version(crate_version!())
         .setting(AppSettings::SubcommandRequiredElseHelp)

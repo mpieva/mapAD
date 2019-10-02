@@ -31,6 +31,8 @@ use crate::{
     utils::{AlignmentParameters, AllowedMismatches},
 };
 
+pub const CRATE_NAME: &str = "mapAD";
+
 /// Helper struct to bundle index files
 struct UnderlyingDataFMDIndex {
     bwt: Vec<u8>,
@@ -426,7 +428,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     {
         let mut header_record = bam::header::HeaderRecord::new(b"PG");
         header_record.push_tag(b"ID", &crate_name!());
-        header_record.push_tag(b"PN", &crate_name!());
+        header_record.push_tag(b"PN", &CRATE_NAME);
         header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
