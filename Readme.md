@@ -76,7 +76,7 @@ mapad -vv map \
 -D 0.02 \
 -i 0.00001 \
 --reads "${input_fastq}" \
---reference "/mnt/scratch/chris/thrust_test/index_hg19_thrust_performance/hg19.fa" \
+--reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
 --output "${output_bam}"
 ```
 Note that the expected mutation rate of 2% (`-D 0.02`) is quite high here. 
