@@ -338,7 +338,6 @@ where
 {
     fn from_reader(records: bam::Records<'a, R>, chunk_size: usize) -> Self {
         Self {
-            // TODO: Make chunk size configurable
             chunk_size,
             records: records.peekable(),
         }
