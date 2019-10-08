@@ -11,7 +11,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use mapad::{
     map::k_mismatch_search,
-    sequence_difference_models::{LibraryPrep, SimpleAncientDnaModel},
+    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
     utils::{AlignmentParameters, AllowedMismatches},
 };
 
@@ -29,12 +29,14 @@ fn criterion_benchmark(c: &mut Criterion) {
             divergence: 0.02 / 3.0,
         };
 
+        let representative_mismatch_penalty =
+            difference_model.get_representative_mismatch_penalty();
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
-            poisson_threshold: 0.04,
+            poisson_threshold: 0.02,
             difference_model,
-            penalty_gap_open: -1.0,
-            penalty_gap_extend: -1.0,
+            penalty_gap_open: 0.00001_f32.log2(),
+            penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
         };
 
@@ -94,12 +96,14 @@ fn bench_multiple_reads(c: &mut Criterion) {
             divergence: 0.02 / 3.0,
         };
 
+        let representative_mismatch_penalty =
+            difference_model.get_representative_mismatch_penalty();
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
-            poisson_threshold: 0.04,
+            poisson_threshold: 0.02,
             difference_model,
-            penalty_gap_open: -1.0,
-            penalty_gap_extend: -1.0,
+            penalty_gap_open: 0.00001_f32.log2(),
+            penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
         };
 
@@ -166,12 +170,14 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             divergence: 0.02 / 3.0,
         };
 
+        let representative_mismatch_penalty =
+            difference_model.get_representative_mismatch_penalty();
         let parameters = AlignmentParameters {
             base_error_rate: 0.02,
-            poisson_threshold: 0.04,
+            poisson_threshold: 0.02,
             difference_model,
-            penalty_gap_open: -1.0,
-            penalty_gap_extend: -1.0,
+            penalty_gap_open: 0.00001_f32.log2(),
+            penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
         };
 
