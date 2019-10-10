@@ -228,7 +228,7 @@ impl FastaIdPositions {
 /// the respective ends of the query. In contrast to alignment scores, these values are _positive_.
 #[derive(Debug)]
 struct DArray {
-    d_array: SmallVec<[f32; 32]>,
+    d_array: SmallVec<[f32; 64]>,
 }
 
 impl DArray {
@@ -282,7 +282,7 @@ impl DArray {
             d_array: match direction {
                 Direction::Forward => pattern.collect(),
                 Direction::Backward => pattern
-                    .collect::<SmallVec<[f32; 32]>>()
+                    .collect::<SmallVec<[f32; 64]>>()
                     .into_iter()
                     .rev()
                     .collect(),
