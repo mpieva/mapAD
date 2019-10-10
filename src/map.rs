@@ -151,10 +151,10 @@ enum GapState {
 /// This is used as key for the priority stack.
 #[derive(Debug)]
 struct MismatchSearchStackFrame {
-    j: isize,
+    j: i16,
     current_interval: BiInterval,
-    backward_index: isize,
-    forward_index: isize,
+    backward_index: i16,
+    forward_index: i16,
     direction: Direction,
     gap_forwards: GapState,
     gap_backwards: GapState,
@@ -291,7 +291,7 @@ impl DArray {
     }
 
     #[inline]
-    fn get(&self, index: isize) -> f32 {
+    fn get(&self, index: i16) -> f32 {
         *self.d_array.get(index as usize).unwrap_or(&0.0)
     }
 }
@@ -856,7 +856,7 @@ fn check_and_push(
         .id();
 
     // This route through the read graph is finished successfully, push the interval
-    if stack_frame.j < 0 || stack_frame.j > (pattern.len() as isize - 1) {
+    if stack_frame.j < 0 || stack_frame.j > (pattern.len() as i16 - 1) {
         let (cigar, md_tag) =
             build_edit_operation_fields(stack_frame.edit_node_id, edit_tree, pattern.len());
         intervals.push(HitInterval {
@@ -925,7 +925,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     let representative_mismatch_penalty = parameters
         .difference_model
         .get_representative_mismatch_penalty();
-    let center_of_read = pattern.len() as isize / 2;
+    let center_of_read = pattern.len() / 2;
 
     let d_part_pattern = &pattern[..center_of_read as usize];
     let d_backwards = DArray::new(
@@ -954,10 +954,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     let mut edit_tree: Tree<Option<EditOperation>> = Tree::new(None);
 
     stack.push(MismatchSearchStackFrame {
-        j: center_of_read,
+        j: center_of_read as i16,
         current_interval: fmd_index.init_interval(),
-        backward_index: center_of_read - 1,
-        forward_index: center_of_read,
+        backward_index: center_of_read as i16 - 1,
+        forward_index: center_of_read as i16,
         direction: Direction::Forward,
         gap_backwards: GapState::Closed,
         gap_forwards: GapState::Closed,
@@ -1007,7 +1007,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
         // Re-calculate the lower bounds for extension
         let lower_bound = d_backwards.get(next_backward_index)
-            + d_forwards.get(next_forward_index - pattern.len() as isize / 2);
+            + d_forwards.get(next_forward_index - pattern.len() as i16 / 2);
         let penalties = Penalties {
             lower_bound,
             ..penalties
