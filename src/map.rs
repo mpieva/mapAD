@@ -71,6 +71,7 @@ pub struct HitInterval {
     alignment_score: f32,
     cigar: bam::record::CigarString,
     md_tag: Vec<u8>,
+    edit_distance: u16,
 }
 
 impl PartialOrd for HitInterval {
@@ -653,6 +654,10 @@ fn create_bam_record(
             b"AS",
             &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
         );
+        bam_record.push_aux(
+            b"NM",
+            &bam::record::Aux::Integer(hit_interval.edit_distance as i64),
+        );
         bam_record.push_aux(b"MD", &bam::record::Aux::String(&hit_interval.md_tag));
     }
 
@@ -663,7 +668,7 @@ fn build_edit_operation_fields(
     end_node: NodeId,
     edit_tree: &Tree<Option<EditOperation>>,
     pattern_len: usize,
-) -> (bam::record::CigarString, Vec<u8>) {
+) -> (bam::record::CigarString, Vec<u8>, u16) {
     /// Derive Cigar string from oddly-ordered tracks of edit operations.
     /// Since we start aligning at the center of a read, tracks of edit operations
     /// are not ordered by position in the read.
@@ -714,6 +719,14 @@ fn build_edit_operation_fields(
         k
     };
 
+    fn add_edit_distance(edit_operation: &EditOperation, distance: u16) -> u16 {
+        if let EditOperation::Match(_) = edit_operation {
+            distance
+        } else {
+            distance + 1
+        }
+    }
+
     // Restore outer ordering of the edit operation by the positions they carry as values.
     // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
@@ -748,6 +761,7 @@ fn build_edit_operation_fields(
     // Reconstruct the order of the remaining edit operations and condense CIGAR
     let mut num_matches: u32 = 0;
     let mut num_operations = 1;
+    let mut edit_distance = 0;
     let mut last_edit_operation = None;
     let mut cigar = Vec::new();
     let mut md_tag = Vec::new();
@@ -761,6 +775,8 @@ fn build_edit_operation_fields(
             }
         })
         .for_each(|edit_operation| {
+            edit_distance = add_edit_distance(edit_operation, edit_distance);
+
             num_matches = add_md_edit_operation(
                 Some(&edit_operation),
                 last_edit_operation,
@@ -821,7 +837,7 @@ fn build_edit_operation_fields(
     }
     let _ = add_md_edit_operation(None, None, num_matches, &mut md_tag);
 
-    (bam::record::CigarString(cigar), md_tag)
+    (bam::record::CigarString(cigar), md_tag, edit_distance)
 }
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
@@ -857,13 +873,14 @@ fn check_and_push(
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as i16 - 1) {
-        let (cigar, md_tag) =
+        let (cigar, md_tag, edit_distance) =
             build_edit_operation_fields(stack_frame.edit_node_id, edit_tree, pattern.len());
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score,
             cigar,
             md_tag,
+            edit_distance,
         });
         print_debug(&stack_frame, intervals, penalties); // FIXME
         return;
