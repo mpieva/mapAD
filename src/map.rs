@@ -132,10 +132,10 @@ impl Direction {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum EditOperation {
-    Insertion(usize),
-    Deletion(usize, u8),
-    Match(usize),
-    Mismatch(usize, u8),
+    Insertion(u16),
+    Deletion(u16, u8),
+    Match(u16),
+    Mismatch(u16, u8),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -656,7 +656,7 @@ fn create_bam_record(
         );
         bam_record.push_aux(
             b"NM",
-            &bam::record::Aux::Integer(hit_interval.edit_distance as i64),
+            &bam::record::Aux::Integer(i64::from(hit_interval.edit_distance)),
         );
         bam_record.push_aux(b"MD", &bam::record::Aux::String(&hit_interval.md_tag));
     }
@@ -673,7 +673,7 @@ fn build_edit_operation_fields(
     /// Since we start aligning at the center of a read, tracks of edit operations
     /// are not ordered by position in the read.
     fn add_cigar_edit_operation(
-        edit_operation: &EditOperation,
+        edit_operation: EditOperation,
         k: u32,
         cigar: &mut Vec<bam::record::Cigar>,
     ) {
@@ -687,15 +687,15 @@ fn build_edit_operation_fields(
     };
 
     fn add_md_edit_operation(
-        edit_operation: Option<&EditOperation>,
-        last_edit_operation: Option<&EditOperation>,
+        edit_operation: Option<EditOperation>,
+        last_edit_operation: Option<EditOperation>,
         mut k: u32,
         md_tag: &mut Vec<u8>,
     ) -> u32 {
         match edit_operation {
             Some(EditOperation::Match(_)) => k += 1,
             Some(EditOperation::Mismatch(_, reference_base)) => {
-                md_tag.extend_from_slice(format!("{}{}", k, *reference_base as char).as_bytes());
+                md_tag.extend_from_slice(format!("{}{}", k, reference_base as char).as_bytes());
                 k = 0;
             }
             Some(EditOperation::Insertion(_)) => {
@@ -704,11 +704,11 @@ fn build_edit_operation_fields(
             Some(EditOperation::Deletion(_, reference_base)) => {
                 match last_edit_operation {
                     Some(EditOperation::Deletion(_, _)) => {
-                        md_tag.extend_from_slice(format!("{}", *reference_base as char).as_bytes());
+                        md_tag.extend_from_slice(format!("{}", reference_base as char).as_bytes());
                     }
                     _ => {
                         md_tag.extend_from_slice(
-                            format!("{}^{}", k, *reference_base as char).as_bytes(),
+                            format!("{}^{}", k, reference_base as char).as_bytes(),
                         );
                     }
                 }
@@ -719,7 +719,7 @@ fn build_edit_operation_fields(
         k
     };
 
-    fn add_edit_distance(edit_operation: &EditOperation, distance: u16) -> u16 {
+    fn add_edit_distance(edit_operation: EditOperation, distance: u16) -> u16 {
         if let EditOperation::Match(_) = edit_operation {
             distance
         } else {
@@ -730,7 +730,7 @@ fn build_edit_operation_fields(
     // Restore outer ordering of the edit operation by the positions they carry as values.
     // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
-    let mut cigar_order_outer: BTreeMap<usize, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
+    let mut cigar_order_outer: BTreeMap<u16, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
 
     let mut insert_expanded_cigar = |edit_operation| {
         let position = match edit_operation {
@@ -768,17 +768,17 @@ fn build_edit_operation_fields(
     cigar_order_outer
         .iter()
         .flat_map(|(&i, inner_vec)| {
-            if i < pattern_len / 2 {
+            if i < (pattern_len / 2) as u16 {
                 Either::Left(inner_vec.iter())
             } else {
                 Either::Right(inner_vec.iter().rev())
             }
         })
-        .for_each(|edit_operation| {
+        .for_each(|&edit_operation| {
             edit_distance = add_edit_distance(edit_operation, edit_distance);
 
             num_matches = add_md_edit_operation(
-                Some(&edit_operation),
+                Some(edit_operation),
                 last_edit_operation,
                 num_matches,
                 &mut md_tag,
@@ -792,7 +792,7 @@ fn build_edit_operation_fields(
                             num_operations += 1;
                         }
                         _ => {
-                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            add_cigar_edit_operation(lop, num_operations, &mut cigar);
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -802,7 +802,7 @@ fn build_edit_operation_fields(
                             num_operations += 1;
                         }
                         _ => {
-                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            add_cigar_edit_operation(lop, num_operations, &mut cigar);
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -812,7 +812,7 @@ fn build_edit_operation_fields(
                             num_operations += 1;
                         }
                         _ => {
-                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            add_cigar_edit_operation(lop, num_operations, &mut cigar);
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -822,7 +822,7 @@ fn build_edit_operation_fields(
                             num_operations += 1;
                         }
                         _ => {
-                            add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+                            add_cigar_edit_operation(lop, num_operations, &mut cigar);
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -833,7 +833,7 @@ fn build_edit_operation_fields(
             }
         });
     if let Some(lop) = last_edit_operation {
-        add_cigar_edit_operation(&lop, num_operations, &mut cigar);
+        add_cigar_edit_operation(lop, num_operations, &mut cigar);
     }
     let _ = add_md_edit_operation(None, None, num_matches, &mut md_tag);
 
@@ -1065,7 +1065,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 ..stack_frame
             },
             pattern,
-            EditOperation::Insertion(stack_frame.j as usize),
+            EditOperation::Insertion(stack_frame.j as u16),
             &mut edit_tree,
             &mut stack,
             &mut hit_intervals,
@@ -1142,7 +1142,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     ..stack_frame
                 },
                 pattern,
-                EditOperation::Deletion(stack_frame.j as usize, c),
+                EditOperation::Deletion(stack_frame.j as u16, c),
                 &mut edit_tree,
                 &mut stack,
                 &mut hit_intervals,
@@ -1184,9 +1184,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 },
                 pattern,
                 if c == pattern[stack_frame.j as usize] {
-                    EditOperation::Match(stack_frame.j as usize)
+                    EditOperation::Match(stack_frame.j as u16)
                 } else {
-                    EditOperation::Mismatch(stack_frame.j as usize, c)
+                    EditOperation::Mismatch(stack_frame.j as u16, c)
                 },
                 &mut edit_tree,
                 &mut stack,
