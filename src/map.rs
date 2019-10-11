@@ -768,10 +768,10 @@ fn build_edit_operation_fields(
     cigar_order_outer
         .iter()
         .flat_map(|(&i, inner_vec)| {
-            if i >= pattern_len / 2 {
-                Either::Left(inner_vec.iter().rev())
+            if i < pattern_len / 2 {
+                Either::Left(inner_vec.iter())
             } else {
-                Either::Right(inner_vec.iter())
+                Either::Right(inner_vec.iter().rev())
             }
         })
         .for_each(|edit_operation| {
