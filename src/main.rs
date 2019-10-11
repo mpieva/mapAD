@@ -155,7 +155,7 @@ fn main() {
                     Arg::with_name("chunk_size")
                         .required(true)
                         .long("batch_size")
-                        .default_value("500000")
+                        .default_value("250000")
                         .help("The number of reads that are processed in parallel")
                         .value_name("INT")
                 ),
