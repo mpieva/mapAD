@@ -12,6 +12,7 @@ use either::Either;
 use log::{debug, trace};
 use rayon::prelude::*;
 use smallvec::SmallVec;
+use std::time::{Duration, Instant};
 
 use bio::{
     alphabets::dna,
@@ -444,21 +445,22 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                 .par_iter()
                 .map(|record| {
                     let pattern = transform_pattern_sequence(record);
-                    (
-                        record,
-                        k_mismatch_search(
-                            &pattern,
-                            transform_base_qualities(record),
-                            allowed_mismatches.get(pattern.len())
-                                * alignment_parameters
-                                    .difference_model
-                                    .get_representative_mismatch_penalty(),
-                            alignment_parameters,
-                            fmd_index,
-                        ),
-                    )
+                    let start = Instant::now();
+                    let hit_intervals = k_mismatch_search(
+                        &pattern,
+                        transform_base_qualities(record),
+                        allowed_mismatches.get(pattern.len())
+                            * alignment_parameters
+                                .difference_model
+                                .get_representative_mismatch_penalty(),
+                        alignment_parameters,
+                        fmd_index,
+                    );
+                    let duration = start.elapsed();
+
+                    (record, hit_intervals, duration)
                 })
-                .map(|(record, mut hit_interval)| {
+                .map(|(record, mut hit_interval, duration)| {
                     intervals_to_bam(
                         record,
                         &mut hit_interval,
@@ -469,6 +471,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                             record,
                             &alignment_parameters.difference_model,
                         ),
+                        &duration,
                     )
                 })
                 .flatten()
@@ -494,6 +497,7 @@ fn intervals_to_bam(
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
     optimal_score: f32,
+    duration: &Duration,
 ) -> Vec<bam::Record> {
     let mut out = Vec::new();
 
@@ -520,6 +524,7 @@ fn intervals_to_bam(
                 Some(&best_alignment),
                 Some(mapping_quality),
                 tid,
+                duration,
             );
             out.push(bam_record);
         }
@@ -539,13 +544,14 @@ fn intervals_to_bam(
                 Some(&best_alignment),
                 Some(mapping_quality),
                 tid,
+                duration,
             );
             bam_record.set_reverse();
             out.push(bam_record);
         }
     } else {
         // No match found, report unmapped read
-        let mut bam_record = create_bam_record(record, -1, None, None, -1);
+        let mut bam_record = create_bam_record(record, -1, None, None, -1, duration);
         bam_record.set_unmapped();
         out.push(bam_record);
     }
@@ -617,6 +623,7 @@ fn create_bam_record(
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
     tid: i32,
+    duration: &Duration,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
 
@@ -660,6 +667,11 @@ fn create_bam_record(
         );
         bam_record.push_aux(b"MD", &bam::record::Aux::String(&hit_interval.md_tag));
     }
+    // Add the time that was needed for mapping the read
+    bam_record.push_aux(
+        b"XD",
+        &bam::record::Aux::Integer(duration.as_micros() as i64),
+    );
 
     bam_record
 }
