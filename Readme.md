@@ -45,7 +45,7 @@ Besides Rust, no additional dependencies are needed to compile.
     `./mapad index --reference /path/to/reference/hg19.fasta`
     
 ###### Optional
-The binary can be tailored to modern CPU architectures to increase its performance:
+- The binary can be tailored to modern CPU architectures to increase its performance:
 
 `RUSTFLAGS="-C target-cpu=haswell" cargo build --release"`
 
@@ -55,7 +55,7 @@ or
 
 Please note that the resulting binary will probably only run on systems with the same or a newer CPU. 
 
-To increase its verbosity, invoke the program like this:
+- The number of `v`s passed to the program determines the level of verbosity:
 
 `mapad -vvv index ...` or `mapad -vvv map ...`
 
