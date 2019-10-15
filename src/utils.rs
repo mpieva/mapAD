@@ -1,5 +1,5 @@
 use crate::sequence_difference_models::SequenceDifferenceModel;
-use std::collections::HashMap;
+use smallvec::SmallVec;
 
 pub struct AlignmentParameters<T: SequenceDifferenceModel + Sync> {
     pub base_error_rate: f64,
@@ -12,23 +12,20 @@ pub struct AlignmentParameters<T: SequenceDifferenceModel + Sync> {
 
 pub struct AllowedMismatches<'a, T: SequenceDifferenceModel + Sync> {
     alignment_parameters: &'a AlignmentParameters<T>,
-    cache: HashMap<usize, f32>,
+    cache: SmallVec<[f32; 128]>,
 }
 
 impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
     pub fn new(alignment_parameters: &AlignmentParameters<T>) -> AllowedMismatches<T> {
         let cache = (0..128)
             .map(|read_length| {
-                (
+                AllowedMismatches::<T>::calculate_max_num_mismatches(
                     read_length,
-                    AllowedMismatches::<T>::calculate_max_num_mismatches(
-                        read_length,
-                        alignment_parameters.poisson_threshold,
-                        alignment_parameters.base_error_rate,
-                    ),
+                    alignment_parameters.poisson_threshold,
+                    alignment_parameters.base_error_rate,
                 )
             })
-            .collect::<HashMap<usize, f32>>();
+            .collect();
 
         AllowedMismatches {
             alignment_parameters,
@@ -37,7 +34,7 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
     }
 
     pub fn get(&self, read_length: usize) -> f32 {
-        match self.cache.get(&read_length) {
+        match self.cache.get(read_length) {
             None => AllowedMismatches::<T>::calculate_max_num_mismatches(
                 read_length,
                 self.alignment_parameters.poisson_threshold,
