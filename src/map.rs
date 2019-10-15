@@ -3,7 +3,7 @@ use std::{
     collections::{binary_heap::BinaryHeap, BTreeMap},
     error::Error,
     fs::File,
-    iter::Peekable,
+    iter::{once, Peekable},
 };
 
 use clap::{crate_name, crate_version};
@@ -826,31 +826,26 @@ fn extract_edit_operations(
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
     let mut cigar_order_outer: BTreeMap<u16, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
 
-    let mut insert_expanded_cigar = |edit_operation| {
-        let position = match edit_operation {
-            EditOperation::Insertion(position) => position,
-            EditOperation::Deletion(position, _) => position,
-            EditOperation::Match(position) => position,
-            EditOperation::Mismatch(position, _) => position,
-        };
-        cigar_order_outer
-            .entry(position)
-            .or_insert_with(SmallVec::new)
-            .push(edit_operation);
-    };
-
     let end_node = edit_tree
         .get(end_node)
         .expect("This is not expected to fail");
-    if let Some(last_edit_operation) = end_node.value() {
-        insert_expanded_cigar(*last_edit_operation);
-    }
 
-    end_node
-        .ancestors()
+    once(end_node)
+        .chain(end_node.ancestors())
         .map(|node| node.value())
         .filter_map(|&edit_operation| edit_operation)
-        .for_each(insert_expanded_cigar);
+        .for_each(|edit_operation| {
+            let position = match edit_operation {
+                EditOperation::Insertion(position) => position,
+                EditOperation::Deletion(position, _) => position,
+                EditOperation::Match(position) => position,
+                EditOperation::Mismatch(position, _) => position,
+            };
+            cigar_order_outer
+                .entry(position)
+                .or_insert_with(SmallVec::new)
+                .push(edit_operation);
+        });
 
     EditOperationsTrack(
         cigar_order_outer
