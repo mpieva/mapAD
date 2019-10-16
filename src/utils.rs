@@ -1,7 +1,32 @@
 use crate::sequence_difference_models::SequenceDifferenceModel;
+use rust_htslib::bam;
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 pub struct AlignmentParameters<T: SequenceDifferenceModel + Sync> {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Record {
+    pub sequence: Vec<u8>,
+    pub base_qualities: Vec<u8>,
+    pub name: Vec<u8>,
+    pub read_group: Option<Vec<u8>>,
+}
+
+impl From<bam::Record> for Record {
+    fn from(input: bam::Record) -> Self {
+        Self {
+            sequence: input.seq().as_bytes().to_ascii_uppercase(),
+            base_qualities: input.qual().to_owned(),
+            name: input.qname().to_owned(),
+            read_group: if let Some(rg) = input.aux(b"RG") {
+                Some(rg.string().to_owned())
+            } else {
+                None
+            },
+        }
+    }
+}
+
     pub base_error_rate: f64,
     pub poisson_threshold: f64,
     pub difference_model: T,

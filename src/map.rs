@@ -29,7 +29,7 @@ use snap;
 
 use crate::{
     sequence_difference_models::SequenceDifferenceModel,
-    utils::{AlignmentParameters, AllowedMismatches},
+    utils::{AlignmentParameters, AllowedMismatches, Record},
 };
 
 pub const CRATE_NAME: &str = "mapAD";
@@ -450,7 +450,7 @@ impl<'a, R> Iterator for ChunkIterator<'a, R>
 where
     R: Read,
 {
-    type Item = Vec<bam::Record>;
+    type Item = Vec<Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let source_iterator_loan = &mut self.records;
@@ -461,6 +461,10 @@ where
         Some(
             source_iterator_loan
                 .take(self.chunk_size)
+                .map(|record| match record {
+                    Ok(record) => Ok(record.into()),
+                    Err(e) => Err(e),
+                })
                 .collect::<Result<Vec<_>, _>>()
                 .expect("Input file is corrupt. Cancelling process."),
         )
@@ -520,23 +524,6 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
     Ok(())
 }
 
-/// Transformations of the input sequence which are used throughout the program.
-/// Currently, the input sequence is just converted to uppercase letters.
-#[inline]
-fn transform_pattern_sequence(record: &bam::Record) -> Vec<u8> {
-    record.seq().as_bytes().to_ascii_uppercase()
-}
-
-/// Transformations of the base quality inputs which are used throughout the program.
-/// Currently, the PHRED-scaled base qualities are assumed to be encoded with ASCII
-/// codes starting from 33, so we subtract 33 to transform them to a range starting at 0.
-#[inline]
-fn transform_base_qualities(record: &bam::Record) -> &[u8] {
-    // Subtracting offsets is not required for BAM files
-    // record.qual().iter().map(|&f| f - 33).collect::<Vec<_>>()
-    record.qual()
-}
-
 /// Maps reads and writes them to a file in BAM format
 fn map_reads<T: SequenceDifferenceModel + Sync>(
     alignment_parameters: &AlignmentParameters<T>,
@@ -577,12 +564,11 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
             let results = chunk
                 .par_iter()
                 .map(|record| {
-                    let pattern = transform_pattern_sequence(record);
                     let start = Instant::now();
                     let hit_intervals = k_mismatch_search(
-                        &pattern,
-                        transform_base_qualities(record),
-                        allowed_mismatches.get(pattern.len())
+                        &record.sequence,
+                        &record.base_qualities,
+                        allowed_mismatches.get(record.sequence.len())
                             * alignment_parameters
                                 .difference_model
                                 .get_representative_mismatch_penalty(),
@@ -622,9 +608,9 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     Ok(())
 }
 
-/// Convert suffix array intervals to positions and BAM records and write them to a BAM file eventually
-fn intervals_to_bam(
-    record: &bam::Record,
+/// Convert suffix array intervals to positions and BAM records
+pub fn intervals_to_bam(
+    record: &Record,
     intervals: &mut BinaryHeap<HitInterval>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
@@ -695,12 +681,12 @@ fn intervals_to_bam(
 /// With this, actual alignment scores can be viewed as fraction of this
 /// optimal score to overcome dependencies on read length, base composition,
 /// and the used scoring function.
-fn compute_maximal_possible_score<T: SequenceDifferenceModel + Sync>(
-    record: &bam::Record,
+pub fn compute_maximal_possible_score<T: SequenceDifferenceModel + Sync>(
+    record: &Record,
     difference_model: &T,
 ) -> f32 {
-    let pattern = transform_pattern_sequence(record);
-    let base_qualities = transform_base_qualities(record);
+    let pattern = &record.sequence;
+    let base_qualities = &record.base_qualities;
 
     pattern.iter().zip(base_qualities).enumerate().fold(
         0.0,
@@ -751,7 +737,7 @@ fn estimate_mapping_quality(
 
 /// Create and return a BAM record of either a hit or an unmapped read
 fn create_bam_record(
-    input_record: &bam::Record,
+    input_record: &Record,
     position: i32,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
@@ -769,10 +755,10 @@ fn create_bam_record(
 
     // Set mandatory properties of the BAM record
     bam_record.set(
-        input_record.qname(),
+        &input_record.name,
         cigar.as_ref(),
-        &transform_pattern_sequence(input_record),
-        &transform_base_qualities(input_record),
+        &input_record.sequence,
+        &input_record.base_qualities,
     );
     bam_record.set_tid(tid);
     bam_record.set_pos(position);
@@ -787,8 +773,8 @@ fn create_bam_record(
     bam_record.set_mtid(-1);
 
     // Add optional tags
-    if let Some(input_read_group) = input_record.aux(b"RG") {
-        bam_record.push_aux(b"RG", &input_read_group);
+    if let Some(input_read_group) = &input_record.read_group {
+        bam_record.push_aux(b"RG", &bam::record::Aux::String(input_read_group));
     }
     if let Some(hit_interval) = hit_interval {
         bam_record.push_aux(
