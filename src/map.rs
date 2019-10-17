@@ -549,7 +549,6 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                     intervals_to_bam(
                         record,
                         &mut hit_interval,
-                        fmd_index,
                         suffix_array,
                         identifier_position_map,
                         compute_maximal_possible_score(
@@ -578,7 +577,6 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
 pub fn intervals_to_bam(
     record: &Record,
     intervals: &mut BinaryHeap<HitInterval>,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
     optimal_score: f32,
@@ -598,7 +596,7 @@ pub fn intervals_to_bam(
             .forward()
             .occ(suffix_array)
             .iter()
-            .filter(|&&position| position < fmd_index.bwt().len() / 2)
+            .filter(|&&position| position < suffix_array.len() / 2)
             .take(max_out_lines_per_read)
         {
             max_out_lines_per_read -= 1;
@@ -619,7 +617,7 @@ pub fn intervals_to_bam(
             .revcomp()
             .occ(suffix_array)
             .iter()
-            .filter(|&&position| position < fmd_index.bwt().len() / 2)
+            .filter(|&&position| position < suffix_array.len() / 2)
             .take(max_out_lines_per_read)
         {
             let (tid, position) = identifier_position_map.get_reference_identifier(position);
