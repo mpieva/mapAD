@@ -47,6 +47,7 @@ impl From<bam::Record> for Record {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AlignmentParameters<T> {
     pub base_error_rate: f64,
     pub poisson_threshold: f64,

@@ -35,9 +35,20 @@ use crate::{
 
 pub const CRATE_NAME: &str = "mapAD";
 
+/// Derive serde Traits for remote Struct
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "BiInterval")]
+struct BiIntervalDef {
+    pub lower: usize,
+    pub lower_rev: usize,
+    pub size: usize,
+    pub match_size: usize,
+}
+
 /// A subset of MismatchSearchStackFrame to store hits
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct HitInterval {
+    #[serde(with = "BiIntervalDef")]
     interval: BiInterval,
     alignment_score: f32,
     edit_operations: EditOperationsTrack,
@@ -548,18 +559,10 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
     Ok(())
 }
 
-/// Maps reads and writes them to a file in BAM format
-fn map_reads<T: SequenceDifferenceModel + Sync>(
-    alignment_parameters: &AlignmentParameters<T>,
-    reads_path: &str,
-    out_file_path: &str,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-    suffix_array: &Vec<usize>,
+pub fn create_bam_header(
+    reads_reader: &bam::Reader,
     identifier_position_map: &FastaIdPositions,
-) -> Result<(), Box<dyn Error>> {
-    let mut reads_reader = bam::Reader::from_path(reads_path)?;
-    let _ = reads_reader.set_threads(4);
-
+) -> bam::Header {
     let mut header = bam::Header::from_template(reads_reader.header());
     for identifier_position in identifier_position_map.iter() {
         let mut header_record = bam::header::HeaderRecord::new(b"SQ");
@@ -577,7 +580,21 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
         header_record.push_tag(b"VN", &crate_version!());
         header.push_record(&header_record);
     }
+    header
+}
 
+/// Maps reads and writes them to a file in BAM format
+fn map_reads<T: SequenceDifferenceModel + Sync>(
+    alignment_parameters: &AlignmentParameters<T>,
+    reads_path: &str,
+    out_file_path: &str,
+    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    suffix_array: &Vec<usize>,
+    identifier_position_map: &FastaIdPositions,
+) -> Result<(), Box<dyn Error>> {
+    let mut reads_reader = bam::Reader::from_path(reads_path)?;
+    let _ = reads_reader.set_threads(4);
+    let header = create_bam_header(&reads_reader, identifier_position_map);
     let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
     let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
     let _ = out_file.set_threads(4);
@@ -615,7 +632,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                             record,
                             &alignment_parameters.difference_model,
                         ),
-                        &duration,
+                        Some(&duration),
                         &mut rng,
                     )
                 })
@@ -641,7 +658,7 @@ pub fn intervals_to_bam<R>(
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
     optimal_score: f32,
-    duration: &Duration,
+    duration: Option<&Duration>,
     rng: &mut R,
 ) -> Vec<bam::Record>
 where
@@ -752,7 +769,7 @@ fn create_bam_record(
     mapq: Option<u8>,
     tid: i32,
     strand: Option<Direction>,
-    duration: &Duration,
+    duration: Option<&Duration>,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
 
@@ -819,11 +836,13 @@ fn create_bam_record(
     if let Some(md_tag) = md_tag {
         bam_record.push_aux(b"MD", &bam::record::Aux::String(&md_tag));
     }
-    // Add the time that was needed for mapping the read
-    bam_record.push_aux(
-        b"XD",
-        &bam::record::Aux::Integer(duration.as_micros() as i64),
-    );
+    if let Some(duration) = duration {
+        // Add the time that was needed for mapping the read
+        bam_record.push_aux(
+            b"XD",
+            &bam::record::Aux::Integer(duration.as_micros() as i64),
+        );
+    }
 
     bam_record
 }
