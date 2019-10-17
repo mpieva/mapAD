@@ -40,7 +40,7 @@ impl From<bam::Record> for Record {
     pub chunk_size: usize,
 }
 
-pub struct AllowedMismatches<'a, T: SequenceDifferenceModel + Sync> {
+pub struct AllowedMismatches<'a, T> {
     alignment_parameters: &'a AlignmentParameters<T>,
     cache: SmallVec<[f32; 128]>,
 }
