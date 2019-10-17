@@ -18,7 +18,7 @@ use bio::{
     alphabets::dna,
     data_structures::{
         bwt::Occ,
-        fmindex::{BiInterval, FMDIndex, FMIndex, FMIndexable},
+        fmindex::{BiInterval, FMDIndex, FMIndexable},
     },
 };
 
@@ -29,40 +29,11 @@ use snap;
 
 use crate::{
     sequence_difference_models::SequenceDifferenceModel,
-    utils::{AlignmentParameters, AllowedMismatches, Record},
+    utils::{AlignmentParameters, AllowedMismatches, Record, UnderlyingDataFMDIndex},
 };
 
 pub const CRATE_NAME: &str = "mapAD";
 
-/// Helper struct to bundle index files
-struct UnderlyingDataFMDIndex {
-    bwt: Vec<u8>,
-    less: Vec<usize>,
-    occ: Occ,
-}
-
-impl UnderlyingDataFMDIndex {
-    fn load(path: &str) -> Result<UnderlyingDataFMDIndex, bincode::Error> {
-        debug!("Load BWT");
-        let bwt: Vec<u8> = {
-            let d_bwt = snap::Reader::new(File::open(format!("{}.tbw", path))?);
-            bincode::deserialize_from(d_bwt)?
-        };
-
-        debug!("Load \"C\" table");
-        let less: Vec<usize> = {
-            let d_less = snap::Reader::new(File::open(format!("{}.tle", path))?);
-            bincode::deserialize_from(d_less)?
-        };
-
-        debug!("Load \"Occ\" table");
-        let occ: Occ = {
-            let d_occ = snap::Reader::new(File::open(format!("{}.toc", path))?);
-            bincode::deserialize_from(d_occ)?
-        };
-
-        Ok(UnderlyingDataFMDIndex { bwt, less, occ })
-    }
 }
 
 /// A subset of MismatchSearchStackFrame to store hits
@@ -493,12 +464,7 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
     debug!("Load FMD-index");
     let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
     debug!("Reconstruct FMD-index");
-    let fm_index = FMIndex::new(
-        &data_fmd_index.bwt,
-        &data_fmd_index.less,
-        &data_fmd_index.occ,
-    );
-    let fmd_index = FMDIndex::from(fm_index);
+    let fmd_index = data_fmd_index.reconstruct();
 
     debug!("Load suffix array");
     let suffix_array: Vec<usize> = {
@@ -1214,7 +1180,6 @@ mod tests {
         alphabets,
         data_structures::{
             bwt::{bwt, less},
-            fmindex::{FMDIndex, FMIndex},
             suffix_array::suffix_array,
         },
     };
@@ -1242,7 +1207,7 @@ mod tests {
         let less = less(&bwt, &alphabet);
         let occ = Occ::new(&bwt, 3, &alphabet);
 
-        UnderlyingDataFMDIndex { bwt, less, occ }
+        UnderlyingDataFMDIndex::new(bwt, less, occ)
     }
 
     #[test]
@@ -1252,12 +1217,7 @@ mod tests {
 
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         // Test occurring pattern
         let pattern_1 = b"TA";
@@ -1311,12 +1271,7 @@ mod tests {
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let suffix_array = suffix_array(&ref_seq);
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1374,12 +1329,7 @@ mod tests {
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let suffix_array = suffix_array(&ref_seq);
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1432,13 +1382,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -1529,12 +1473,7 @@ mod tests {
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let suffix_array = suffix_array(&ref_seq);
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1569,14 +1508,8 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = data_fmd_index.reconstruct();
         let sar = suffix_array(&ref_seq);
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -1620,13 +1553,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1702,14 +1629,8 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = data_fmd_index.reconstruct();
         let sar = suffix_array(&ref_seq);
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
 
         let allowed_mismatches = AllowedMismatches::new(&parameters);
 
@@ -1789,13 +1710,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1821,13 +1736,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1855,13 +1764,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1888,13 +1791,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1921,13 +1818,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1988,13 +1879,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2013,13 +1898,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2038,13 +1917,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2064,13 +1937,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2089,13 +1956,7 @@ mod tests {
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
-        let fm_index = FMIndex::new(
-            &data_fmd_index.bwt,
-            &data_fmd_index.less,
-            &data_fmd_index.occ,
-        );
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];

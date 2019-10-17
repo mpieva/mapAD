@@ -1,9 +1,14 @@
 use crate::sequence_difference_models::SequenceDifferenceModel;
+use bio::data_structures::{
+    bwt::Occ,
+    fmindex::{FMDIndex, FMIndex},
+};
+use log::debug;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use std::fs::File;
 
-pub struct AlignmentParameters<T: SequenceDifferenceModel + Sync> {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Record {
     pub sequence: Vec<u8>,
@@ -97,6 +102,46 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
             .map(|(k, _sum)| k)
             .last()
             .unwrap_or(0) as f32
+    }
+}
+
+/// Helper struct to bundle index files
+pub struct UnderlyingDataFMDIndex {
+    bwt: Vec<u8>,
+    less: Vec<usize>,
+    occ: Occ,
+}
+
+impl UnderlyingDataFMDIndex {
+    pub fn load(path: &str) -> Result<UnderlyingDataFMDIndex, bincode::Error> {
+        debug!("Load BWT");
+        let bwt: Vec<u8> = {
+            let d_bwt = snap::Reader::new(File::open(format!("{}.tbw", path))?);
+            bincode::deserialize_from(d_bwt)?
+        };
+
+        debug!("Load \"C\" table");
+        let less: Vec<usize> = {
+            let d_less = snap::Reader::new(File::open(format!("{}.tle", path))?);
+            bincode::deserialize_from(d_less)?
+        };
+
+        debug!("Load \"Occ\" table");
+        let occ: Occ = {
+            let d_occ = snap::Reader::new(File::open(format!("{}.toc", path))?);
+            bincode::deserialize_from(d_occ)?
+        };
+
+        Ok(UnderlyingDataFMDIndex { bwt, less, occ })
+    }
+}
+
+impl UnderlyingDataFMDIndex {
+    pub fn new(bwt: Vec<u8>, less: Vec<usize>, occ: Occ) -> Self {
+        Self { bwt, less, occ }
+    }
+    pub fn reconstruct(&self) -> FMDIndex<&Vec<u8>, &Vec<usize>, &Occ> {
+        FMDIndex::from(FMIndex::new(&self.bwt, &self.less, &self.occ))
     }
 }
 
