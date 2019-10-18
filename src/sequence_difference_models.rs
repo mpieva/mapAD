@@ -1,4 +1,5 @@
 use either::Either;
+use serde::{Deserialize, Serialize};
 
 // TODO: Use lookup tables instead of computing scores on-demand
 
@@ -32,6 +33,7 @@ pub trait SequenceDifferenceModel {
 }
 
 /// Library preparation methods commonly used for ancient DNA. Values are overhang probabilities.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum LibraryPrep {
     SingleStranded {
         five_prime_overhang: f32,
@@ -41,6 +43,7 @@ pub enum LibraryPrep {
 }
 
 /// Model of deamination (aDNA degradation), divergence, and sequencing error
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimpleAncientDnaModel {
     pub library_prep: LibraryPrep,
     // Deamination rate in double-stranded stems

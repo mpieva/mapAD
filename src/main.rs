@@ -1,8 +1,10 @@
 use clap::{crate_description, crate_version, value_t, App, AppSettings, Arg, SubCommand};
 
 use mapad::{
+    distributed::{dispatcher, worker},
+    index, map,
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
-    {index, map, utils},
+    utils,
 };
 
 fn main() {
@@ -158,6 +160,38 @@ fn main() {
                         .default_value("250000")
                         .help("The number of reads that are processed in parallel")
                         .value_name("INT")
+                )
+                .arg(
+                    Arg::with_name("dispatcher")
+                        .long("dispatcher")
+                        .help("Run in dispatcher mode for distributed computing in a network. Needs workers to be spawned externally to distribute work among them.")
+                        .takes_value(false)
+                )
+                .arg(
+                    Arg::with_name("port")
+                        .required(true)
+                        .long("port")
+                        .help("Port to listen on in dispatcher mode")
+                        .default_value("3130"),
+                ),
+
+        )
+        .subcommand(
+            SubCommand::with_name("worker")
+                .about("Spawns worker")
+                .version(crate_version!())
+                .arg(
+                    Arg::with_name("host")
+                        .required(true)
+                        .long("host")
+                        .help("Hostname or IP address of the running dispatcher node")
+                )
+                .arg(
+                    Arg::with_name("port")
+                        .required(true)
+                        .long("port")
+                        .help("Port number of running dispatcher")
+                        .default_value("3130")
                 ),
         )
         .get_matches();
@@ -219,14 +253,44 @@ fn main() {
                 chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
                     .unwrap_or_else(|e| e.exit()),
             };
-            if let Err(e) = map::run(
-                map_matches.value_of("reads").unwrap(),
-                map_matches.value_of("reference").unwrap(),
-                map_matches.value_of("output").unwrap(),
+            let reads_path = map_matches.value_of("reads").unwrap();
+            let reference_path = map_matches.value_of("reference").unwrap();
+            let out_file_path = map_matches.value_of("output").unwrap();
+
+            if map_matches.is_present("dispatcher") {
+                println!("Dispatcher mode");
+                let mut dispatcher = dispatcher::Dispatcher::new(
+                    reads_path,
+                    reference_path,
+                    out_file_path,
+                    &alignment_parameters,
+                )
+                .expect("Application error");
+
+                let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+                if let Err(e) = dispatcher.run(port) {
+                    println!("Application error: {}", e);
+                }
+            } else if let Err(e) = map::run(
+                reads_path,
+                reference_path,
+                out_file_path,
                 &alignment_parameters,
             ) {
                 println!("Application error: {}", e);
             }
+        }
+        ("worker", Some(worker_matches)) => {
+            let host = worker_matches.value_of("host").unwrap();
+            let port = worker_matches.value_of("port").unwrap();
+            let mut worker = worker::Worker::<SimpleAncientDnaModel>::new(
+                host,
+                port,
+            ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
+
+            worker.run().expect(
+                "Could not successfully complete the tasks given. Please double-check the results.",
+            );
         }
         _ => unreachable!(),
     }
