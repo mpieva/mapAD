@@ -34,8 +34,6 @@ use crate::{
 
 pub const CRATE_NAME: &str = "mapAD";
 
-}
-
 /// A subset of MismatchSearchStackFrame to store hits
 #[derive(Debug)]
 pub struct HitInterval {

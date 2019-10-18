@@ -32,6 +32,7 @@ impl From<bam::Record> for Record {
     }
 }
 
+pub struct AlignmentParameters<T> {
     pub base_error_rate: f64,
     pub poisson_threshold: f64,
     pub difference_model: T,
