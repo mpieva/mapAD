@@ -41,6 +41,7 @@ fn main() {
                         .short("g")
                         .long("reference")
                         .help("FASTA file containing the genome to be indexed")
+                        .takes_value(true)
                         .value_name("FASTA FILE"),
                 )
                 .arg(
@@ -63,6 +64,7 @@ fn main() {
                         .short("r")
                         .long("reads")
                         .help("BAM file containing adapter-trimmed and quality-controlled reads")
+                        .takes_value(true)
                         .value_name("BAM FILE"),
                 )
                 .arg(
@@ -71,6 +73,7 @@ fn main() {
                         .short("g")
                         .long("reference")
                         .help("Prefix of the file names of the index files. The reference FASTA file itself does not need to be present.")
+                        .takes_value(true)
                         .value_name("FASTA FILE"),
                 )
                 .arg(
@@ -79,6 +82,7 @@ fn main() {
                         .short("o")
                         .long("output")
                         .help("Path to output BAM file")
+                        .takes_value(true)
                         .value_name("BAM FILE"),
                 )
                 .arg(
@@ -86,8 +90,9 @@ fn main() {
                         .required(true)
                         .short("p")
                         .conflicts_with("max_diff")
-                        // .default_value("0.04")
                         .help("Minimum probability of the number of mismatches under 0.02 base error rate")
+                        .takes_value(true)
+                        // .default_value("0.04")
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
                 )
@@ -96,9 +101,10 @@ fn main() {
                         .required(true)
                         .short("l")
                         .long("library")
+                        .help("Library preparation method")
+                        .takes_value(true)
                         // .default_value("single_stranded")
                         .possible_values(&["single_stranded", "double_stranded"])
-                        .help("Library preparation method")
                         .value_name("METHOD")
                 )
                 .arg(
@@ -106,6 +112,7 @@ fn main() {
                         .required(true)
                         .short("f")
                         .help("5' overhang length parameter")
+                        .takes_value(true)
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
                 )
@@ -114,6 +121,7 @@ fn main() {
                         .required_if("library", "single_stranded")
                         .short("t")
                         .help("3' overhang length parameter")
+                        .takes_value(true)
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
                 )
@@ -121,8 +129,9 @@ fn main() {
                     Arg::with_name("ds_deamination_rate")
                         .required(true)
                         .short("d")
-                        // .default_value("0.02")
                         .help("Deamination rate in double-stranded stem of a read")
+                        .takes_value(true)
+                        // .default_value("0.02")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
@@ -130,8 +139,9 @@ fn main() {
                     Arg::with_name("ss_deamination_rate")
                         .required(true)
                         .short("s")
-                        // .default_value("0.45")
                         .help("Deamination rate in single-stranded ends of a read")
+                        .takes_value(true)
+                        // .default_value("0.45")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
@@ -139,8 +149,9 @@ fn main() {
                     Arg::with_name("divergence")
                         .required(true)
                         .short("D")
-                        // .default_value("0.005")
                         .help("Divergence rate of the reference and target organisms")
+                        .takes_value(true)
+                        // .default_value("0.005")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
@@ -148,8 +159,9 @@ fn main() {
                     Arg::with_name("indel_rate")
                         .required(true)
                         .short("i")
-                        .default_value("0.00001")
                         .help("Expected rate of indels between reads and reference")
+                        .takes_value(true)
+                        .default_value("0.00001")
                         .value_name("RATE")
                         .validator(probability_validator),
                 )
@@ -157,8 +169,9 @@ fn main() {
                     Arg::with_name("chunk_size")
                         .required(true)
                         .long("batch_size")
-                        .default_value("250000")
                         .help("The number of reads that are processed in parallel")
+                        .takes_value(true)
+                        .default_value("250000")
                         .value_name("INT")
                 )
                 .arg(
@@ -172,6 +185,7 @@ fn main() {
                         .required(true)
                         .long("port")
                         .help("Port to listen on in dispatcher mode")
+                        .takes_value(true)
                         .default_value("3130"),
                 ),
 
@@ -185,12 +199,14 @@ fn main() {
                         .required(true)
                         .long("host")
                         .help("Hostname or IP address of the running dispatcher node")
+                        .takes_value(true)
                 )
                 .arg(
                     Arg::with_name("port")
                         .required(true)
                         .long("port")
                         .help("Port number of running dispatcher")
+                        .takes_value(true)
                         .default_value("3130")
                 ),
         )
