@@ -70,7 +70,7 @@ impl PartialEq for HitInterval {
 impl Eq for HitInterval {}
 
 /// Simple zero-cost direction enum to increase readability
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum Direction {
     Forward,
     Backward,
@@ -107,11 +107,13 @@ enum EditOperation {
     Mismatch(u16, u8),
 }
 
+/// Contains edit operations in the
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EditOperationsTrack(Vec<EditOperation>);
 
 impl EditOperationsTrack {
-    fn to_bam_fields(&self) -> (bam::record::CigarString, Vec<u8>, u16) {
+    /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
+    fn to_bam_fields(&self, strand: Option<Direction>) -> (bam::record::CigarString, Vec<u8>, u16) {
         // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut num_matches: u32 = 0;
         let mut num_operations = 1;
@@ -119,12 +121,19 @@ impl EditOperationsTrack {
         let mut last_edit_operation = None;
         let mut cigar = Vec::new();
         let mut md_tag = Vec::new();
-        for edit_operation in &self.0 {
+
+        let track = match strand {
+            Some(Direction::Forward) => Either::Left(self.0.iter()),
+            Some(Direction::Backward) => Either::Right(self.0.iter().rev()),
+            None => unreachable!(),
+        };
+        for edit_operation in track {
             edit_distance = Self::add_edit_distance(*edit_operation, edit_distance);
 
             num_matches = Self::add_md_edit_operation(
                 Some(*edit_operation),
                 last_edit_operation,
+                strand,
                 num_matches,
                 &mut md_tag,
             );
@@ -178,10 +187,11 @@ impl EditOperationsTrack {
             }
         }
 
+        // Add remainder
         if let Some(lop) = last_edit_operation {
             Self::add_cigar_edit_operation(lop, num_operations, &mut cigar);
         }
-        let _ = Self::add_md_edit_operation(None, None, num_matches, &mut md_tag);
+        let _ = Self::add_md_edit_operation(None, None, strand, num_matches, &mut md_tag);
 
         (bam::record::CigarString(cigar), md_tag, edit_distance)
     }
@@ -203,12 +213,20 @@ impl EditOperationsTrack {
     fn add_md_edit_operation(
         edit_operation: Option<EditOperation>,
         last_edit_operation: Option<EditOperation>,
+        strand: Option<Direction>,
         mut k: u32,
         md_tag: &mut Vec<u8>,
     ) -> u32 {
+        let comp_if_necessary = |reference_base| match strand {
+            Some(Direction::Forward) => reference_base,
+            Some(Direction::Backward) => dna::complement(reference_base),
+            None => unreachable!(),
+        };
+
         match edit_operation {
             Some(EditOperation::Match(_)) => k += 1,
             Some(EditOperation::Mismatch(_, reference_base)) => {
+                let reference_base = comp_if_necessary(reference_base);
                 md_tag.extend_from_slice(format!("{}{}", k, reference_base as char).as_bytes());
                 k = 0;
             }
@@ -216,6 +234,7 @@ impl EditOperationsTrack {
                 // Insertions are ignored in MD tags
             }
             Some(EditOperation::Deletion(_, reference_base)) => {
+                let reference_base = comp_if_necessary(reference_base);
                 match last_edit_operation {
                     Some(EditOperation::Deletion(_, _)) => {
                         md_tag.extend_from_slice(format!("{}", reference_base as char).as_bytes());
@@ -685,28 +704,50 @@ fn create_bam_record(
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
     tid: i32,
+    strand: Option<Direction>,
     duration: &Duration,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
 
     let (cigar, md_tag, edit_distance) = if let Some(hit_interval) = hit_interval {
-        let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields();
+        let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields(strand);
         (Some(cigar), Some(md_tag), Some(edit_distance))
     } else {
         (None, None, None)
+    };
+
+    let revcomp = if let Some(Direction::Forward) = strand {
+        Vec::new()
+    } else {
+        dna::revcomp(&input_record.sequence)
+    };
+    let sequence = if let Some(Direction::Forward) = strand {
+        &input_record.sequence
+    } else {
+        &revcomp
     };
 
     // Set mandatory properties of the BAM record
     bam_record.set(
         &input_record.name,
         cigar.as_ref(),
-        &input_record.sequence,
+        sequence,
         &input_record.base_qualities,
     );
     bam_record.set_tid(tid);
     bam_record.set_pos(position);
     if let Some(mapq) = mapq {
         bam_record.set_mapq(mapq);
+    }
+
+    // Flag read that maps to reverse strand
+    if let Some(Direction::Backward) = strand {
+        bam_record.set_reverse();
+    }
+
+    // Flag unmapped read
+    if position == -1 {
+        bam_record.set_unmapped();
     }
 
     // Position of mate (-1 = *)
@@ -1695,7 +1736,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields();
+        let (cigar, _, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(
             cigar,
@@ -1722,7 +1765,9 @@ mod tests {
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
 
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields();
+        let (cigar, _, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
@@ -1749,7 +1794,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields();
+        let (cigar, _, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(best_hit.alignment_score, -2.0);
         assert_eq!(
@@ -1776,7 +1823,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields();
+        let (cigar, _, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
@@ -1803,7 +1852,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -4.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields();
+        let (cigar, _, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(best_hit.alignment_score, -4.0);
         assert_eq!(
@@ -1864,7 +1915,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields();
+        let (_, md_tag, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(md_tag, "5C1".as_bytes());
 
@@ -1883,7 +1936,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields();
+        let (_, md_tag, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(md_tag, "4^G2".as_bytes());
 
@@ -1903,7 +1958,9 @@ mod tests {
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
 
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields();
+        let (_, md_tag, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(md_tag, "3^TA3".as_bytes());
 
@@ -1922,7 +1979,9 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields();
+        let (_, md_tag, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(md_tag, "7".as_bytes());
 
@@ -1941,8 +2000,159 @@ mod tests {
         let mut intervals =
             k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields();
+        let (_, md_tag, _) = best_hit
+            .edit_operations
+            .to_bam_fields(Some(Direction::Forward));
 
         assert_eq!(md_tag, "7".as_bytes());
+    }
+
+    #[test]
+    fn test_reverse_strand_search_2() {
+        struct TestDifferenceModel {}
+        impl SequenceDifferenceModel for TestDifferenceModel {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -1.0;
+                } else if from != to {
+                    return -1.0;
+                } else {
+                    return 0.0;
+                }
+            }
+        }
+        let difference_model = TestDifferenceModel {};
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -3.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+        };
+
+        let alphabet = alphabets::dna::alphabet();
+        let mut ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let suffix_array = suffix_array(&ref_seq);
+        let fmd_index = data_fmd_index.reconstruct();
+
+        let pattern = "TTT".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut intervals =
+            k_mismatch_search(&pattern, &base_qualities, 0.0, &parameters, &fmd_index);
+
+        let positions = if let Some(best_alignment) = intervals.pop() {
+            best_alignment
+                .interval
+                .forward()
+                .occ(&suffix_array)
+                .iter()
+                .filter(|&&position| position < suffix_array.len() / 2)
+                .map(|&position| (position, Direction::Forward))
+                .chain(
+                    best_alignment
+                        .interval
+                        .revcomp()
+                        .occ(&suffix_array)
+                        .iter()
+                        .filter(|&&position| position < suffix_array.len() / 2)
+                        .map(|&position| (position, Direction::Backward)),
+                )
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        assert_eq!(
+            positions,
+            vec![(6, Direction::Forward), (0, Direction::Backward),]
+        );
+    }
+
+    #[test]
+    fn test_edit_operations_reverse_strand() {
+        struct TestDifferenceModel {}
+        impl SequenceDifferenceModel for TestDifferenceModel {
+            fn get(
+                &self,
+                _i: usize,
+                _read_length: usize,
+                from: u8,
+                to: u8,
+                _base_quality: u8,
+            ) -> f32 {
+                if from == b'C' && to == b'T' {
+                    return -1.0;
+                } else if from != to {
+                    return -1.0;
+                } else {
+                    return 0.0;
+                }
+            }
+        }
+        let difference_model = TestDifferenceModel {};
+
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.04,
+            difference_model,
+            penalty_gap_open: -3.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+        };
+
+        let alphabet = alphabets::dna::alphabet();
+        let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
+
+        // Reference
+        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+
+        let suffix_array = suffix_array(&ref_seq);
+        let fmd_index = data_fmd_index.reconstruct();
+
+        let pattern = "TAGT".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let intervals = k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
+
+        let best_alignment = intervals.peek().unwrap();
+
+        let positions = best_alignment
+            .interval
+            .forward()
+            .occ(&suffix_array)
+            .iter()
+            .filter(|&&position| position < suffix_array.len() / 2)
+            .map(|&position| (position, Direction::Forward))
+            .chain(
+                best_alignment
+                    .interval
+                    .revcomp()
+                    .occ(&suffix_array)
+                    .iter()
+                    .filter(|&&position| position < suffix_array.len() / 2)
+                    .map(|&position| (position, Direction::Backward)),
+            )
+            .collect::<Vec<_>>();
+        assert_eq!(positions, vec![(1, Direction::Backward),]);
+
+        let (_cigar, md, edop) = best_alignment
+            .edit_operations
+            .to_bam_fields(Some(Direction::Backward));
+        assert_eq!(md, b"1T2");
+
+        assert_eq!(edop, 1);
     }
 }
