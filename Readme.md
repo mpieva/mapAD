@@ -66,7 +66,7 @@ Adding ` --help` will print a list of available and required command line option
 ### Example
 The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference. 
 ```
-mapad -vv map \
+mapad -vvv map \
 --library single_stranded \
 -p 0.02 \
 -f 0.475 \
@@ -75,11 +75,10 @@ mapad -vv map \
 -s 0.9 \
 -D 0.02 \
 -i 0.00001 \
---reads "${input_fastq}" \
+--reads "${input_bam}" \
 --reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
 --output "${output_bam}"
 ```
-Note that the expected mutation rate of 2% (`-D 0.02`) is quite high here. 
 
 ## Performance/ Hardware Requirements
 
