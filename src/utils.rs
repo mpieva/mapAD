@@ -1,7 +1,10 @@
 use crate::sequence_difference_models::SequenceDifferenceModel;
-use bio::data_structures::{
-    bwt::Occ,
-    fmindex::{FMDIndex, FMIndex},
+use bio::{
+    alphabets::dna,
+    data_structures::{
+        bwt::Occ,
+        fmindex::{FMDIndex, FMIndex},
+    },
 };
 use log::debug;
 use rust_htslib::bam;
@@ -19,9 +22,21 @@ pub struct Record {
 
 impl From<bam::Record> for Record {
     fn from(input: bam::Record) -> Self {
+        let (sequence, base_qualities) = {
+            let sequence = input.seq().as_bytes().to_ascii_uppercase();
+            let base_qualities = input.qual().to_owned();
+            if input.is_reverse() {
+                (
+                    dna::revcomp(sequence),
+                    base_qualities.into_iter().rev().collect(),
+                )
+            } else {
+                (sequence, base_qualities)
+            }
+        };
         Self {
-            sequence: input.seq().as_bytes().to_ascii_uppercase(),
-            base_qualities: input.qual().to_owned(),
+            sequence,
+            base_qualities,
             name: input.qname().to_owned(),
             read_group: if let Some(rg) = input.aux(b"RG") {
                 Some(rg.string().to_owned())
