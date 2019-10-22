@@ -10,6 +10,7 @@ use clap::{crate_name, crate_version};
 use ego_tree::{NodeId, Tree};
 use either::Either;
 use log::{debug, trace};
+use rand::{seq::IteratorRandom, thread_rng};
 use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::time::{Duration, Instant};
@@ -580,63 +581,43 @@ pub fn intervals_to_bam(
     optimal_score: f32,
     duration: &Duration,
 ) -> Vec<bam::Record> {
-    let mut out = Vec::new();
-
-    if let Some(best_alignment) = intervals.pop() {
+    let record = if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals, optimal_score);
-
-        // Max. number of alignments per read that will be reported
-        let mut max_out_lines_per_read = 1;
-
-        // Read aligns to reference strand
-        for &position in best_alignment
+        best_alignment
             .interval
             .forward()
             .occ(suffix_array)
             .iter()
-            .filter(|&&position| position < suffix_array.len() / 2)
-            .take(max_out_lines_per_read)
-        {
-            max_out_lines_per_read -= 1;
-            let (tid, position) = identifier_position_map.get_reference_identifier(position);
-            let bam_record = create_bam_record(
-                record,
-                position,
-                Some(&best_alignment),
-                Some(mapping_quality),
-                tid,
-                duration,
-            );
-            out.push(bam_record);
-        }
-        // Read aligns to reverse strand
-        for &position in best_alignment
-            .interval
-            .revcomp()
-            .occ(suffix_array)
-            .iter()
-            .filter(|&&position| position < suffix_array.len() / 2)
-            .take(max_out_lines_per_read)
-        {
-            let (tid, position) = identifier_position_map.get_reference_identifier(position);
-            let mut bam_record = create_bam_record(
-                record,
-                position,
-                Some(&best_alignment),
-                Some(mapping_quality),
-                tid,
-                duration,
-            );
-            bam_record.set_reverse();
-            out.push(bam_record);
-        }
+            .filter(|&&position| position < (suffix_array.len() - 2) / 2)
+            .map(|&position| (position, Direction::Forward))
+            .chain(
+                best_alignment
+                    .interval
+                    .revcomp()
+                    .occ(suffix_array)
+                    .iter()
+                    .filter(|&&position| position < (suffix_array.len() - 2) / 2)
+                    .map(|&position| (position, Direction::Backward)),
+            )
+            .choose(&mut thread_rng())
+            .map(|(position, strand)| {
+                let (tid, position) = identifier_position_map.get_reference_identifier(position);
+                create_bam_record(
+                    record,
+                    position,
+                    Some(&best_alignment),
+                    Some(mapping_quality),
+                    tid,
+                    Some(strand),
+                    duration,
+                )
+            })
+            .unwrap()
     } else {
         // No match found, report unmapped read
-        let mut bam_record = create_bam_record(record, -1, None, None, -1, duration);
-        bam_record.set_unmapped();
-        out.push(bam_record);
-    }
-    out
+        create_bam_record(record, -1, None, None, -1, None, duration)
+    };
+    vec![record]
 }
 
 /// Computes theoretically maximal possible alignment score per read.
