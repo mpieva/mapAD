@@ -4,6 +4,7 @@ use mio::{
     net::{TcpListener, TcpStream},
     *,
 };
+use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -162,7 +163,6 @@ where
         let mut events = Events::with_capacity(1024);
 
         debug!("Ready to distribute work");
-
         loop {
             poll.poll(&mut events, None)?;
             for event in events.iter() {
@@ -283,7 +283,8 @@ where
         identifier_position_map: &map::FastaIdPositions,
         out_file: &mut bam::Writer,
     ) -> Result<(), bam::Error> {
-        hits.iter_mut()
+        let bam_records = hits
+            .par_iter_mut()
             .map(|(record, hit_interval)| {
                 map::intervals_to_bam(
                     record,
@@ -298,6 +299,10 @@ where
                 )
             })
             .flatten()
+            .collect::<Vec<_>>();
+
+        bam_records
+            .into_iter()
             .map(|record| out_file.write(&record))
             .collect()
     }
