@@ -974,9 +974,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> BinaryHeap<HitInterval> {
-    let representative_mismatch_penalty = parameters
-        .difference_model
-        .get_representative_mismatch_penalty();
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
         pattern,
@@ -985,7 +982,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         parameters,
         fmd_index,
     );
-
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
     let mut stack = BinaryHeap::new();
     let mut edit_tree: Tree<Option<EditOperation>> = Tree::new(None);
@@ -1004,40 +1000,21 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     });
 
     while let Some(stack_frame) = stack.pop() {
-        // In the meantime, have we found a match whose score we perhaps aren't close enough to?
-        let lower_bound =
-            d_backwards.get(stack_frame.backward_index) + d_forwards.get(stack_frame.forward_index);
-
-        let penalties = Penalties {
-            max_allowed_penalties,
-            lower_bound,
-            representative_mismatch_penalty,
-        };
-
-        if stop_searching_suboptimal_hits(&stack_frame, &hit_intervals, &penalties) {
-            // Since we operate on a priority stack, it's safe to assume that there are no
-            // better scoring frames on the stack, so we are going to stop the search.
-            break;
-        }
-
+        // Determine direction of progress for next iteration on this stack frame
         let next_j;
         let next_backward_index;
         let next_forward_index;
-
-        print_debug(&stack_frame, &hit_intervals, &penalties); // FIXME
-
-        // Determine direction of progress for next iteration on this stack frame
         let fmd_ext_interval = match stack_frame.direction {
             Direction::Forward => {
                 next_forward_index = stack_frame.forward_index + 1;
                 next_backward_index = stack_frame.backward_index;
-                next_j = next_backward_index;
+                next_j = stack_frame.backward_index;
                 stack_frame.current_interval.swapped()
             }
             Direction::Backward => {
                 next_forward_index = stack_frame.forward_index;
                 next_backward_index = stack_frame.backward_index - 1;
-                next_j = next_forward_index;
+                next_j = stack_frame.forward_index;
                 stack_frame.current_interval
             }
         };
@@ -1045,9 +1022,18 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
         let penalties = Penalties {
+            max_allowed_penalties,
             lower_bound,
-            ..penalties
+            representative_mismatch_penalty: parameters
+                .difference_model
+                .get_representative_mismatch_penalty(),
         };
+
+        if stop_searching_suboptimal_hits(&stack_frame, &hit_intervals, &penalties) {
+            // Since we operate on a priority stack, we can assume that there are no
+            // better scoring frames on the stack, so we are going to stop the search.
+            break;
+        }
 
         //
         // Insertion in read / deletion in reference
@@ -1214,7 +1200,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             );
         }
 
-        // Only search until we found a multi-hit
+        // Only search until we've found a multi-hit
         if hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 1 {
             return hit_intervals;
         }
