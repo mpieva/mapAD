@@ -10,7 +10,7 @@ use clap::{crate_name, crate_version};
 use ego_tree::{NodeId, Tree};
 use either::Either;
 use log::{debug, trace};
-use rand::{seq::IteratorRandom, thread_rng};
+use rand::{rngs::StdRng, seq::IteratorRandom, RngCore, SeedableRng};
 use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::time::{Duration, Instant};
@@ -564,6 +564,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                     (record, hit_intervals, duration)
                 })
                 .map(|(record, mut hit_interval, duration)| {
+                    let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
                     intervals_to_bam(
                         record,
                         &mut hit_interval,
@@ -574,6 +575,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                             &alignment_parameters.difference_model,
                         ),
                         &duration,
+                        &mut rng,
                     )
                 })
                 .flatten()
@@ -592,14 +594,18 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
 }
 
 /// Convert suffix array intervals to positions and BAM records
-pub fn intervals_to_bam(
+pub fn intervals_to_bam<R>(
     record: &Record,
     intervals: &mut BinaryHeap<HitInterval>,
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
     optimal_score: f32,
     duration: &Duration,
-) -> Vec<bam::Record> {
+    rng: &mut R,
+) -> Vec<bam::Record>
+where
+    R: SeedableRng + RngCore,
+{
     let record = if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals, optimal_score);
         best_alignment
@@ -618,7 +624,7 @@ pub fn intervals_to_bam(
                     .filter(|&&position| position < (suffix_array.len() - 2) / 2)
                     .map(|&position| (position, Direction::Backward)),
             )
-            .choose(&mut thread_rng())
+            .choose(rng)
             .map(|(position, strand)| {
                 let (tid, position) = identifier_position_map.get_reference_identifier(position);
                 create_bam_record(
