@@ -1222,7 +1222,7 @@ mod tests {
 
     use rust_htslib::bam;
 
-    use crate::sequence_difference_models::VindijaPWM;
+    use crate::sequence_difference_models::{LibraryPrep, SimpleAncientDnaModel, VindijaPWM};
 
     use assert_approx_eq::assert_approx_eq;
 
