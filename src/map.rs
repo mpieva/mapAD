@@ -351,72 +351,112 @@ impl FastaIdPositions {
 /// This allows for pruning the search tree. The values are minimal expected penalties towards
 /// the respective ends of the query. In contrast to alignment scores, these values are _positive_.
 #[derive(Debug)]
-struct DArray {
-    d_array: SmallVec<[f32; 64]>,
+struct BiDArray {
+    d_backwards: SmallVec<[f32; 64]>,
+    d_forwards: SmallVec<[f32; 64]>,
+    split: usize,
 }
 
-impl DArray {
-    fn new<T: SequenceDifferenceModel + Sync>(
+impl BiDArray {
+    pub(crate) fn new<T: SequenceDifferenceModel + Sync>(
         pattern: &[u8],
         base_qualities: &[u8],
-        pattern_length: usize,
-        read_length: usize,
-        direction: Direction,
+        split: usize,
         alignment_parameters: &AlignmentParameters<T>,
         fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     ) -> Self {
-        let extend_interval = match direction {
-            Direction::Forward => FMDIndex::forward_ext,
-            Direction::Backward => FMDIndex::backward_ext,
-        };
-
-        let directed_pattern_index = |i| match direction {
-            Direction::Forward => i,
-            Direction::Backward => read_length - pattern_length + i,
-        };
-
-        let mut z = 0.0;
-        let mut interval = fmd_index.init_interval();
-        let pattern = match direction {
-            Direction::Forward => Either::Left(pattern.iter()),
-            Direction::Backward => Either::Right(pattern.iter().rev()),
-        };
-
-        let pattern = pattern.enumerate().map(|(index, &base)| {
-            interval = extend_interval(fmd_index, &interval, base);
-            if interval.size < 1 {
-                z += alignment_parameters
-                    .difference_model
-                    .get_min_penalty(
-                        directed_pattern_index(index),
-                        read_length,
-                        base,
-                        base_qualities[index],
-                        true,
-                    )
-                    .max(alignment_parameters.penalty_gap_open)
-                    .max(alignment_parameters.penalty_gap_extend);
-                interval = fmd_index.init_interval();
-            }
-            z
-        });
-
-        // FIXME: It's not optimal to call collect() twice. Side-effects seem to make this necessary.
-        DArray {
-            d_array: match direction {
-                Direction::Forward => pattern.collect(),
-                Direction::Backward => pattern
-                    .collect::<SmallVec<[f32; 64]>>()
-                    .into_iter()
-                    .rev()
-                    .collect(),
-            },
+        Self {
+            d_backwards: Self::compute_part(
+                &pattern[..split],
+                &base_qualities[..split],
+                Direction::Forward,
+                pattern.len(),
+                alignment_parameters,
+                fmd_index,
+            ),
+            d_forwards: Self::compute_part(
+                &pattern[split..],
+                &base_qualities[split..],
+                Direction::Backward,
+                pattern.len(),
+                alignment_parameters,
+                fmd_index,
+            ),
+            split,
         }
     }
 
+    fn compute_part<T: SequenceDifferenceModel + Sync>(
+        pattern_part: &[u8],
+        base_qualities_part: &[u8],
+        direction: Direction,
+        full_pattern_length: usize,
+        alignment_parameters: &AlignmentParameters<T>,
+        fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    ) -> SmallVec<[f32; 64]> {
+        let directed_pattern_iterator = || match direction {
+            Direction::Forward => Either::Left(pattern_part.iter()),
+            Direction::Backward => Either::Right(pattern_part.iter().rev()),
+        };
+        let directed_index = |index, length| match direction {
+            Direction::Forward => index,
+            Direction::Backward => length - 1 - index,
+        };
+
+        directed_pattern_iterator()
+            .enumerate()
+            .scan(
+                (0.0, None, fmd_index.init_interval()),
+                |(z, last_mismatch_pos, interval), (index, &base)| {
+                    *interval = match direction {
+                        Direction::Forward => FMDIndex::forward_ext,
+                        Direction::Backward => FMDIndex::backward_ext,
+                    }(fmd_index, &interval, base);
+                    if interval.size < 1 {
+                        *z += directed_pattern_iterator()
+                            .take(index + 1)
+                            .skip(if let Some(lmp) = *last_mismatch_pos {
+                                lmp + 1
+                            } else {
+                                0
+                            })
+                            .enumerate()
+                            .map(|(j, &base_j)| {
+                                alignment_parameters.difference_model.get_min_penalty(
+                                    directed_index(j, full_pattern_length),
+                                    full_pattern_length,
+                                    base_j,
+                                    base_qualities_part
+                                        [directed_index(j, base_qualities_part.len())],
+                                    true,
+                                )
+                            })
+                            .fold(std::f32::MIN, |acc, penalty| acc.max(penalty))
+                            .max(alignment_parameters.penalty_gap_open)
+                            .max(alignment_parameters.penalty_gap_extend);
+                        *interval = fmd_index.init_interval();
+                        *last_mismatch_pos = Some(index);
+                    }
+                    Some(*z)
+                },
+            )
+            .collect()
+    }
+
     #[inline]
-    fn get(&self, index: i16) -> f32 {
-        *self.d_array.get(index as usize).unwrap_or(&0.0)
+    fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
+        let inner = || {
+            let forward_index = self
+                .d_forwards
+                .len()
+                .checked_sub(1)?
+                .checked_sub(forward_index as usize - self.split)?;
+            Some(
+                self.d_backwards.get(backward_index as usize)?
+                    + self.d_forwards.get(forward_index)?,
+            )
+        };
+        inner().unwrap_or(0.0)
     }
 }
 
@@ -938,25 +978,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         .difference_model
         .get_representative_mismatch_penalty();
     let center_of_read = pattern.len() / 2;
-
-    let d_part_pattern = &pattern[..center_of_read as usize];
-    let d_backwards = DArray::new(
-        d_part_pattern,
-        &base_qualities[..center_of_read as usize],
-        d_part_pattern.len(),
-        pattern.len(),
-        Direction::Forward,
-        parameters,
-        fmd_index,
-    );
-
-    let d_part_pattern = &pattern[center_of_read as usize..];
-    let d_forwards = DArray::new(
-        d_part_pattern,
-        &base_qualities[center_of_read as usize..],
-        d_part_pattern.len(),
-        pattern.len(),
-        Direction::Backward,
+    let bi_d_array = BiDArray::new(
+        pattern,
+        base_qualities,
+        center_of_read,
         parameters,
         fmd_index,
     );
@@ -1017,9 +1042,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             }
         };
 
-        // Re-calculate the lower bounds for extension
-        let lower_bound = d_backwards.get(next_backward_index)
-            + d_forwards.get(next_forward_index - pattern.len() as i16 / 2);
+        // Calculate the lower bounds for extension
+        let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
         let penalties = Penalties {
             lower_bound,
             ..penalties
@@ -1371,91 +1395,63 @@ mod tests {
 
     #[test]
     fn test_d() {
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -1.0;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 1.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
-
-        let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            difference_model,
-            penalty_gap_open: -1.0,
-            penalty_gap_extend: -1.0,
-            chunk_size: 1,
-        };
-
         let alphabet = alphabets::dna::alphabet();
-        let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
+        let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
 
         // Reference
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let fmd_index = data_fmd_index.reconstruct();
 
-        let pattern = "GTTC".as_bytes().to_owned();
-        let base_qualities = vec![40; pattern.len()];
+        let difference_model = SimpleAncientDnaModel {
+            library_prep: LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.475,
+                three_prime_overhang: 0.475,
+            },
+            ds_deamination_rate: 0.001,
+            ss_deamination_rate: 0.9,
+            divergence: 0.02,
+        };
 
-        let d_backward = DArray::new(
-            &pattern,
-            &base_qualities,
-            pattern.len(),
-            pattern.len(),
-            Direction::Forward,
-            &parameters,
-            &fmd_index,
-        );
-        let d_forward = DArray::new(
-            &pattern,
-            &base_qualities,
-            pattern.len(),
-            pattern.len(),
-            Direction::Backward,
-            &parameters,
-            &fmd_index,
-        );
+        let representative_mismatch_penalty =
+            difference_model.get_representative_mismatch_penalty();
 
-        assert_eq!(&*d_backward.d_array, &[0.0, 0.0, -1.0, -1.0]);
-        assert_eq!(&*d_forward.d_array, &[-1.0, -1.0, -1.0, 0.0]);
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.02,
+            difference_model,
+            penalty_gap_open: 0.00001_f32.log2(),
+            penalty_gap_extend: representative_mismatch_penalty,
+            chunk_size: 1,
+        };
 
-        let pattern = "GATC".as_bytes().to_owned();
+        let pattern = b"CCCCCCC";
+        let base_qualities = [1, 100, 100, 100, 100, 1, 100];
 
-        let d_backward = DArray::new(
-            &pattern,
+        let center_of_read = pattern.len() / 2;
+
+        let bi_d_array = BiDArray::new(
+            pattern,
             &base_qualities,
-            pattern.len(),
-            pattern.len(),
-            Direction::Forward,
-            &parameters,
-            &fmd_index,
-        );
-        let d_forward = DArray::new(
-            &pattern,
-            &base_qualities,
-            pattern.len(),
-            pattern.len(),
-            Direction::Backward,
+            center_of_read,
             &parameters,
             &fmd_index,
         );
 
-        assert_eq!(&*d_backward.d_array, &[0.0, -1.0, -1.0, -2.0]);
-        assert_eq!(&*d_forward.d_array, &[-2.0, -1.0, -1.0, 0.0]);
+        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -2.0, -2.0]);
+        assert_eq!(&*bi_d_array.d_forwards, &[0.0, -2.0, -2.0, -4.0]);
+
+        assert_eq!(
+            bi_d_array.get(1, 4),
+            bi_d_array.d_backwards[1] + bi_d_array.d_forwards[2]
+        );
+        assert_eq!(
+            bi_d_array.get(2, 3),
+            bi_d_array.d_backwards[2] + bi_d_array.d_forwards[3]
+        );
+        assert_eq!(
+            bi_d_array.get(0, 6),
+            bi_d_array.d_backwards[0] + bi_d_array.d_forwards[0]
+        );
     }
 
     #[test]
