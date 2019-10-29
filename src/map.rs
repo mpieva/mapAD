@@ -717,10 +717,10 @@ fn estimate_mapping_quality(
         let ratio_best = 2_f32.powf(best_alignment.alignment_score - optimal_score);
         if best_alignment.interval.size > 1 {
             // Multi-mapping
-            ratio_best / best_alignment.interval.size as f32
+            1.0 / best_alignment.interval.size as f32
         } else if other_alignments.is_empty() {
             // Unique mapping
-            ratio_best
+            1.0
         } else {
             // Pseudo-unique mapping
             let weighted_suboptimal_alignments =
@@ -730,7 +730,7 @@ fn estimate_mapping_quality(
                         acc + 2_f32.powf(suboptimal_alignment.alignment_score - optimal_score)
                             * suboptimal_alignment.interval.size as f32
                     });
-            ratio_best.powi(2) / (ratio_best + weighted_suboptimal_alignments)
+            ratio_best / (ratio_best + weighted_suboptimal_alignments)
         }
     }
     // Guard against rounding errors
