@@ -4,6 +4,7 @@ use mio::{
     net::{TcpListener, TcpStream},
     *,
 };
+use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{de::DeserializeOwned, Serialize};
@@ -286,6 +287,7 @@ where
         let bam_records = hits
             .par_iter_mut()
             .map(|(record, hit_interval)| {
+                let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
                 map::intervals_to_bam(
                     record,
                     hit_interval,
@@ -296,6 +298,7 @@ where
                         &self.alignment_parameters.difference_model,
                     ),
                     None,
+                    &mut rng,
                 )
             })
             .flatten()
