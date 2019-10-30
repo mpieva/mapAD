@@ -40,8 +40,6 @@ where
             // Receive task
             match self.read_message() {
                 Ok(mut task) => {
-                    dbg!(&task);
-
                     // Load FMD index if necessary
                     if self.fmd_data.is_none() {
                         if let Some(reference_path) = task.reference_path {
