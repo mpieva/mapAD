@@ -60,11 +60,10 @@ where
                         if let Some(alignment_parameters) = &self.alignment_parameters {
                             debug!("Reconstruct FMD-index");
                             let fmd_index = data_fmd_index.reconstruct();
-
                             let allowed_mismatches = AllowedMismatches::new(alignment_parameters);
 
                             debug!("Map reads");
-                            let out_buffer = std::mem::replace(&mut task.records, Vec::new())
+                            let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
                                 .map(|record: Record| {
                                     let hit_intervals = map::k_mismatch_search(
@@ -82,11 +81,9 @@ where
                                 })
                                 .collect::<Vec<_>>();
 
-                            let mut results = ResultSheet::new(task.chunk_id, out_buffer);
-
                             // Return results
-                            let message = results.encode();
-                            self.connection.write_all(&message)?;
+                            self.connection
+                                .write_all(&ResultSheet::new(task.chunk_id, results).encode())?;
                         }
                     }
                 }
