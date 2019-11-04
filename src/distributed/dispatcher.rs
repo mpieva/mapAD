@@ -188,7 +188,6 @@ where
                     _ => {
                         // Receive results from workers
                         if event.readiness().is_readable() {
-                            debug!("Worker sends data: {:?}", event);
                             // After finishing previous tasks, the worker is ready to receive fresh jobs
                             match self.read_rx_buffer(event.token()) {
                                 TransportState::Finished => {
@@ -198,6 +197,10 @@ where
                                         .unwrap()
                                         .decode_and_reset()
                                     {
+                                        debug!(
+                                            "Worker has sent data: {:?}, writing it down.",
+                                            event
+                                        );
                                         self.write_results(
                                             results.results,
                                             &suffix_array,
