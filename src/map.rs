@@ -974,6 +974,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> BinaryHeap<HitInterval> {
+    const STACK_LIMIT: usize = 1_500_000;
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
         pattern,
@@ -983,8 +984,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         fmd_index,
     );
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
-    let mut stack = BinaryHeap::new();
-    let mut edit_tree: Tree<Option<EditOperation>> = Tree::new(None);
+    let mut stack = BinaryHeap::with_capacity(STACK_LIMIT + 6);
+    let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 6);
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read as i16,
@@ -1202,6 +1203,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
         // Only search until we've found a multi-hit
         if hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 1 {
+            return hit_intervals;
+        }
+
+        // Limit stack size // FIXME
+        if stack.len() >= STACK_LIMIT {
             return hit_intervals;
         }
     }
