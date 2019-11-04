@@ -580,6 +580,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
 
     let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
     let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+    let _ = out_file.set_threads(4);
 
     debug!("Map reads");
     ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
