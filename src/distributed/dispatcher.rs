@@ -131,11 +131,13 @@ where
         };
 
         let mut bam_reader = bam::Reader::from_path(self.reads_path)?;
+        let _ = bam_reader.set_threads(4);
         let header = map::create_bam_header(&bam_reader, &identifier_position_map);
         let mut task_queue =
             TaskQueue::from_reader(&mut bam_reader, self.alignment_parameters.chunk_size)
                 .peekable();
         let mut out_file = bam::Writer::from_path(&self.out_file_path, &header, bam::Format::BAM)?;
+        let _ = out_file.set_threads(4);
 
         debug!("Load suffix array");
         let suffix_array: Vec<usize> = {
