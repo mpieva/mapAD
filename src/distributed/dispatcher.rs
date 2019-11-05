@@ -198,7 +198,7 @@ where
                                     if let Ok(results) = self
                                         .result_buffers
                                         .get_mut(&event.token())
-                                        .unwrap()
+                                        .expect("This is not expected to fail")
                                         .decode_and_reset()
                                     {
                                         debug!(
@@ -216,7 +216,9 @@ where
                                     }
 
                                     poll.reregister(
-                                        self.connections.get(&event.token()).unwrap(),
+                                        self.connections
+                                            .get(&event.token())
+                                            .expect("This is not expected to fail"),
                                         event.token(),
                                         Ready::all(),
                                         PollOpt::edge(),
@@ -224,7 +226,9 @@ where
                                 }
                                 TransportState::Stalled => {
                                     poll.reregister(
-                                        self.connections.get(&event.token()).unwrap(),
+                                        self.connections
+                                            .get(&event.token())
+                                            .expect("This is not expected to fail"),
                                         event.token(),
                                         Ready::readable(),
                                         PollOpt::edge(),
@@ -245,7 +249,9 @@ where
                             match self.write_tx_buffer(event.token(), &mut task_queue) {
                                 TransportState::Finished => {
                                     poll.reregister(
-                                        self.connections.get(&event.token()).unwrap(),
+                                        self.connections
+                                            .get(&event.token())
+                                            .expect("This is not expected to fail"),
                                         event.token(),
                                         Ready::readable(),
                                         PollOpt::edge(),
@@ -253,7 +259,9 @@ where
                                 }
                                 TransportState::Stalled => {
                                     poll.reregister(
-                                        self.connections.get(&event.token()).unwrap(),
+                                        self.connections
+                                            .get(&event.token())
+                                            .expect("This is not expected to fail"),
                                         event.token(),
                                         Ready::all(),
                                         PollOpt::edge(),
@@ -344,7 +352,10 @@ where
     }
 
     fn read_rx_buffer(&mut self, worker: Token) -> TransportState<std::io::Error> {
-        let connection = self.connections.get_mut(&worker).unwrap();
+        let connection = self
+            .connections
+            .get_mut(&worker)
+            .expect("This is not expected to fail");
         let result_buffer = self
             .result_buffers
             .entry(worker)
@@ -396,7 +407,10 @@ where
         worker: Token,
         task_queue: &mut Peekable<TaskQueue<T>>,
     ) -> TransportState<std::io::Error> {
-        let connection = self.connections.get_mut(&worker).unwrap();
+        let connection = self
+            .connections
+            .get_mut(&worker)
+            .expect("This is not expected to fail");
         let send_buffer = self
             .send_buffers
             .entry(worker)

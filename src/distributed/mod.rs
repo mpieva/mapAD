@@ -47,9 +47,9 @@ where
     }
 
     fn encode(&mut self) -> Vec<u8> {
-        let encoded_size = bincode::serialized_size(self).unwrap();
+        let encoded_size = bincode::serialized_size(self).expect("This is not expected to fail");
         self.encoded_size = encoded_size;
-        bincode::serialize(self).unwrap()
+        bincode::serialize(self).expect("This is not expected to fail")
     }
 }
 
@@ -73,9 +73,9 @@ impl ResultSheet {
     }
 
     fn encode(&mut self) -> Vec<u8> {
-        let encoded_size = bincode::serialized_size(self).unwrap();
+        let encoded_size = bincode::serialized_size(self).expect("This is not expected to fail");
         self.encoded_size = encoded_size;
-        bincode::serialize(self).unwrap()
+        bincode::serialize(self).expect("This is not expected to fail")
     }
 }
 
