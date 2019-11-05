@@ -123,6 +123,22 @@ where
     }
 
     pub fn run(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
+        // Set up networking
+        let mut max_token = Self::DISPATCHER_TOKEN.0;
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+        let listener = TcpListener::bind(&addr)?;
+
+        // Create a poll instance
+        let poll = Poll::new()?;
+
+        // Start listening for incoming connection attempts and store connections
+        poll.register(
+            &listener,
+            Self::DISPATCHER_TOKEN,
+            Ready::readable(),
+            PollOpt::edge(),
+        )?;
+
         // Load data
         debug!("Load position map");
         let identifier_position_map: map::FastaIdPositions = {
@@ -145,22 +161,6 @@ where
                 snap::Reader::new(File::open(format!("{}.tsa", &self.reference_path))?);
             bincode::deserialize_from(d_suffix_array)?
         };
-
-        // Set up networking
-        let mut max_token = Self::DISPATCHER_TOKEN.0;
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let listener = TcpListener::bind(&addr)?;
-
-        // Create a poll instance
-        let poll = Poll::new()?;
-
-        // Start listening for incoming connection attempts and store connections
-        poll.register(
-            &listener,
-            Self::DISPATCHER_TOKEN,
-            Ready::readable(),
-            PollOpt::edge(),
-        )?;
 
         // Create storage for events
         let mut events = Events::with_capacity(1024);
