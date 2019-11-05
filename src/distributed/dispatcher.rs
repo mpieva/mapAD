@@ -186,12 +186,6 @@ where
                                 self.connections.insert(remote_token, remote_stream);
                             }
                             Err(ref e) if e.kind() == WouldBlock => {
-                                poll.reregister(
-                                    &listener,
-                                    Self::DISPATCHER_TOKEN,
-                                    Ready::readable(),
-                                    PollOpt::edge(),
-                                )?;
                                 break;
                             }
                             Err(e) => {
