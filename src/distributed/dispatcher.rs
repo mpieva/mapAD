@@ -171,28 +171,20 @@ where
             for event in events.iter() {
                 match event.token() {
                     // Workers, please register here
-                    Self::DISPATCHER_TOKEN => loop {
-                        match listener.accept() {
-                            Ok((remote_stream, remote_addr)) => {
-                                debug!("Connection established ({:?})", remote_addr);
-                                max_token += 1;
-                                let remote_token = Token(max_token);
-                                poll.register(
-                                    &remote_stream,
-                                    remote_token,
-                                    Ready::all(),
-                                    PollOpt::edge(),
-                                )?;
-                                self.connections.insert(remote_token, remote_stream);
-                            }
-                            Err(ref e) if e.kind() == WouldBlock => {
-                                break;
-                            }
-                            Err(e) => {
-                                return Err(e.into());
-                            }
-                        };
-                    },
+                    Self::DISPATCHER_TOKEN => {
+                        while let Ok((remote_stream, remote_addr)) = listener.accept() {
+                            debug!("Connection established ({:?})", remote_addr);
+                            max_token += 1;
+                            let remote_token = Token(max_token);
+                            poll.register(
+                                &remote_stream,
+                                remote_token,
+                                Ready::all(),
+                                PollOpt::edge(),
+                            )?;
+                            self.connections.insert(remote_token, remote_stream);
+                        }
+                    }
 
                     //
                     // Communication with existing workers
