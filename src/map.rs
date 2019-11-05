@@ -975,7 +975,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
 ) -> BinaryHeap<HitInterval> {
-    const STACK_LIMIT: usize = 1_500_000;
+    const STACK_LIMIT: usize = 1_000_000;
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
         pattern,
