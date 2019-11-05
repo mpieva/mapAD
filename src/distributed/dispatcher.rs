@@ -149,14 +149,14 @@ where
         // Set up networking
         let mut max_token = Self::DISPATCHER_TOKEN.0;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let dispatcher = TcpListener::bind(&addr)?;
+        let listener = TcpListener::bind(&addr)?;
 
         // Create a poll instance
         let poll = Poll::new()?;
 
         // Start listening for incoming connection attempts and store connections
         poll.register(
-            &dispatcher,
+            &listener,
             Self::DISPATCHER_TOKEN,
             Ready::readable(),
             PollOpt::edge(),
@@ -171,16 +171,34 @@ where
             for event in events.iter() {
                 match event.token() {
                     // Workers, please register here
-                    Self::DISPATCHER_TOKEN => {
-                        let (remote_stream, _) = dispatcher.accept()?;
-                        debug!("Connection established ({:?})", remote_stream.peer_addr());
-
-                        max_token += 1;
-                        let remote_token = Token(max_token);
-
-                        poll.register(&remote_stream, remote_token, Ready::all(), PollOpt::edge())?;
-                        self.connections.insert(remote_token, remote_stream);
-                    }
+                    Self::DISPATCHER_TOKEN => loop {
+                        match listener.accept() {
+                            Ok((remote_stream, remote_addr)) => {
+                                debug!("Connection established ({:?})", remote_addr);
+                                max_token += 1;
+                                let remote_token = Token(max_token);
+                                poll.register(
+                                    &remote_stream,
+                                    remote_token,
+                                    Ready::all(),
+                                    PollOpt::edge(),
+                                )?;
+                                self.connections.insert(remote_token, remote_stream);
+                            }
+                            Err(ref e) if e.kind() == WouldBlock => {
+                                poll.reregister(
+                                    &listener,
+                                    Self::DISPATCHER_TOKEN,
+                                    Ready::readable(),
+                                    PollOpt::edge(),
+                                )?;
+                                break;
+                            }
+                            Err(e) => {
+                                return Err(e.into());
+                            }
+                        };
+                    },
 
                     //
                     // Communication with existing workers
