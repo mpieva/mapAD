@@ -170,7 +170,7 @@ where
             poll.poll(&mut events, None)?;
             for event in events.iter() {
                 match event.token() {
-                    // Workers, please register here
+                    // Workers of the world, register!
                     Self::DISPATCHER_TOKEN => {
                         while let Ok((remote_stream, remote_addr)) = listener.accept() {
                             debug!("Connection established ({:?})", remote_addr);
@@ -239,6 +239,8 @@ where
                                     self.release_worker(event.token());
                                 }
                                 TransportState::Complete => {
+                                    // TransportState::Complete means the input file has been processed completely
+                                    // which workers don't know. That's why this match arm here is
                                     unreachable!();
                                 }
                             }
