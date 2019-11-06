@@ -21,6 +21,7 @@ snap = "0.2.5"
 either = "1.5.3"
 rayon = "1.2.0"
 ego-tree = "0.6.2"
+mio = "0.6.19"
 
 [dev-dependencies]
 criterion = "0.3.0"
