@@ -141,5 +141,5 @@ consumption.
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
 - [ ] Derive sampled Suffix Arrays from BWT
 - [x] Multithreading
-- [ ] Cluster-enabled version
+- [x] Cluster-enabled version
 - [ ] _Paired-end sequencing_
