@@ -64,8 +64,9 @@ The subprograms `mapad index` and `mapad map` will index the reference and map r
 Adding ` --help` will print a list of available and required command line options. 
 
 ### Example
-The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference. 
-```
+The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference.
+#### Local 
+```bash
 mapad -vvv map \
 --library single_stranded \
 -p 0.02 \
@@ -78,6 +79,25 @@ mapad -vvv map \
 --reads "${input_bam}" \
 --reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
 --output "${output_bam}"
+```
+
+#### Distributed
+The following example starts a dispatcher node and then spawns multi-threaded workers on cluster nodes that have more than 64GB of free RAM. 
+Start the dispatcher:
+```bash
+mapad -vv map \
+--dispatcher \
+# ... (see local example)
+```
+Spawn workers:
+```bash
+qsub -N "mapAD_worker" -pe "smp" 1-128 -t 1-65535 -l "h_vmem=64G,s_vmem=64G,virtual_free=64G,mem_free=64G,class=*" -j "y" -R "y" "mapad_worker.sh"
+```
+
+`mapad_worker.sh`:
+```bash
+#!/bin/bash
+mapad -vvv worker --host <HOST>
 ```
 
 ## Performance/ Hardware Requirements
