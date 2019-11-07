@@ -59,7 +59,7 @@ pub struct AlignmentParameters<T> {
 
 pub struct AllowedMismatches<'a, T> {
     alignment_parameters: &'a AlignmentParameters<T>,
-    cache: SmallVec<[f32; 128]>,
+    cache: [f32; 128],
 }
 
 impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
@@ -72,7 +72,9 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
                     alignment_parameters.base_error_rate,
                 )
             })
-            .collect();
+            .collect::<SmallVec<[f32; 128]>>()
+            .into_inner()
+            .expect("This is not expected to fail");
 
         AllowedMismatches {
             alignment_parameters,
