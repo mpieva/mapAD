@@ -139,13 +139,13 @@ where
             PollOpt::edge(),
         )?;
 
-        // Load data
         debug!("Load position map");
         let identifier_position_map: map::FastaIdPositions = {
             let d_pi = snap::Reader::new(File::open(format!("{}.tpi", &self.reference_path))?);
             bincode::deserialize_from(d_pi)?
         };
 
+        // Set up input and output files
         let mut bam_reader = bam::Reader::from_path(self.reads_path)?;
         let _ = bam_reader.set_threads(4);
         let header = map::create_bam_header(&bam_reader, &identifier_position_map);
