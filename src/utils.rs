@@ -9,7 +9,6 @@ use bio::{
 use log::debug;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 use std::fs::File;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,17 +63,17 @@ pub struct AllowedMismatches<'a, T> {
 
 impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
     pub fn new(alignment_parameters: &AlignmentParameters<T>) -> AllowedMismatches<T> {
-        let cache = (0..128)
-            .map(|read_length| {
-                AllowedMismatches::<T>::calculate_max_num_mismatches(
+        let mut cache = [0.0; 128];
+        cache
+            .iter_mut()
+            .enumerate()
+            .for_each(|(read_length, value)| {
+                *value = AllowedMismatches::<T>::calculate_max_num_mismatches(
                     read_length,
                     alignment_parameters.poisson_threshold,
                     alignment_parameters.base_error_rate,
-                )
-            })
-            .collect::<SmallVec<[f32; 128]>>()
-            .into_inner()
-            .expect("This is not expected to fail");
+                );
+            });
 
         AllowedMismatches {
             alignment_parameters,
