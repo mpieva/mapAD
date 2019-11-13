@@ -9,7 +9,7 @@ use bio::{
 use log::debug;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
-use std::fs::File;
+use std::{fs::File, iter::once};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Record {
@@ -100,23 +100,20 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
         let lambda = read_length as f64 * base_error_rate;
         let exp_minus_lambda = (-lambda).exp();
 
-        let mut lambda_to_the_power_of_k = 1.0;
-        let mut k_factorial = 1;
-        let mut sum = exp_minus_lambda;
-
-        // k = 0. BWA allows k+1 mismatches, and so do we
-        [(0 + 1, sum)]
-            .iter()
-            .cloned()
+        // k = 0 (here 1, because BWA allows k+1 mismatches, and so do we)
+        once((1, exp_minus_lambda))
             // k = 1..read_length
-            .chain((1..=read_length as u64).map(|k| {
-                lambda_to_the_power_of_k *= lambda;
-                k_factorial *= k;
-                sum += lambda_to_the_power_of_k * exp_minus_lambda / k_factorial as f64;
-                // BWA allows k+1 mismatches, and so do we
-                (k + 1, sum)
-            }))
-            .take_while(|(_k, sum)| 1.0 - sum > poisson_threshold)
+            .chain((1..=read_length as u64).scan(
+                (1.0, 1, exp_minus_lambda),
+                |(lambda_to_the_k, k_factorial, sum), k| {
+                    *lambda_to_the_k *= lambda;
+                    *k_factorial *= k;
+                    *sum += *lambda_to_the_k * exp_minus_lambda / *k_factorial as f64;
+                    // BWA allows k+1 mismatches, and so do we
+                    Some((k + 1, *sum))
+                },
+            ))
+            .take_while(|(_k, sum)| 1.0 - *sum > poisson_threshold)
             .map(|(k, _sum)| k)
             .last()
             .unwrap_or(0) as f32
