@@ -48,8 +48,8 @@ impl From<bam::Record> for Record {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AlignmentParameters<T> {
-    pub base_error_rate: f64,
-    pub poisson_threshold: f64,
+    pub base_error_rate: f32,
+    pub poisson_threshold: f32,
     pub difference_model: T,
     pub penalty_gap_open: f32,
     pub penalty_gap_extend: f32,
@@ -94,10 +94,10 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
 
     fn calculate_max_num_mismatches(
         read_length: usize,
-        poisson_threshold: f64,
-        base_error_rate: f64,
+        poisson_threshold: f32,
+        base_error_rate: f32,
     ) -> f32 {
-        let lambda = read_length as f64 * base_error_rate;
+        let lambda = read_length as f32 * base_error_rate;
         let exp_minus_lambda = (-lambda).exp();
 
         // k = 0 (here 1, because BWA allows k+1 mismatches, and so do we)
@@ -108,14 +108,14 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
                 |(lambda_to_the_k, k_factorial, sum), k| {
                     *lambda_to_the_k *= lambda;
                     *k_factorial *= k;
-                    *sum += *lambda_to_the_k * exp_minus_lambda / *k_factorial as f64;
+                    *sum += *lambda_to_the_k * exp_minus_lambda / *k_factorial as f32;
                     // BWA allows k+1 mismatches, and so do we
                     Some((k + 1, *sum))
                 },
             ))
             .take_while(|(_k, sum)| 1.0 - *sum > poisson_threshold)
-            .map(|(k, _sum)| k)
             .last()
+            .map(|(k, _sum)| k)
             .unwrap_or(0) as f32
     }
 }

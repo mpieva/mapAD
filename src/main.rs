@@ -258,8 +258,8 @@ fn main() {
                     / 3.0,
             };
             let alignment_parameters = utils::AlignmentParameters {
-                base_error_rate: 0.02,
-                poisson_threshold: value_t!(map_matches.value_of("poisson_prob"), f64)
+                base_error_rate: 0.02, // TODO
+                poisson_threshold: value_t!(map_matches.value_of("poisson_prob"), f32)
                     .unwrap_or_else(|e| e.exit()),
                 penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
                     .unwrap_or_else(|e| e.exit())
