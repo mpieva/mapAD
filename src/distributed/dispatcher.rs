@@ -4,7 +4,7 @@ use mio::{
     net::{TcpListener, TcpStream},
     *,
 };
-use rand::{rngs::StdRng, SeedableRng};
+use rand;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{de::DeserializeOwned, Serialize};
@@ -305,8 +305,7 @@ where
     ) -> Result<(), bam::Error> {
         let bam_records = hits
             .par_iter_mut()
-            .map(|(record, hit_interval)| {
-                let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
+            .map_init(rand::thread_rng, |mut rng, (record, hit_interval)| {
                 map::intervals_to_bam(
                     record,
                     hit_interval,

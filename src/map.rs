@@ -10,7 +10,7 @@ use clap::{crate_name, crate_version};
 use ego_tree::{NodeId, Tree};
 use either::Either;
 use log::{debug, trace};
-use rand::{rngs::StdRng, seq::IteratorRandom, RngCore, SeedableRng};
+use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::SmallVec;
 use std::time::{Duration, Instant};
@@ -621,14 +621,10 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
 
                     (record, hit_intervals, duration)
                 })
-                .map(|(record, mut hit_interval, duration)| {
-                    let mut rng: StdRng = SeedableRng::seed_from_u64(1234);
-                    intervals_to_bam(
-                        record,
-                        &mut hit_interval,
-                        suffix_array,
-                        identifier_position_map,
-                        compute_maximal_possible_score(
+                .map_init(
+                    rand::thread_rng,
+                    |mut rng, (record, mut hit_interval, duration)| {
+                        intervals_to_bam(
                             record,
                             &alignment_parameters.difference_model,
                         ),
@@ -662,7 +658,7 @@ pub fn intervals_to_bam<R>(
     rng: &mut R,
 ) -> Vec<bam::Record>
 where
-    R: SeedableRng + RngCore,
+    R: RngCore,
 {
     let record = if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals, optimal_score);
