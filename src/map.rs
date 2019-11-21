@@ -13,7 +13,10 @@ use log::{debug, trace};
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use std::time::{Duration, Instant};
+use std::{
+    cell::RefCell,
+    time::{Duration, Instant},
+};
 
 use bio::{
     alphabets::dna,
@@ -34,6 +37,7 @@ use crate::{
 };
 
 pub const CRATE_NAME: &str = "mapAD";
+pub const STACK_LIMIT: usize = 1_000_000;
 
 /// Derive serde Traits for remote Struct
 #[derive(Serialize, Deserialize)]
@@ -285,7 +289,7 @@ enum GapState {
 /// priority: alignment_score + expected minimal amount of penalties.
 /// This is used as key for the priority stack.
 #[derive(Debug)]
-struct MismatchSearchStackFrame {
+pub struct MismatchSearchStackFrame {
     j: i16,
     current_interval: BiInterval,
     backward_index: i16,
@@ -603,35 +607,47 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
         .map(|chunk| {
             trace!("Map chunk of reads in parallel");
+            thread_local! {
+                static STACK_BUF: RefCell<BinaryHeap<MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(STACK_LIMIT + 6))
+            }
             let results = chunk
                 .par_iter()
                 .map(|record| {
-                    let start = Instant::now();
-                    let hit_intervals = k_mismatch_search(
-                        &record.sequence,
-                        &record.base_qualities,
-                        allowed_mismatches.get(record.sequence.len())
-                            * alignment_parameters
-                                .difference_model
-                                .get_representative_mismatch_penalty(),
-                        alignment_parameters,
-                        fmd_index,
-                    );
-                    let duration = start.elapsed();
+                    STACK_BUF.with(|stack_buf| {
+                        let start = Instant::now();
+                        let hit_intervals = k_mismatch_search(
+                            &record.sequence,
+                            &record.base_qualities,
+                            allowed_mismatches.get(record.sequence.len())
+                                * alignment_parameters
+                                    .difference_model
+                                    .get_representative_mismatch_penalty(),
+                            alignment_parameters,
+                            fmd_index,
+                            &mut stack_buf.borrow_mut(),
+                        );
+                        let duration = start.elapsed();
 
-                    (record, hit_intervals, duration)
+                        (record, hit_intervals, duration)
+                    })
                 })
                 .map_init(
                     rand::thread_rng,
                     |mut rng, (record, mut hit_interval, duration)| {
                         intervals_to_bam(
                             record,
-                            &alignment_parameters.difference_model,
-                        ),
-                        Some(&duration),
-                        &mut rng,
-                    )
-                })
+                            &mut hit_interval,
+                            suffix_array,
+                            identifier_position_map,
+                            compute_maximal_possible_score(
+                                record,
+                                &alignment_parameters.difference_model,
+                            ),
+                            Some(&duration),
+                            &mut rng,
+                        )
+                    },
+                )
                 .flatten()
                 .collect::<Vec<_>>();
 
@@ -989,8 +1005,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     max_allowed_penalties: f32,
     parameters: &AlignmentParameters<T>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    stack: &mut BinaryHeap<MismatchSearchStackFrame>,
 ) -> BinaryHeap<HitInterval> {
-    const STACK_LIMIT: usize = 1_000_000;
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
         pattern,
@@ -1000,8 +1016,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         fmd_index,
     );
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
-    let mut stack = BinaryHeap::with_capacity(STACK_LIMIT + 6);
     let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 6);
+
+    stack.clear();
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read as i16,
@@ -1089,7 +1106,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             pattern,
             EditOperation::Insertion(stack_frame.j as u16),
             &mut edit_tree,
-            &mut stack,
+            stack,
             &mut hit_intervals,
             &penalties,
         );
@@ -1166,7 +1183,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 pattern,
                 EditOperation::Deletion(stack_frame.j as u16, c),
                 &mut edit_tree,
-                &mut stack,
+                stack,
                 &mut hit_intervals,
                 &penalties,
             );
@@ -1211,7 +1228,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     EditOperation::Mismatch(stack_frame.j as u16, c)
                 },
                 &mut edit_tree,
-                &mut stack,
+                stack,
                 &mut hit_intervals,
                 &penalties,
             );
@@ -1332,7 +1349,15 @@ mod tests {
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -1.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_eq!(alignment_score, vec![-1.0]);
@@ -1390,7 +1415,15 @@ mod tests {
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, 1.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            1.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1506,7 +1539,15 @@ mod tests {
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, -2.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -2.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1542,8 +1583,15 @@ mod tests {
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let intervals =
-            k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -30.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(alignment_score[0], -5.3629);
@@ -1559,8 +1607,15 @@ mod tests {
         let pattern = "CCCCCC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals =
-            k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -30.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(alignment_score[0], -2.6080124);
@@ -1586,8 +1641,15 @@ mod tests {
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals =
-            k_mismatch_search(&pattern, &base_qualities, -30.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -30.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(alignment_score[0], -10.969394);
@@ -1667,6 +1729,7 @@ mod tests {
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
+        let mut stack_buf = BinaryHeap::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1676,6 +1739,7 @@ mod tests {
                     .get_representative_mismatch_penalty(),
             &parameters,
             &fmd_index,
+            &mut stack_buf,
         );
 
         let alignment_scores = intervals
@@ -1743,8 +1807,15 @@ mod tests {
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
             .edit_operations
@@ -1771,8 +1842,15 @@ mod tests {
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1801,8 +1879,15 @@ mod tests {
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
             .edit_operations
@@ -1830,8 +1915,15 @@ mod tests {
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
             .edit_operations
@@ -1859,8 +1951,15 @@ mod tests {
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -4.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -4.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
             .edit_operations
@@ -1922,8 +2021,15 @@ mod tests {
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -1.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
             .edit_operations
@@ -1943,8 +2049,15 @@ mod tests {
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
             .edit_operations
@@ -1964,8 +2077,15 @@ mod tests {
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -1986,8 +2106,15 @@ mod tests {
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
             .edit_operations
@@ -2007,8 +2134,15 @@ mod tests {
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, -3.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -3.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
             .edit_operations
@@ -2061,8 +2195,15 @@ mod tests {
         let pattern = "TTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut intervals =
-            k_mismatch_search(&pattern, &base_qualities, 0.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let mut intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            0.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let positions = if let Some(best_alignment) = intervals.pop() {
             best_alignment
@@ -2135,7 +2276,15 @@ mod tests {
         let pattern = "TAGT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let intervals = k_mismatch_search(&pattern, &base_qualities, -1.0, &parameters, &fmd_index);
+        let mut stack_buf = BinaryHeap::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            -1.0,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+        );
 
         let best_alignment = intervals.peek().unwrap();
 

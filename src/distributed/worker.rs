@@ -8,6 +8,8 @@ use log::debug;
 use rayon::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
+    cell::RefCell,
+    collections::BinaryHeap,
     error::Error,
     fmt::Debug,
     io,
@@ -63,21 +65,27 @@ where
                             let allowed_mismatches = AllowedMismatches::new(alignment_parameters);
 
                             debug!("Map reads");
+                            thread_local! {
+                                static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 6))
+                            }
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
                                 .map(|record: Record| {
-                                    let hit_intervals = map::k_mismatch_search(
-                                        &record.sequence,
-                                        &record.base_qualities,
-                                        allowed_mismatches.get(record.sequence.len())
-                                            * alignment_parameters
-                                                .difference_model
-                                                .get_representative_mismatch_penalty(),
-                                        alignment_parameters,
-                                        &fmd_index,
-                                    );
+                                    STACK_BUF.with(|stack_buf| {
+                                        let hit_intervals = map::k_mismatch_search(
+                                            &record.sequence,
+                                            &record.base_qualities,
+                                            allowed_mismatches.get(record.sequence.len())
+                                                * alignment_parameters
+                                                    .difference_model
+                                                    .get_representative_mismatch_penalty(),
+                                            alignment_parameters,
+                                            &fmd_index,
+                                            &mut stack_buf.borrow_mut(),
+                                        );
 
-                                    (record, hit_intervals)
+                                        (record, hit_intervals)
+                                    })
                                 })
                                 .collect::<Vec<_>>();
 
