@@ -16,12 +16,12 @@ bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biint
 assert_approx_eq = "1.1.0"
 smallvec = "1.0.0"
 rand = "0.7.2"
-serde = { version = "1.0.102", features = ["derive"] }
+serde = { version = "1.0.103", features = ["derive"] }
 snap = "0.2.5"
 either = "1.5.3"
-rayon = "1.2.0"
+rayon = "1.2.1"
 ego-tree = "0.6.2"
-mio = "0.6.19"
+mio = "0.6.20"
 
 [dev-dependencies]
 criterion = "0.3.0"
