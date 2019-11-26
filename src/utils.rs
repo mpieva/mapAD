@@ -9,7 +9,11 @@ use bio::{
 use log::debug;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, iter::once};
+use std::{
+    fmt::{Display, Error, Formatter},
+    fs::File,
+    iter::once,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Record {
@@ -61,19 +65,53 @@ pub struct AllowedMismatches<'a, T> {
     cache: [f32; 128],
 }
 
+impl<'a, T: SequenceDifferenceModel + Sync> Display for AllowedMismatches<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        let max_length = 256;
+        let width = (max_length as f32).log10().ceil() as usize;
+
+        let text = (AllowedMismatches::<T>::MIN_READ_LENGTH..=max_length)
+            .map(|read_length| (read_length, self.get(read_length)))
+            .scan(
+                std::f32::MIN,
+                |previous, (read_length, allowed_mismatches)| {
+                    if (allowed_mismatches - *previous).abs() > std::f32::EPSILON {
+                        *previous = allowed_mismatches;
+                        Some(Some((read_length, allowed_mismatches)))
+                    } else {
+                        Some(None)
+                    }
+                },
+            )
+            .flatten()
+            .map(|(read_length, allowed_mismatches)| {
+                format!(
+                    "{:>width$} bp:\t{} mismatches\n",
+                    read_length,
+                    allowed_mismatches,
+                    width = width,
+                )
+            })
+            .collect::<String>();
+
+        write!(f, "{}", text)
+    }
+}
+
 impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
+    // 16 is the theoretical minimum for mapping uniquely to a random genome of human-genome-like size
+    const MIN_READ_LENGTH: usize = 17;
+
     pub fn new(alignment_parameters: &AlignmentParameters<T>) -> AllowedMismatches<T> {
         let mut cache = [0.0; 128];
-        cache
-            .iter_mut()
-            .enumerate()
-            .for_each(|(read_length, value)| {
-                *value = AllowedMismatches::<T>::calculate_max_num_mismatches(
-                    read_length,
-                    alignment_parameters.poisson_threshold,
-                    alignment_parameters.base_error_rate,
-                );
-            });
+        for (read_length, value) in cache.iter_mut().enumerate() {
+            *value = AllowedMismatches::<T>::calculate_max_num_mismatches(
+                // Read lengths are stored with an offset to cache the "hot" lengths
+                read_length + AllowedMismatches::<T>::MIN_READ_LENGTH,
+                alignment_parameters.poisson_threshold,
+                alignment_parameters.base_error_rate,
+            );
+        }
 
         AllowedMismatches {
             alignment_parameters,
@@ -82,7 +120,16 @@ impl<'a, T: SequenceDifferenceModel + Sync> AllowedMismatches<'a, T> {
     }
 
     pub fn get(&self, read_length: usize) -> f32 {
-        match self.cache.get(read_length) {
+        // Reads shorter than the threshold are not allowed to differ
+        if read_length < AllowedMismatches::<T>::MIN_READ_LENGTH {
+            return 0.0;
+        }
+
+        match self
+            .cache
+            // An offset must be subtracted to point to the correct cache entries
+            .get(read_length - AllowedMismatches::<T>::MIN_READ_LENGTH)
+        {
             None => AllowedMismatches::<T>::calculate_max_num_mismatches(
                 read_length,
                 self.alignment_parameters.poisson_threshold,
@@ -186,9 +233,10 @@ mod tests {
         assert_eq!(3.0, allowed_mismatches.get(63));
         assert_eq!(3.0, allowed_mismatches.get(38));
         assert_eq!(2.0, allowed_mismatches.get(37));
-        assert_eq!(2.0, allowed_mismatches.get(16));
-        assert_eq!(1.0, allowed_mismatches.get(15));
-        assert_eq!(1.0, allowed_mismatches.get(3));
+        assert_eq!(2.0, allowed_mismatches.get(17));
+        assert_eq!(0.0, allowed_mismatches.get(16));
+        assert_eq!(0.0, allowed_mismatches.get(15));
+        assert_eq!(0.0, allowed_mismatches.get(3));
         assert_eq!(0.0, allowed_mismatches.get(2));
         assert_eq!(0.0, allowed_mismatches.get(0));
     }
@@ -205,20 +253,6 @@ mod tests {
         };
         let allowed_mismatches = AllowedMismatches::new(&parameters);
 
-        //        let mut old_val = 0.0;
-        //        let mut count = 0;
-        //        for i in 0.. {
-        //            let max_diff = allowed_mismatches.get(i);
-        //            if max_diff != old_val {
-        //                count += 1;
-        //                old_val = max_diff;
-        //                println!("{}bp reads: max_diff = {}", i, max_diff);
-        //            }
-        //            if count >= 10 {
-        //                break;
-        //            }
-        //        }
-
         assert_eq!(10.0, allowed_mismatches.get(207));
         assert_eq!(9.0, allowed_mismatches.get(176));
         assert_eq!(8.0, allowed_mismatches.get(146));
@@ -227,7 +261,8 @@ mod tests {
         assert_eq!(5.0, allowed_mismatches.get(64));
         assert_eq!(4.0, allowed_mismatches.get(42));
         assert_eq!(3.0, allowed_mismatches.get(22));
-        assert_eq!(2.0, allowed_mismatches.get(8));
-        assert_eq!(1.0, allowed_mismatches.get(1));
+        assert_eq!(2.0, allowed_mismatches.get(17));
+        assert_eq!(0.0, allowed_mismatches.get(8));
+        assert_eq!(0.0, allowed_mismatches.get(1));
     }
 }
