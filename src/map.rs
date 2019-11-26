@@ -582,6 +582,12 @@ pub fn create_bam_header(
         header_record.push_tag(b"ID", &crate_name!());
         header_record.push_tag(b"PN", &CRATE_NAME);
         header_record.push_tag(b"VN", &crate_version!());
+        let cmdline = {
+            let mut tmp = std::env::args().fold(String::new(), |acc, part| acc + &part + " ");
+            let _ = tmp.pop();
+            tmp
+        };
+        header_record.push_tag(b"CL", &cmdline);
         header.push_record(&header_record);
     }
     header
