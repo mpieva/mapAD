@@ -70,29 +70,38 @@ impl<'a, T: SequenceDifferenceModel + Sync> Display for AllowedMismatches<'a, T>
         let max_length = 256;
         let width = (max_length as f32).log10().ceil() as usize;
 
-        let text = (AllowedMismatches::<T>::MIN_READ_LENGTH..=max_length)
-            .map(|read_length| (read_length, self.get(read_length)))
-            .scan(
-                std::f32::MIN,
-                |previous, (read_length, allowed_mismatches)| {
-                    if (allowed_mismatches - *previous).abs() > std::f32::EPSILON {
-                        *previous = allowed_mismatches;
-                        Some(Some((read_length, allowed_mismatches)))
-                    } else {
-                        Some(None)
-                    }
-                },
-            )
-            .flatten()
-            .map(|(read_length, allowed_mismatches)| {
-                format!(
-                    "{:>width$} bp:\t{} mismatches\n",
-                    read_length,
-                    allowed_mismatches,
-                    width = width,
+        let text = {
+            let mut tmp = (AllowedMismatches::<T>::MIN_READ_LENGTH..=max_length)
+                .map(|read_length| (read_length, self.get(read_length)))
+                .scan(
+                    std::f32::MIN,
+                    |previous, (read_length, allowed_mismatches)| {
+                        if (allowed_mismatches - *previous).abs() > std::f32::EPSILON {
+                            *previous = allowed_mismatches;
+                            Some(Some((read_length, allowed_mismatches)))
+                        } else {
+                            Some(None)
+                        }
+                    },
                 )
-            })
-            .collect::<String>();
+                .flatten()
+                .map(|(read_length, allowed_mismatches)| {
+                    format!(
+                        "{:>width$} bp:\t{} {}\n",
+                        read_length,
+                        allowed_mismatches,
+                        if allowed_mismatches > 1.0 + std::f32::EPSILON {
+                            "mismatches"
+                        } else {
+                            "mismatch"
+                        },
+                        width = width,
+                    )
+                })
+                .collect::<String>();
+            let _ = tmp.pop();
+            tmp
+        };
 
         write!(f, "{}", text)
     }
@@ -264,5 +273,30 @@ mod tests {
         assert_eq!(2.0, allowed_mismatches.get(17));
         assert_eq!(0.0, allowed_mismatches.get(8));
         assert_eq!(0.0, allowed_mismatches.get(1));
+    }
+
+    #[test]
+    fn test_display() {
+        let parameters = AlignmentParameters {
+            base_error_rate: 0.02,
+            poisson_threshold: 0.06,
+            difference_model: VindijaPWM::new(),
+            penalty_gap_open: 1.0,
+            penalty_gap_extend: 1.0,
+            chunk_size: 1,
+        };
+        let allowed_mismatches = AllowedMismatches::new(&parameters);
+
+        let comparison = " 17 bp:\t1 mismatch
+ 20 bp:\t2 mismatches
+ 45 bp:\t3 mismatches
+ 73 bp:\t4 mismatches
+104 bp:\t5 mismatches
+137 bp:\t6 mismatches
+172 bp:\t7 mismatches
+208 bp:\t8 mismatches
+244 bp:\t9 mismatches";
+
+        assert_eq!(comparison, format!("{}", allowed_mismatches));
     }
 }
