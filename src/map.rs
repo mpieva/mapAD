@@ -839,9 +839,12 @@ fn create_bam_record(
     bam_record.set_mtid(-1);
 
     // Add optional tags
-    if let Some(input_read_group) = &input_record.read_group {
-        bam_record.push_aux(b"RG", &bam::record::Aux::String(input_read_group));
+
+    // Add tags that were already present in the input
+    for (input_tag, value) in &input_record.bam_tags {
+        bam_record.push_aux(input_tag, &value.borrow_htslib_bam_record());
     }
+
     if let Some(hit_interval) = hit_interval {
         bam_record.push_aux(
             b"AS",

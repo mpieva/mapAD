@@ -15,12 +15,43 @@ use std::{
     iter::once,
 };
 
+/// Auxiliary record data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BamTag {
+    Integer(i64),
+    String(Vec<u8>),
+    Float(f64),
+    Char(u8),
+}
+
+impl From<bam::record::Aux<'_>> for BamTag {
+    fn from(input: bam::record::Aux) -> Self {
+        match input {
+            bam::record::Aux::Integer(v) => BamTag::Integer(v),
+            bam::record::Aux::String(v) => BamTag::String(v.to_owned()),
+            bam::record::Aux::Float(v) => BamTag::Float(v),
+            bam::record::Aux::Char(v) => BamTag::Char(v),
+        }
+    }
+}
+
+impl BamTag {
+    pub fn borrow_htslib_bam_record(&self) -> bam::record::Aux<'_> {
+        match self {
+            Self::Integer(v) => bam::record::Aux::Integer(*v),
+            Self::String(v) => bam::record::Aux::String(v),
+            Self::Float(v) => bam::record::Aux::Float(*v),
+            Self::Char(v) => bam::record::Aux::Char(*v),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Record {
     pub sequence: Vec<u8>,
     pub base_qualities: Vec<u8>,
     pub name: Vec<u8>,
-    pub read_group: Option<Vec<u8>>,
+    pub bam_tags: Vec<([u8; 2], BamTag)>,
 }
 
 impl From<bam::Record> for Record {
@@ -37,15 +68,18 @@ impl From<bam::Record> for Record {
                 (sequence, base_qualities)
             }
         };
+
+        let input_tags = input
+            .get_tags()
+            .iter()
+            .map(|&(tag, value)| ([tag[0], tag[1]], value.into()))
+            .collect();
+
         Self {
             sequence,
             base_qualities,
             name: input.qname().to_owned(),
-            read_group: if let Some(rg) = input.aux(b"RG") {
-                Some(rg.string().to_owned())
-            } else {
-                None
-            },
+            bam_tags: input_tags,
         }
     }
 }
