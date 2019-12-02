@@ -798,22 +798,31 @@ fn create_bam_record(
         (None, None, None)
     };
 
-    let revcomp = match strand {
-        Some(Direction::Backward) => dna::revcomp(&input_record.sequence),
-        Some(Direction::Forward) | None => Vec::new(),
-    };
-
     // Set mandatory properties of the BAM record
-    bam_record.set(
-        &input_record.name,
-        cigar.as_ref(),
-        if let Some(Direction::Backward) = strand {
-            &revcomp
-        } else {
-            &input_record.sequence
-        },
-        &input_record.base_qualities,
-    );
+    match strand {
+        Some(Direction::Forward) | None => {
+            bam_record.set(
+                &input_record.name,
+                cigar.as_ref(),
+                &input_record.sequence,
+                &input_record.base_qualities,
+            );
+        }
+        Some(Direction::Backward) => {
+            bam_record.set(
+                &input_record.name,
+                // CIGAR strings and MD tags are reversed during generation
+                cigar.as_ref(),
+                &dna::revcomp(&input_record.sequence),
+                &input_record
+                    .base_qualities
+                    .iter()
+                    .rev()
+                    .copied()
+                    .collect::<Vec<_>>(),
+            );
+        }
+    }
     bam_record.set_tid(tid);
     bam_record.set_pos(position);
     if let Some(mapq) = mapq {
@@ -852,6 +861,7 @@ fn create_bam_record(
     if let Some(edit_distance) = edit_distance {
         bam_record.push_aux(b"NM", &bam::record::Aux::Integer(i64::from(edit_distance)));
     };
+    // CIGAR strings and MD tags are reversed during generation
     if let Some(md_tag) = md_tag {
         bam_record.push_aux(b"MD", &bam::record::Aux::String(&md_tag));
     }
