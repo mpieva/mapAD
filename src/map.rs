@@ -798,22 +798,20 @@ fn create_bam_record(
         (None, None, None)
     };
 
-    let revcomp = if let Some(Direction::Forward) = strand {
-        Vec::new()
-    } else {
-        dna::revcomp(&input_record.sequence)
-    };
-    let sequence = if let Some(Direction::Forward) = strand {
-        &input_record.sequence
-    } else {
-        &revcomp
+    let revcomp = match strand {
+        Some(Direction::Backward) => dna::revcomp(&input_record.sequence),
+        Some(Direction::Forward) | None => Vec::new(),
     };
 
     // Set mandatory properties of the BAM record
     bam_record.set(
         &input_record.name,
         cigar.as_ref(),
-        sequence,
+        if let Some(Direction::Backward) = strand {
+            &revcomp
+        } else {
+            &input_record.sequence
+        },
         &input_record.base_qualities,
     );
     bam_record.set_tid(tid);
