@@ -90,8 +90,8 @@ fn index<T: Rng>(
                     let record = record.expect("Failed reading input file");
                     end += record.seq().len();
                     FastaIdPosition {
-                        start: end - record.seq().len() + 1,
-                        end,
+                        start: end - record.seq().len(),
+                        end: end - 1,
                         identifier: record.id().to_string(),
                     }
                 })

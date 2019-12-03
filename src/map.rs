@@ -127,6 +127,20 @@ enum EditOperation {
 pub struct EditOperationsTrack(Vec<EditOperation>);
 
 impl EditOperationsTrack {
+    pub fn effective_len(&self) -> usize {
+        self.0
+            .iter()
+            .fold(0, |acc, edit_operation| {
+                acc + match edit_operation {
+                    EditOperation::Insertion(_) => 1,
+                    EditOperation::Deletion(_, _) => -1,
+                    EditOperation::Match(_) => 1,
+                    EditOperation::Mismatch(_, _) => 1,
+                }
+            })
+            .min(0) as usize
+    }
+
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
     /// The strand a read is mapped to is taken into account here.
     fn to_bam_fields(&self, strand: Option<Direction>) -> (bam::record::CigarString, Vec<u8>, u16) {
@@ -354,11 +368,14 @@ impl FastaIdPositions {
 
     /// Find the corresponding reference identifier by position. The function
     /// returns a tuple: ("target ID", "relative position")
-    fn get_reference_identifier(&self, position: usize) -> (i32, i32) {
-        self.iter()
+    fn get_reference_identifier(&self, position: usize, pattern_length: usize) -> (i32, i32) {
+        self.id_position
+            .iter()
             .enumerate()
-            .find(|(_, identifier)| (identifier.start <= position) && (position <= identifier.end))
-            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32 + 1))
+            .find(|(_, identifier)| {
+                (identifier.start <= position) && (position + pattern_length - 1 <= identifier.end)
+            })
+            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32))
             .unwrap_or((-1, -1))
     }
 }
@@ -703,7 +720,10 @@ where
             )
             .choose(rng)
             .map(|(position, strand)| {
-                let (tid, position) = identifier_position_map.get_reference_identifier(position);
+                let (tid, position) = identifier_position_map.get_reference_identifier(
+                    position,
+                    best_alignment.edit_operations.effective_len(),
+                );
                 create_bam_record(
                     record,
                     position,
