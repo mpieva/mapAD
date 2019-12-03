@@ -55,9 +55,13 @@ fn index<T: Rng>(
     debug!("Read input reference sequence");
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
-        .filter_map(Result::ok)
         // Convert all bases to uppercase
-        .flat_map(|record| record.seq().to_ascii_uppercase())
+        .flat_map(|record| {
+            record
+                .expect("Failed reading input file")
+                .seq()
+                .to_ascii_uppercase()
+        })
         // Replace ambiguous bases with random ones
         .map(|c| match c {
             b'U' => b'T',
@@ -82,8 +86,8 @@ fn index<T: Rng>(
         let identifier_position_map = FastaIdPositions::new(
             fasta::Reader::from_file(reference_path)?
                 .records()
-                .filter_map(Result::ok)
                 .map(|record| {
+                    let record = record.expect("Failed reading input file");
                     end += record.seq().len();
                     FastaIdPosition {
                         start: end - record.seq().len() + 1,
