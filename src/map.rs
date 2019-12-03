@@ -122,12 +122,13 @@ enum EditOperation {
     Mismatch(u16, u8),
 }
 
-/// Contains edit operations in the
+/// Contains edit operations performed in order to align the sequence
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EditOperationsTrack(Vec<EditOperation>);
 
 impl EditOperationsTrack {
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
+    /// The strand a read is mapped to is taken into account here.
     fn to_bam_fields(&self, strand: Option<Direction>) -> (bam::record::CigarString, Vec<u8>, u16) {
         // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut num_matches: u32 = 0;
