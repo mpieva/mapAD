@@ -14,6 +14,7 @@ use mapad::{
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
     utils::{AlignmentParameters, AllowedMismatches},
 };
+use std::collections::BinaryHeap;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
@@ -62,6 +63,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
+        let mut stack = BinaryHeap::new();
         b.iter(|| {
             k_mismatch_search(
                 &pattern,
@@ -69,6 +71,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 -allowed_mismatches.get(pattern.len()),
                 &parameters,
                 &fmd_index,
+                &mut stack,
             )
         })
     });
@@ -134,6 +137,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
         ];
         let base_qualities = vec![40; patterns[0].len()];
 
+        let mut stack = BinaryHeap::new();
         for pattern in patterns.iter() {
             b.iter(|| {
                 k_mismatch_search(
@@ -142,6 +146,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
                     -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
+                    &mut stack,
                 )
             })
         }
@@ -208,6 +213,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         ];
         let base_qualities = vec![40; patterns[0].len()];
 
+        let mut stack = BinaryHeap::new();
         for pattern in patterns.iter() {
             b.iter(|| {
                 k_mismatch_search(
@@ -216,6 +222,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
                     -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
+                    &mut stack,
                 )
             })
         }
@@ -269,6 +276,7 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
 
         let base_qualities = vec![40; patterns[0].len()];
 
+        let mut stack = BinaryHeap::new();
         for pattern in patterns.iter() {
             b.iter(|| {
                 k_mismatch_search(
@@ -277,6 +285,7 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
                     -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
+                    &mut stack,
                 )
             })
         }
