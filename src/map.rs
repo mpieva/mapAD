@@ -37,7 +37,7 @@ use crate::{
 };
 
 pub const CRATE_NAME: &str = "mapAD";
-pub const STACK_LIMIT: usize = 1_000_000;
+pub const STACK_LIMIT: usize = 2_000_000;
 
 /// Derive serde Traits for remote Struct
 #[derive(Serialize, Deserialize)]
