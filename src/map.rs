@@ -66,13 +66,9 @@ impl PartialOrd for HitInterval {
 
 impl Ord for HitInterval {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.alignment_score > other.alignment_score {
-            Ordering::Greater
-        } else if self.alignment_score < other.alignment_score {
-            Ordering::Less
-        } else {
-            Ordering::Equal
-        }
+        self.alignment_score
+            .partial_cmp(&other.alignment_score)
+            .expect("This is not expected to fail")
     }
 }
 
@@ -325,13 +321,9 @@ impl PartialOrd for MismatchSearchStackFrame {
 
 impl Ord for MismatchSearchStackFrame {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.priority > other.priority {
-            Ordering::Greater
-        } else if self.priority < other.priority {
-            Ordering::Less
-        } else {
-            Ordering::Equal
-        }
+        self.priority
+            .partial_cmp(&other.priority)
+            .expect("This is not expected to fail")
     }
 }
 
