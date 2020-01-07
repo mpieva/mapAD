@@ -74,7 +74,7 @@ impl Ord for HitInterval {
 
 impl PartialEq for HitInterval {
     fn eq(&self, other: &Self) -> bool {
-        (self.alignment_score - other.alignment_score).abs() < std::f32::EPSILON
+        self.alignment_score.eq(&other.alignment_score)
     }
 }
 
@@ -329,7 +329,7 @@ impl Ord for MismatchSearchStackFrame {
 
 impl PartialEq for MismatchSearchStackFrame {
     fn eq(&self, other: &Self) -> bool {
-        (self.priority - other.priority).abs() < std::f32::EPSILON
+        self.priority.eq(&other.priority)
     }
 }
 
