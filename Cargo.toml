@@ -5,6 +5,7 @@ description = "An aDNA aware short-read mapper"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 edition = "2018"
 readme = "Readme.md"
+publish = false
 
 [dependencies]
 clap = "2.33.0"
