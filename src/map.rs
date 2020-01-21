@@ -110,6 +110,7 @@ impl Direction {
     }
 }
 
+/// Variants store position in the read and, if necessary, the reference base
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum EditOperation {
     Insertion(u16),
