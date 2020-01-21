@@ -16,7 +16,7 @@ bincode = "1.2.1"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub", features = ["runtime-dispatch-simd"]}
 assert_approx_eq = "1.1.0"
 smallvec = "1.1.0"
-rand = "0.7.2"
+rand = "0.7.3"
 serde = { version = "1.0.104", features = ["derive"] }
 snap = "0.2.5"
 either = "1.5.3"
