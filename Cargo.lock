@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "mapad"
-version = "0.0.16"
+version = "0.0.17-alpha.0"
 dependencies = [
  "assert_approx_eq 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
