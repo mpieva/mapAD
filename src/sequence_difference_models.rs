@@ -9,9 +9,6 @@ pub trait SequenceDifferenceModel {
     fn get_representative_mismatch_penalty(&self) -> f32 {
         self.get(40, 80, b'T', b'A', 40)
     }
-    fn get_representative_match_penalty(&self) -> f32 {
-        self.get(40, 80, b'A', b'A', 40)
-    }
 
     /// Needed for the calculation of D arrays
     fn get_min_penalty(
