@@ -30,7 +30,7 @@ pub trait SequenceDifferenceModel {
             Either::Right(iterator)
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
-        .filter(|&penalty| penalty < 0.0)
+        .map(|penalty| penalty.min(0.0))
         .fold(std::f32::MIN, |acc, v| acc.max(v))
     }
 }
