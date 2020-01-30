@@ -1279,7 +1279,9 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         }
 
         // Only search until we've found a multi-hit
-        if hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 1 {
+        if (hit_intervals.len() > 2)
+            || (hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 2)
+        {
             return hit_intervals;
         }
 
