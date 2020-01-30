@@ -1010,9 +1010,12 @@ fn print_debug(
         };
 
         eprintln!(
-            "{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
             stack_frame.alignment_score,
-            stack_frame.j,
+            penalties.max_allowed_penalties,
+            stack_frame.alignment_score + penalties.lower_bound,
+            stack_frame.backward_index,
+            stack_frame.forward_index,
             best_as,
             best_as + penalties.representative_mismatch_penalty,
         );
@@ -1101,6 +1104,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 .difference_model
                 .get_representative_mismatch_penalty(),
         };
+
+        print_debug(&stack_frame, &hit_intervals, &penalties); // FIXME
 
         if stop_searching_suboptimal_hits(&stack_frame, &hit_intervals, &penalties) {
             // Since we operate on a priority stack, we can assume that there are no
