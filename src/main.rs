@@ -258,13 +258,13 @@ fn main() {
                     / 3.0,
             };
             let alignment_parameters = utils::AlignmentParameters {
-                base_error_rate: 0.02, // TODO
+                base_error_rate: 0.02,
                 poisson_threshold: value_t!(map_matches.value_of("poisson_prob"), f32)
                     .unwrap_or_else(|e| e.exit()),
                 penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
                     .unwrap_or_else(|e| e.exit())
                     .log2(),
-                penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // TODO
+                penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
                 difference_model,
                 chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
                     .unwrap_or_else(|e| e.exit()),

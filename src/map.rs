@@ -1285,7 +1285,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             return hit_intervals;
         }
 
-        // Limit stack size // FIXME
+        // Limit stack size
         if stack.len() >= STACK_LIMIT {
             return hit_intervals;
         }
