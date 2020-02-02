@@ -11,11 +11,11 @@ publish = false
 clap = "2.33.0"
 log = "0.4.8"
 rust-htslib = { git = "https://vcs.eva.mpg.de/christian_heide/rust-htslib.git", branch = "feature/get_all_bam_tags" }
-simple_logger = "1.4.0"
+simple_logger = "1.5.0"
 bincode = "1.2.1"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub", features = ["runtime-dispatch-simd"]}
 assert_approx_eq = "1.1.0"
-smallvec = "1.1.0"
+smallvec = "1.2.0"
 rand = "0.7.3"
 serde = { version = "1.0.104", features = ["derive"] }
 snap = "0.2.5"
@@ -25,7 +25,7 @@ ego-tree = "0.6.2"
 mio = "0.6.21"
 
 [dev-dependencies]
-criterion = "0.3.0"
+criterion = "0.3.1"
 
 [[bench]]
 name = "benchmark"
