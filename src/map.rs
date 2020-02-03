@@ -634,9 +634,6 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                 .map(|record| {
                     let seq_len = record.sequence.len();
                     let allowed_number_of_mismatches = allowed_mismatches.get(seq_len);
-                    let representative_match_penalty = alignment_parameters
-                        .difference_model
-                        .get_representative_match_penalty();
                     let representative_mismatch_penalty = alignment_parameters
                         .difference_model
                         .get_representative_mismatch_penalty();
@@ -646,7 +643,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                         let hit_intervals = k_mismatch_search(
                             &record.sequence,
                             &record.base_qualities,
-                            allowed_number_of_mismatches * representative_mismatch_penalty + (seq_len as f32 - allowed_number_of_mismatches) * representative_match_penalty,
+                            allowed_number_of_mismatches * representative_mismatch_penalty,
                             alignment_parameters,
                             fmd_index,
                             &mut stack_buf.borrow_mut(),
@@ -664,10 +661,11 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
                             &mut hit_interval,
                             suffix_array,
                             identifier_position_map,
-                            compute_maximal_possible_score(
-                                record,
+                            compute_optimal_scores(
+                                &record.sequence,
+                                &record.base_qualities,
                                 &alignment_parameters.difference_model,
-                            ),
+                            ).iter().sum(),
                             Some(&duration),
                             &mut rng,
                         )
@@ -743,23 +741,23 @@ where
     vec![record]
 }
 
-/// Computes theoretically maximal possible alignment score per read.
-/// With this, actual alignment scores can be viewed as fraction of this
-/// optimal score to overcome dependencies on read length, base composition,
-/// and the used scoring function.
-pub fn compute_maximal_possible_score<T: SequenceDifferenceModel + Sync>(
-    record: &Record,
+/// Computes optimal per-base alignment scores for a read,
+/// conditioned on base qualitites and scoring model.
+/// This function panics if `pattern` and `base_qualities` are not of equal length.
+pub fn compute_optimal_scores<T: SequenceDifferenceModel + Sync>(
+    pattern: &[u8],
+    base_qualities: &[u8],
     difference_model: &T,
-) -> f32 {
-    let pattern = &record.sequence;
-    let base_qualities = &record.base_qualities;
-
-    pattern.iter().zip(base_qualities).enumerate().fold(
-        0.0,
-        |optimal_score, (i, (&base, &quality))| {
-            optimal_score + difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
-        },
-    )
+) -> SmallVec<[f32; 128]> {
+    assert_eq!(pattern.len(), base_qualities.len());
+    pattern
+        .iter()
+        .zip(base_qualities)
+        .enumerate()
+        .map(|(i, (&base, &quality))| {
+            difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
+        })
+        .collect::<SmallVec<[_; 128]>>()
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
@@ -1040,7 +1038,8 @@ fn stop_searching_suboptimal_hits(
     false
 }
 
-/// Finds all suffix array intervals for the current pattern with up to `max_allowed_penalties` mismatch penalties
+/// Finds all suffix array intervals for the current pattern with
+/// up to `max_allowed_penalties + optimal score` mismatch penalties.
 pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     pattern: &[u8],
     base_qualities: &[u8],
@@ -1057,6 +1056,12 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         parameters,
         fmd_index,
     );
+
+    let optimal_scores =
+        compute_optimal_scores(pattern, base_qualities, &parameters.difference_model);
+    let optimal_score_global: f32 = optimal_scores.iter().sum();
+    let max_allowed_penalties = max_allowed_penalties + optimal_score_global;
+
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
     let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 6);
 
@@ -1095,8 +1100,17 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             }
         };
 
+        // Calculate optimal partial scores
+        let optimal_score_partial_alignment: f32 = optimal_scores[stack_frame.backward_index.max(0)
+            as usize
+            ..=(stack_frame.forward_index as usize).min(pattern.len() - 1)]
+            .iter()
+            .sum();
+        let optimal_score_expected = optimal_score_global - optimal_score_partial_alignment;
+
         // Calculate the lower bounds for extension
-        let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
+        let lower_bound =
+            bi_d_array.get(next_backward_index, next_forward_index) + optimal_score_expected;
         let penalties = Penalties {
             max_allowed_penalties,
             lower_bound,
@@ -1112,6 +1126,11 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             // better scoring frames on the stack, so we are going to stop the search.
             break;
         }
+
+        // This is used in the keys of the priority stack and allows finding
+        // the best hits quickly by turning the search into a BFS
+        let partial_relative_score_without_penalty =
+            stack_frame.alignment_score - optimal_score_partial_alignment;
 
         //
         // Insertion in read / deletion in reference
@@ -1144,7 +1163,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     GapState::Insertion
                 },
                 alignment_score: stack_frame.alignment_score + penalty,
-                priority: stack_frame.alignment_score + penalty + lower_bound,
+                priority: partial_relative_score_without_penalty + penalty,
                 ..stack_frame
             },
             pattern,
@@ -1221,7 +1240,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                         stack_frame.gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
-                    priority: stack_frame.alignment_score + penalty + lower_bound,
+                    priority: partial_relative_score_without_penalty + penalty,
                     ..stack_frame
                 },
                 pattern,
@@ -1262,7 +1281,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                         GapState::Closed
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
-                    priority: stack_frame.alignment_score + penalty + lower_bound,
+                    priority: partial_relative_score_without_penalty + penalty,
                     ..stack_frame
                 },
                 pattern,
@@ -1279,8 +1298,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         }
 
         // Only search until we've found a multi-hit
-        if (hit_intervals.len() > 2)
-            || (hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 2)
+        if (hit_intervals.len() > 9)
+            || (hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 1)
         {
             return hit_intervals;
         }

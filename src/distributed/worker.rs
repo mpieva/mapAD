@@ -74,9 +74,6 @@ where
                                     let seq_len = record.sequence.len();
                                     let allowed_number_of_mismatches =
                                         allowed_mismatches.get(seq_len);
-                                    let representative_match_penalty = alignment_parameters
-                                        .difference_model
-                                        .get_representative_match_penalty();
                                     let representative_mismatch_penalty = alignment_parameters
                                         .difference_model
                                         .get_representative_mismatch_penalty();
@@ -86,9 +83,7 @@ where
                                             &record.sequence,
                                             &record.base_qualities,
                                             allowed_number_of_mismatches
-                                                * representative_mismatch_penalty
-                                                + (seq_len as f32 - allowed_number_of_mismatches)
-                                                    * representative_match_penalty,
+                                                * representative_mismatch_penalty,
                                             alignment_parameters,
                                             &fmd_index,
                                             &mut stack_buf.borrow_mut(),

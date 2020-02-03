@@ -311,10 +311,13 @@ where
                     hit_interval,
                     suffix_array,
                     identifier_position_map,
-                    map::compute_maximal_possible_score(
-                        record,
+                    map::compute_optimal_scores(
+                        &record.sequence,
+                        &record.base_qualities,
                         &self.alignment_parameters.difference_model,
-                    ),
+                    )
+                    .iter()
+                    .sum(),
                     None,
                     &mut rng,
                 )
