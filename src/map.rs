@@ -30,8 +30,9 @@ use serde::{Deserialize, Serialize};
 use snap;
 
 use crate::{
+    mismatch_bound::MismatchBound,
     sequence_difference_models::SequenceDifferenceModel,
-    utils::{AlignmentParameters, AllowedMismatches, Record, UnderlyingDataFMDIndex},
+    utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
 
 pub const CRATE_NAME: &str = "mapAD";
@@ -381,11 +382,11 @@ struct BiDArray {
 }
 
 impl BiDArray {
-    pub(crate) fn new<T: SequenceDifferenceModel + Sync>(
+    pub(crate) fn new<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
         pattern: &[u8],
         base_qualities: &[u8],
         split: usize,
-        alignment_parameters: &AlignmentParameters<T>,
+        alignment_parameters: &AlignmentParameters<T, U>,
         fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     ) -> Self {
         Self {
@@ -409,12 +410,12 @@ impl BiDArray {
         }
     }
 
-    fn compute_part<T: SequenceDifferenceModel + Sync>(
+    fn compute_part<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
         pattern_part: &[u8],
         base_qualities_part: &[u8],
         direction: Direction,
         full_pattern_length: usize,
-        alignment_parameters: &AlignmentParameters<T>,
+        alignment_parameters: &AlignmentParameters<T, U>,
         fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     ) -> SmallVec<[f32; 64]> {
         let directed_pattern_iterator = || match direction {
@@ -497,13 +498,6 @@ impl BiDArray {
     }
 }
 
-#[derive(Copy, Clone)]
-struct Penalties {
-    max_allowed_penalties: f32,
-    lower_bound: f32,
-    representative_mismatch_penalty: f32,
-}
-
 struct ChunkIterator<'a, R>
 where
     R: Read,
@@ -550,11 +544,11 @@ where
 }
 
 /// Loads index files and launches the mapping process
-pub fn run<T: SequenceDifferenceModel + Sync>(
+pub fn run<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
     reads_path: &str,
     reference_path: &str,
     out_file_path: &str,
-    alignment_parameters: &AlignmentParameters<T>,
+    alignment_parameters: &AlignmentParameters<T, U>,
 ) -> Result<(), Box<dyn Error>> {
     debug!("Load FMD-index");
     let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
@@ -617,8 +611,8 @@ pub fn create_bam_header(
 }
 
 /// Maps reads and writes them to a file in BAM format
-fn map_reads<T: SequenceDifferenceModel + Sync>(
-    alignment_parameters: &AlignmentParameters<T>,
+fn map_reads<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
+    alignment_parameters: &AlignmentParameters<T, U>,
     reads_path: &str,
     out_file_path: &str,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -628,7 +622,6 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
     let mut reads_reader = bam::Reader::from_path(reads_path)?;
     let _ = reads_reader.set_threads(4);
     let header = create_bam_header(&reads_reader, identifier_position_map);
-    let allowed_mismatches = AllowedMismatches::new(&alignment_parameters);
     let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
     let _ = out_file.set_threads(4);
 
@@ -642,18 +635,11 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
             let results = chunk
                 .par_iter()
                 .map(|record| {
-                    let seq_len = record.sequence.len();
-                    let allowed_number_of_mismatches = allowed_mismatches.get(seq_len);
-                    let representative_mismatch_penalty = alignment_parameters
-                        .difference_model
-                        .get_representative_mismatch_penalty();
-
                     STACK_BUF.with(|stack_buf| {
                         let start = Instant::now();
                         let hit_intervals = k_mismatch_search(
                             &record.sequence,
                             &record.base_qualities,
-                            allowed_number_of_mismatches * representative_mismatch_penalty,
                             alignment_parameters,
                             fmd_index,
                             &mut stack_buf.borrow_mut(),
@@ -958,14 +944,15 @@ fn extract_edit_operations(
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
-fn check_and_push(
+fn check_and_push<T: SequenceDifferenceModel, U: MismatchBound>(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
+    alignment_parameters: &AlignmentParameters<T, U>,
+    lower_bound: f32,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<Option<EditOperation>>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
-    penalties: &Penalties,
 ) {
     // Empty interval
     if stack_frame.current_interval.size < 1 {
@@ -973,12 +960,20 @@ fn check_and_push(
     }
 
     // Too many mismatches
-    if stack_frame.alignment_score + penalties.lower_bound < penalties.max_allowed_penalties {
+    if alignment_parameters
+        .mismatch_bound
+        .reject(stack_frame.alignment_score + lower_bound, pattern.len())
+    {
         return;
     }
 
-    if stop_searching_suboptimal_hits(&stack_frame, intervals, penalties) {
-        return;
+    if let Some(best_scoring_interval) = intervals.peek() {
+        if alignment_parameters.mismatch_bound.reject_iterative(
+            stack_frame.alignment_score,
+            best_scoring_interval.alignment_score,
+        ) {
+            return;
+        }
     }
 
     stack_frame.edit_node_id = edit_tree
@@ -996,7 +991,7 @@ fn check_and_push(
             alignment_score: stack_frame.alignment_score,
             edit_operations,
         });
-        print_debug(&stack_frame, intervals, penalties); // FIXME
+        print_debug(&stack_frame, intervals, lower_bound); // FIXME
         return;
     }
 
@@ -1007,7 +1002,7 @@ fn check_and_push(
 fn print_debug(
     stack_frame: &MismatchSearchStackFrame,
     intervals: &BinaryHeap<HitInterval>,
-    penalties: &Penalties,
+    lower_bound: f32,
 ) {
     let switch = false; // TODO: Switch me on/off!
 
@@ -1018,43 +1013,22 @@ fn print_debug(
         };
 
         eprintln!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}",
             stack_frame.alignment_score,
-            penalties.max_allowed_penalties,
-            stack_frame.alignment_score + penalties.lower_bound,
+            stack_frame.alignment_score + lower_bound,
             stack_frame.backward_index,
             stack_frame.forward_index,
             best_as,
-            best_as + penalties.representative_mismatch_penalty,
         );
     }
 }
 
-/// If the best scoring interval has a total sum of penalties z, do not search
-/// for hits with a minimal expected scored worse than z + representative_mismatch.
-/// This speeds up the alignment considerably.
-fn stop_searching_suboptimal_hits(
-    stack_frame: &MismatchSearchStackFrame,
-    hit_intervals: &BinaryHeap<HitInterval>,
-    penalties: &Penalties,
-) -> bool {
-    if let Some(best_scoring_interval) = hit_intervals.peek() {
-        if stack_frame.alignment_score + penalties.lower_bound
-            < best_scoring_interval.alignment_score + penalties.representative_mismatch_penalty
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// Finds all suffix array intervals for the current pattern with
-/// up to `max_allowed_penalties + optimal score` mismatch penalties.
-pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
+/// Finds all suffix array intervals for the current pattern
+/// w.r.t. supplied alignment parameters
+pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
     pattern: &[u8],
     base_qualities: &[u8],
-    max_allowed_penalties: f32,
-    parameters: &AlignmentParameters<T>,
+    parameters: &AlignmentParameters<T, U>,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
 ) -> BinaryHeap<HitInterval> {
@@ -1110,22 +1084,19 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         let optimal_penalty = optimal_penalties[stack_frame.j as usize];
 
         // Calculate the lower bounds for extension
-        let lower_bound =
-            bi_d_array.get(next_backward_index, next_forward_index) + optimal_score_expected;
-        let penalties = Penalties {
-            max_allowed_penalties,
-            lower_bound,
-            representative_mismatch_penalty: parameters
-                .difference_model
-                .get_representative_mismatch_penalty(),
-        };
+        let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
 
-        print_debug(&stack_frame, &hit_intervals, &penalties); // FIXME
+        print_debug(&stack_frame, &hit_intervals, lower_bound); // FIXME
 
-        if stop_searching_suboptimal_hits(&stack_frame, &hit_intervals, &penalties) {
-            // Since we operate on a priority stack, we can assume that there are no
-            // better scoring frames on the stack, so we are going to stop the search.
-            break;
+        // Since we operate on a priority stack, we can assume that there are no
+        // better scoring frames on the stack, so we are going to stop the search.
+        if let Some(best_scoring_interval) = hit_intervals.peek() {
+            if parameters.mismatch_bound.reject_iterative(
+                stack_frame.alignment_score,
+                best_scoring_interval.alignment_score,
+            ) {
+                break;
+            }
         }
 
         //
@@ -1162,11 +1133,12 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 ..stack_frame
             },
             pattern,
+            &parameters,
+            lower_bound,
             EditOperation::Insertion(stack_frame.j as u16),
             &mut edit_tree,
             stack,
             &mut hit_intervals,
-            &penalties,
         );
 
         // Bidirectional extension of the (hit) interval
@@ -1238,11 +1210,12 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     ..stack_frame
                 },
                 pattern,
+                &parameters,
+                lower_bound,
                 EditOperation::Deletion(stack_frame.j as u16, c),
                 &mut edit_tree,
                 stack,
                 &mut hit_intervals,
-                &penalties,
             );
 
             //
@@ -1278,6 +1251,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     ..stack_frame
                 },
                 pattern,
+                &parameters,
+                lower_bound,
                 if c == pattern[stack_frame.j as usize] {
                     EditOperation::Match(stack_frame.j as u16)
                 } else {
@@ -1286,7 +1261,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 &mut edit_tree,
                 stack,
                 &mut hit_intervals,
-                &penalties,
             );
         }
 
@@ -1311,6 +1285,12 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{
+        mismatch_bound::Discrete,
+        sequence_difference_models::{LibraryPrep, SimpleAncientDnaModel, VindijaPWM},
+    };
+    use assert_approx_eq::assert_approx_eq;
     use bio::{
         alphabets,
         data_structures::{
@@ -1318,14 +1298,27 @@ mod tests {
             suffix_array::suffix_array,
         },
     };
-
-    use super::*;
-
     use rust_htslib::bam;
 
-    use crate::sequence_difference_models::{LibraryPrep, SimpleAncientDnaModel, VindijaPWM};
+    struct TestDiscreteMB {
+        cutoff: f32,
+    }
 
-    use assert_approx_eq::assert_approx_eq;
+    impl MismatchBound for TestDiscreteMB {
+        fn reject(&self, value: f32, _read_length: usize) -> bool {
+            value < self.cutoff
+        }
+
+        fn reject_iterative(&self, _value: f32, _reference: f32) -> bool {
+            false
+        }
+    }
+
+    impl TestDiscreteMB {
+        fn new(cutoff: f32) -> Self {
+            Self { cutoff }
+        }
+    }
 
     fn build_auxiliary_structures(
         reference: &mut Vec<u8>,
@@ -1391,9 +1384,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
+            mismatch_bound: TestDiscreteMB::new(-1.0),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1415,7 +1407,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -1.0,
+            // -1.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1457,9 +1449,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
+            mismatch_bound: TestDiscreteMB::new(-1.0),
             penalty_gap_open: -20.0,
             penalty_gap_extend: -10.0,
             chunk_size: 1,
@@ -1481,7 +1472,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            1.0,
+            // 1.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1507,11 +1498,11 @@ mod tests {
 
         let difference_model = SimpleAncientDnaModel {
             library_prep: LibraryPrep::SingleStranded {
-                five_prime_overhang: 0.475,
-                three_prime_overhang: 0.475,
+                five_prime_overhang: 0.3,
+                three_prime_overhang: 0.3,
             },
             ds_deamination_rate: 0.001,
-            ss_deamination_rate: 0.9,
+            ss_deamination_rate: 0.8,
             divergence: 0.02,
         };
 
@@ -1519,16 +1510,15 @@ mod tests {
             difference_model.get_representative_mismatch_penalty();
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.02,
             difference_model,
+            mismatch_bound: TestDiscreteMB::new(0.0),
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
         };
 
         let pattern = b"CCCCCCC";
-        let base_qualities = [1, 100, 100, 100, 100, 1, 100];
+        let base_qualities = [9, 100, 100, 100, 100, 9, 100];
 
         let center_of_read = pattern.len() / 2;
 
@@ -1540,8 +1530,11 @@ mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -2.0, -2.0]);
-        assert_eq!(&*bi_d_array.d_forwards, &[0.0, -2.0, -2.0, -4.0]);
+        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -1.7041414, -1.7041414]);
+        assert_eq!(
+            &*bi_d_array.d_forwards,
+            &[0.0, -1.9092996, -1.9092996, -3.8185992]
+        );
 
         assert_eq!(
             bi_d_array.get(1, 4),
@@ -1581,9 +1574,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
+            mismatch_bound: TestDiscreteMB::new(-2.0),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1605,7 +1597,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -2.0,
+            // -2.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1625,10 +1617,9 @@ mod tests {
         let difference_model = VindijaPWM::new();
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
             // Disable gaps
+            mismatch_bound: TestDiscreteMB::new(-30.0),
             penalty_gap_open: -200.0,
             penalty_gap_extend: -100.0,
             chunk_size: 1,
@@ -1649,7 +1640,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -30.0,
+            // -30.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1673,7 +1664,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -30.0,
+            // -30.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1707,7 +1698,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -30.0,
+            // -30.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1760,14 +1751,14 @@ mod tests {
     #[test]
     fn test_corner_cases() {
         let difference_model = VindijaPWM::new();
+        let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.01,
             penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
             penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
             difference_model,
             chunk_size: 1,
+            mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty),
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1782,8 +1773,6 @@ mod tests {
         let fmd_index = data_fmd_index.reconstruct();
         let sar = suffix_array(&ref_seq);
 
-        let allowed_mismatches = AllowedMismatches::new(&parameters);
-
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()
             .to_owned();
@@ -1793,10 +1782,6 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            allowed_mismatches.get(pattern.len())
-                * parameters
-                    .difference_model
-                    .get_representative_mismatch_penalty(),
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1824,6 +1809,7 @@ mod tests {
 
     #[test]
     fn test_cigar_indels() {
+        #[derive(Clone)]
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
             fn get(
@@ -1846,9 +1832,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            difference_model,
+            difference_model: difference_model.clone(),
+            mismatch_bound: TestDiscreteMB::new(-3.0),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1871,7 +1856,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1906,7 +1891,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1943,7 +1928,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -1979,7 +1964,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2011,11 +1996,19 @@ mod tests {
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
+        let parameters = AlignmentParameters {
+            difference_model,
+            mismatch_bound: TestDiscreteMB::new(-4.0),
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+        };
+
         let mut stack_buf = BinaryHeap::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -4.0,
+            // -4.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2038,6 +2031,7 @@ mod tests {
 
     #[test]
     fn test_md_tag() {
+        #[derive(Clone)]
         struct TestDifferenceModel {}
         impl SequenceDifferenceModel for TestDifferenceModel {
             fn get(
@@ -2060,9 +2054,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
-            difference_model,
+            difference_model: difference_model.clone(),
+            mismatch_bound: TestDiscreteMB::new(-1.0),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2085,7 +2078,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -1.0,
+            // -1.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2109,11 +2102,19 @@ mod tests {
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
+        let parameters = AlignmentParameters {
+            difference_model,
+            mismatch_bound: TestDiscreteMB::new(-3.0),
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+        };
+
         let mut stack_buf = BinaryHeap::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2141,7 +2142,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2170,7 +2171,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2198,7 +2199,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -3.0,
+            // -3.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2235,9 +2236,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
+            mismatch_bound: TestDiscreteMB::new(0.0),
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2259,7 +2259,7 @@ mod tests {
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            0.0,
+            // 0.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,
@@ -2316,9 +2316,8 @@ mod tests {
         let difference_model = TestDifferenceModel {};
 
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
+            mismatch_bound: TestDiscreteMB::new(-1.0),
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2340,7 +2339,7 @@ mod tests {
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
-            -1.0,
+            // -1.0,
             &parameters,
             &fmd_index,
             &mut stack_buf,

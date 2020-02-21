@@ -27,8 +27,8 @@ pub trait SequenceDifferenceModel {
             Either::Right(iterator)
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
-        .map(|penalty| penalty.min(0.0))
         .fold(std::f32::MIN, |acc, v| acc.max(v))
+        .min(0.0)
     }
 }
 
@@ -188,7 +188,6 @@ impl SequenceDifferenceModel for VindijaPWM {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use assert_approx_eq::assert_approx_eq;
 
     #[test]
