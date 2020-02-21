@@ -308,7 +308,6 @@ pub struct MismatchSearchStackFrame {
     gap_forwards: GapState,
     gap_backwards: GapState,
     alignment_score: f32,
-    priority: f32,
     edit_node_id: NodeId,
 }
 
@@ -320,15 +319,15 @@ impl PartialOrd for MismatchSearchStackFrame {
 
 impl Ord for MismatchSearchStackFrame {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.priority
-            .partial_cmp(&other.priority)
+        self.alignment_score
+            .partial_cmp(&other.alignment_score)
             .expect("This is not expected to fail")
     }
 }
 
 impl PartialEq for MismatchSearchStackFrame {
     fn eq(&self, other: &Self) -> bool {
-        self.priority.eq(&other.priority)
+        self.alignment_score.eq(&other.alignment_score)
     }
 }
 
@@ -446,14 +445,27 @@ impl BiDArray {
                             })
                             .enumerate()
                             .map(|(j, &base_j)| {
-                                alignment_parameters.difference_model.get_min_penalty(
-                                    directed_index(j, full_pattern_length),
-                                    full_pattern_length,
-                                    base_j,
-                                    base_qualities_part
-                                        [directed_index(j, base_qualities_part.len())],
-                                    true,
-                                )
+                                let best_penalty_mm_only =
+                                    alignment_parameters.difference_model.get_min_penalty(
+                                        directed_index(j, full_pattern_length),
+                                        full_pattern_length,
+                                        base_j,
+                                        base_qualities_part
+                                            [directed_index(j, base_qualities_part.len())],
+                                        true,
+                                    );
+                                let optimal_penalty =
+                                    alignment_parameters.difference_model.get_min_penalty(
+                                        directed_index(j, full_pattern_length),
+                                        full_pattern_length,
+                                        base_j,
+                                        base_qualities_part
+                                            [directed_index(j, base_qualities_part.len())],
+                                        false,
+                                    );
+                                // The optimal penalty conditioned on position and base is subtracted because we
+                                // optimize the ratio `AS/optimal_AS` (in log space) to find the best mappings
+                                best_penalty_mm_only - optimal_penalty
                             })
                             .fold(std::f32::MIN, |acc, penalty| acc.max(penalty))
                             .max(alignment_parameters.penalty_gap_open)
@@ -467,7 +479,6 @@ impl BiDArray {
             .collect()
     }
 
-    #[inline]
     fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
         let inner = || {
             let forward_index = self
@@ -1056,10 +1067,8 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         fmd_index,
     );
 
-    let optimal_scores =
+    let optimal_penalties =
         compute_optimal_scores(pattern, base_qualities, &parameters.difference_model);
-    let optimal_score_global: f32 = optimal_scores.iter().sum();
-    let max_allowed_penalties = max_allowed_penalties + optimal_score_global;
 
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
     let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 9);
@@ -1075,7 +1084,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
         gap_backwards: GapState::Closed,
         gap_forwards: GapState::Closed,
         alignment_score: 0.0,
-        priority: 0.0,
         edit_node_id: edit_tree.root().id(),
     });
 
@@ -1099,13 +1107,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             }
         };
 
-        // Calculate optimal partial scores
-        let optimal_score_partial_alignment: f32 = optimal_scores[stack_frame.backward_index.max(0)
-            as usize
-            ..=(stack_frame.forward_index as usize).min(pattern.len() - 1)]
-            .iter()
-            .sum();
-        let optimal_score_expected = optimal_score_global - optimal_score_partial_alignment;
+        let optimal_penalty = optimal_penalties[stack_frame.j as usize];
 
         // Calculate the lower bounds for extension
         let lower_bound =
@@ -1125,11 +1127,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
             // better scoring frames on the stack, so we are going to stop the search.
             break;
         }
-
-        // This is used in the keys of the priority stack and allows finding
-        // the best hits quickly by turning the search into a BFS
-        let partial_relative_score_without_penalty =
-            stack_frame.alignment_score - optimal_score_partial_alignment;
 
         //
         // Insertion in read / deletion in reference
@@ -1161,8 +1158,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                 } else {
                     GapState::Insertion
                 },
-                alignment_score: stack_frame.alignment_score + penalty,
-                priority: partial_relative_score_without_penalty + penalty,
+                alignment_score: stack_frame.alignment_score + penalty - optimal_penalty,
                 ..stack_frame
             },
             pattern,
@@ -1239,7 +1235,6 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                         stack_frame.gap_forwards
                     },
                     alignment_score: stack_frame.alignment_score + penalty,
-                    priority: partial_relative_score_without_penalty + penalty,
                     ..stack_frame
                 },
                 pattern,
@@ -1279,8 +1274,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
                     } else {
                         GapState::Closed
                     },
-                    alignment_score: stack_frame.alignment_score + penalty,
-                    priority: partial_relative_score_without_penalty + penalty,
+                    alignment_score: stack_frame.alignment_score + penalty - optimal_penalty,
                     ..stack_frame
                 },
                 pattern,
@@ -1662,7 +1656,7 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(alignment_score[0], -5.3629);
+        assert_eq!(alignment_score[0], -4.6416917);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1686,7 +1680,7 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(alignment_score[0], -2.6080124);
+        assert_eq!(alignment_score[0], 0.0);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1720,14 +1714,13 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_approx_eq!(alignment_score[0], -10.969394);
+        assert_approx_eq!(alignment_score[0], -10.965062);
     }
 
     #[test]
     fn test_ord_impl() {
         let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
-            priority: -5.0,
             j: 0,
             current_interval: BiInterval {
                 lower: 5,
@@ -1744,7 +1737,6 @@ mod tests {
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
-            priority: -20.0,
             j: 0,
             current_interval: BiInterval {
                 lower: 5,
@@ -1814,7 +1806,7 @@ mod tests {
             .iter()
             .map(|f| f.alignment_score)
             .collect::<Vec<_>>();
-        assert_eq!(alignment_scores, vec![-11.320482, -38.763355, -11.348894]);
+        assert_eq!(alignment_scores, vec![-10.936638, -38.379524, -10.965062]);
 
         let mut positions: Vec<usize> = intervals
             .iter()
