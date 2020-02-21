@@ -1,9 +1,11 @@
 use std::{
+    cell::RefCell,
     cmp::Ordering,
     collections::{binary_heap::BinaryHeap, BTreeMap},
     error::Error,
     fs::File,
     iter::{once, Peekable},
+    time::{Duration, Instant},
 };
 
 use clap::{crate_name, crate_version};
@@ -13,10 +15,6 @@ use log::{debug, trace};
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use std::{
-    cell::RefCell,
-    time::{Duration, Instant},
-};
 
 use bio::{
     alphabets::dna,
