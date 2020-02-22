@@ -105,6 +105,14 @@ fn main() {
                     .value_name("FLOAT"),
                 )
                 .arg(
+                    Arg::with_name("as_cutoff_exponent")
+                        .short("e")
+                        .help("Exponent for read length dependency")
+                        .takes_value(true)
+                        .default_value("1.0")
+                        .value_name("FLOAT"),
+                )
+                .arg(
                     Arg::with_name("library")
                         .required(true)
                         .short("l")
@@ -317,6 +325,7 @@ fn main() {
                     cutoff: value_t!(map_matches.value_of("as_cutoff"), f32)
                         .unwrap_or_else(|e| e.exit())
                         * -1.0,
+                    exponent: value_t!(map_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
                     representative_mismatch_penalty: difference_model
                         .get_representative_mismatch_penalty(),
                 };

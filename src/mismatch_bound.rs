@@ -17,12 +17,13 @@ pub trait MismatchBound {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Continuous {
     pub cutoff: f32,
+    pub exponent: f32,
     pub representative_mismatch_penalty: f32,
 }
 
 impl MismatchBound for Continuous {
     fn reject(&self, value: f32, read_length: usize) -> bool {
-        (value / read_length as f32) < self.cutoff
+        (value / (read_length as f32).powf(self.exponent)) < self.cutoff
     }
     fn reject_iterative(&self, value: f32, reference: f32) -> bool {
         value < reference + self.representative_mismatch_penalty
