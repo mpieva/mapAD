@@ -1304,7 +1304,10 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
 
         // Limit stack size
         if stack.len() >= STACK_LIMIT {
-            trace!("Stack size limit reached, report unmapped read");
+            trace!(
+                "Stack size limit reached, report unmapped read (length: {} bp)",
+                pattern.len()
+            );
             return hit_intervals;
         }
     }
