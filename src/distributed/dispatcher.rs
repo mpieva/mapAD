@@ -141,7 +141,8 @@ where
 
         debug!("Load position map");
         let identifier_position_map: map::FastaIdPositions = {
-            let d_pi = snap::Reader::new(File::open(format!("{}.tpi", &self.reference_path))?);
+            let d_pi =
+                snap::read::FrameDecoder::new(File::open(format!("{}.tpi", &self.reference_path))?);
             bincode::deserialize_from(d_pi)?
         };
 
@@ -158,7 +159,7 @@ where
         debug!("Load suffix array");
         let suffix_array: Vec<usize> = {
             let d_suffix_array =
-                snap::Reader::new(File::open(format!("{}.tsa", &self.reference_path))?);
+                snap::read::FrameDecoder::new(File::open(format!("{}.tsa", &self.reference_path))?);
             bincode::deserialize_from(d_suffix_array)?
         };
 

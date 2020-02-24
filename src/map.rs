@@ -552,13 +552,14 @@ pub fn run<T: SequenceDifferenceModel + Sync>(
 
     debug!("Load suffix array");
     let suffix_array: Vec<usize> = {
-        let d_suffix_array = snap::Reader::new(File::open(format!("{}.tsa", reference_path))?);
+        let d_suffix_array =
+            snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
         bincode::deserialize_from(d_suffix_array)?
     };
 
     debug!("Load position map");
     let identifier_position_map: FastaIdPositions = {
-        let d_pi = snap::Reader::new(File::open(format!("{}.tpi", reference_path))?);
+        let d_pi = snap::read::FrameDecoder::new(File::open(format!("{}.tpi", reference_path))?);
         bincode::deserialize_from(d_pi)?
     };
 

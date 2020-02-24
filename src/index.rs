@@ -99,7 +99,7 @@ fn index<T: Rng>(
         );
 
         debug!("Save position map to disk");
-        let mut writer = snap::Writer::new(File::create(format!("{}.tpi", name))?);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tpi", name))?);
         bincode::serialize_into(&mut writer, &identifier_position_map)?;
     }
 
@@ -118,7 +118,8 @@ fn index<T: Rng>(
 
     {
         debug!("Save suffix array to disk");
-        let mut writer_suffix_array = snap::Writer::new(File::create(format!("{}.tsa", name))?);
+        let mut writer_suffix_array =
+            snap::write::FrameEncoder::new(File::create(format!("{}.tsa", name))?);
         bincode::serialize_into(&mut writer_suffix_array, &suffix_array)?;
     }
 
@@ -133,19 +134,19 @@ fn index<T: Rng>(
 
     {
         debug!("Save BWT to disk");
-        let mut writer = snap::Writer::new(File::create(format!("{}.tbw", name))?);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tbw", name))?);
         bincode::serialize_into(&mut writer, &bwt)?;
     }
 
     {
         debug!("Save \"C\" table to disk");
-        let mut writer = snap::Writer::new(File::create(format!("{}.tle", name))?);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tle", name))?);
         bincode::serialize_into(&mut writer, &less)?;
     }
 
     {
         debug!("Save \"Occ\" table to disk");
-        let mut writer = snap::Writer::new(File::create(format!("{}.toc", name))?);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.toc", name))?);
         bincode::serialize_into(&mut writer, &occ)?;
     }
 

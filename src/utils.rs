@@ -221,19 +221,19 @@ impl UnderlyingDataFMDIndex {
     pub fn load(path: &str) -> Result<UnderlyingDataFMDIndex, bincode::Error> {
         debug!("Load BWT");
         let bwt: Vec<u8> = {
-            let d_bwt = snap::Reader::new(File::open(format!("{}.tbw", path))?);
+            let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);
             bincode::deserialize_from(d_bwt)?
         };
 
         debug!("Load \"C\" table");
         let less: Vec<usize> = {
-            let d_less = snap::Reader::new(File::open(format!("{}.tle", path))?);
+            let d_less = snap::read::FrameDecoder::new(File::open(format!("{}.tle", path))?);
             bincode::deserialize_from(d_less)?
         };
 
         debug!("Load \"Occ\" table");
         let occ: Occ = {
-            let d_occ = snap::Reader::new(File::open(format!("{}.toc", path))?);
+            let d_occ = snap::read::FrameDecoder::new(File::open(format!("{}.toc", path))?);
             bincode::deserialize_from(d_occ)?
         };
 
