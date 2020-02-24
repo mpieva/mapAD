@@ -1,8 +1,6 @@
 [![pipeline status](https://vcs.eva.mpg.de/christian_heide/mapAD/badges/master/pipeline.svg)](https://vcs.eva.mpg.de/christian_heide/mapAD/commits/master) 
 [![coverage report](https://vcs.eva.mpg.de/christian_heide/mapAD/badges/master/coverage.svg)](https://vcs.eva.mpg.de/christian_heide/mapAD/commits/master)
 
-Apparently, GitLab-CI pipelines currently fail due to storage size reasons - not because of failing unit tests.
-
 # mapAD <img src="https://vcs.eva.mpg.de/uploads/-/system/project/avatar/1089/480px-Uracil-3D-balls.png" alt="drawing" width="25"/>
 
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. 
@@ -117,7 +115,7 @@ consumption.
 - [x] Save reference index to disk
 - [x] Refactor crate/mod structure
 - [x] Make SIMD vectorization easily configurable at compile time (as "feature")
-- [x] Compress index files for hopefully faster IO (libflate)
+- [x] Compress index files for ~~hopefully~~ faster IO (snappy)
 - [x] Don't rank-transform during early development. Go back to upstream rust-bio
 - [x] Inexact matching
 - [x] It's time to start testing!
@@ -135,7 +133,7 @@ consumption.
   - [x] BAM output
   - [x] BAM input
 - [x] Generate CIGAR string
-- [ ] Evaluate precision, FPR, FNR
+- [x] Evaluate precision, FPR, FNR
 - [x] Only push to heap if necessary (perhaps check conditions in (inlined) function)
 - [x] Problem: BFS does not work well with negative scores which we get with log-probs (-> slow). Perhaps add +1?
 - [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
