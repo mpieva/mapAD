@@ -10,9 +10,7 @@ use bio::{
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use mapad::{
-    map::k_mismatch_search,
-    mismatch_bound::Discrete,
-    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
+    map::k_mismatch_search, mismatch_bound::*, sequence_difference_models::*,
     utils::AlignmentParameters,
 };
 use std::collections::BinaryHeap;
@@ -21,7 +19,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -29,12 +27,13 @@ fn criterion_benchmark(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound = Discrete::new(0.02, 0.02, representative_mismatch_penalty);
+        let mismatch_bound =
+            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
 
         let parameters = AlignmentParameters {
             difference_model,
@@ -89,7 +88,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -97,12 +96,13 @@ fn bench_multiple_reads(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound = Discrete::new(0.02, 0.02, representative_mismatch_penalty);
+        let mismatch_bound =
+            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
 
         let parameters = AlignmentParameters {
             difference_model,
@@ -164,7 +164,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -172,12 +172,13 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound = Discrete::new(0.02, 0.02, representative_mismatch_penalty);
+        let mismatch_bound =
+            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
 
         let parameters = AlignmentParameters {
             difference_model,
@@ -232,7 +233,7 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
         let mut ref_seq = "GTCTGCATCCCCAGGACCACCATGGGTGGGGAGGGCAGAGATTGGGGAGCACCTATAGAGGCTCTAATGCTCTAAGGTGACAGTGATGAGGACCTGGGTGCACCCATGAGTGGAGAAGCTAGGCCTGTCCAGAGAAGCAAGACAAACACACACATACACACTCACACACACACAGGCACATATGCATACACAAATACATTGCAT".as_bytes().to_owned();
         let patterns = vec!["ACTAAAGAGCTTCTGCACAGGAAAAGAAACTACCATCAGAACCACCAGGCAACCTACAACATGGGATAAAATTTTCACAACCTACTCATCTGACAAAGGGCCAATATCCAGAATCTACAATGAACTCCAACAAATTTACAAGAAAAAAACAAACAACCCCATCAAAAAGTGGGCAAAGGACATGAACAGACACTTCTCAAAAGAAGATATTTATGCAGCCAAGAAAACACATAAAAA".as_bytes().to_owned(); 100];
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -240,12 +241,12 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound = Discrete::new(0.04, 0.02, representative_mismatch_penalty);
+        let mismatch_bound = MismatchBoundDispatch::from(Discrete::new(0.04, 0.02, representative_mismatch_penalty));
 
         let parameters = AlignmentParameters {
             difference_model,

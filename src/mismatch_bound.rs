@@ -1,3 +1,4 @@
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -5,6 +6,7 @@ use std::{
     iter::once,
 };
 
+#[enum_dispatch]
 pub trait MismatchBound {
     fn reject(&self, value: f32, read_length: usize) -> bool;
 
@@ -14,7 +16,15 @@ pub trait MismatchBound {
     fn reject_iterative(&self, value: f32, reference: f32) -> bool;
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[enum_dispatch(MismatchBound)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MismatchBoundDispatch {
+    Continuous,
+    Discrete,
+    TestBound,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Continuous {
     pub cutoff: f32,
     pub exponent: f32,
@@ -167,65 +177,66 @@ impl Discrete {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TestBound {
+    pub threshold: f32,
+}
+
+impl MismatchBound for TestBound {
+    fn reject(&self, value: f32, _read_length: usize) -> bool {
+        value < self.threshold
+    }
+
+    fn reject_iterative(&self, _value: f32, _reference: f32) -> bool {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::sequence_difference_models::SequenceDifferenceModel;
-    use crate::utils::AlignmentParameters;
-    use crate::{mismatch_bound::Discrete, sequence_difference_models::VindijaPWM};
+    use super::*;
+    use crate::sequence_difference_models::*;
 
     #[test]
     fn test_allowed_mismatches() {
         let difference_model = VindijaPWM::new();
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
-        let parameters = AlignmentParameters {
-            difference_model,
-            mismatch_bound: Discrete::new(0.04, 0.02, repr_mm_penalty),
-            penalty_gap_open: 1.0,
-            penalty_gap_extend: 1.0,
-            chunk_size: 1,
-        };
+        let mismatch_bound = Discrete::new(0.04, 0.02, repr_mm_penalty);
 
-        assert_eq!(parameters.mismatch_bound.get(156), 6.0);
-        assert_eq!(parameters.mismatch_bound.get(124), 6.0);
-        assert_eq!(parameters.mismatch_bound.get(123), 5.0);
-        assert_eq!(parameters.mismatch_bound.get(93), 5.0);
-        assert_eq!(parameters.mismatch_bound.get(92), 4.0);
-        assert_eq!(parameters.mismatch_bound.get(64), 4.0);
-        assert_eq!(parameters.mismatch_bound.get(63), 3.0);
-        assert_eq!(parameters.mismatch_bound.get(38), 3.0);
-        assert_eq!(parameters.mismatch_bound.get(37), 2.0);
-        assert_eq!(parameters.mismatch_bound.get(17), 2.0);
-        assert_eq!(parameters.mismatch_bound.get(16), 0.0);
-        assert_eq!(parameters.mismatch_bound.get(15), 0.0);
-        assert_eq!(parameters.mismatch_bound.get(3), 0.0);
-        assert_eq!(parameters.mismatch_bound.get(2), 0.0);
-        assert_eq!(parameters.mismatch_bound.get(0), 0.0);
+        assert_eq!(mismatch_bound.get(156), 6.0);
+        assert_eq!(mismatch_bound.get(124), 6.0);
+        assert_eq!(mismatch_bound.get(123), 5.0);
+        assert_eq!(mismatch_bound.get(93), 5.0);
+        assert_eq!(mismatch_bound.get(92), 4.0);
+        assert_eq!(mismatch_bound.get(64), 4.0);
+        assert_eq!(mismatch_bound.get(63), 3.0);
+        assert_eq!(mismatch_bound.get(38), 3.0);
+        assert_eq!(mismatch_bound.get(37), 2.0);
+        assert_eq!(mismatch_bound.get(17), 2.0);
+        assert_eq!(mismatch_bound.get(16), 0.0);
+        assert_eq!(mismatch_bound.get(15), 0.0);
+        assert_eq!(mismatch_bound.get(3), 0.0);
+        assert_eq!(mismatch_bound.get(2), 0.0);
+        assert_eq!(mismatch_bound.get(0), 0.0);
     }
 
     #[test]
     fn test_allowed_mismatches_bwa_ancient_parameters() {
         let difference_model = VindijaPWM::new();
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
+        let mismatch_bound = Discrete::new(0.01, 0.02, repr_mm_penalty);
 
-        let parameters = AlignmentParameters {
-            difference_model,
-            mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty),
-            penalty_gap_open: 1.0,
-            penalty_gap_extend: 1.0,
-            chunk_size: 1,
-        };
-
-        assert_eq!(parameters.mismatch_bound.get(207), 10.0);
-        assert_eq!(parameters.mismatch_bound.get(176), 9.0);
-        assert_eq!(parameters.mismatch_bound.get(146), 8.0);
-        assert_eq!(parameters.mismatch_bound.get(117), 7.0);
-        assert_eq!(parameters.mismatch_bound.get(90), 6.0);
-        assert_eq!(parameters.mismatch_bound.get(64), 5.0);
-        assert_eq!(parameters.mismatch_bound.get(42), 4.0);
-        assert_eq!(parameters.mismatch_bound.get(22), 3.0);
-        assert_eq!(parameters.mismatch_bound.get(17), 2.0);
-        assert_eq!(parameters.mismatch_bound.get(8), 0.0);
-        assert_eq!(parameters.mismatch_bound.get(1), 0.0);
+        assert_eq!(mismatch_bound.get(207), 10.0);
+        assert_eq!(mismatch_bound.get(176), 9.0);
+        assert_eq!(mismatch_bound.get(146), 8.0);
+        assert_eq!(mismatch_bound.get(117), 7.0);
+        assert_eq!(mismatch_bound.get(90), 6.0);
+        assert_eq!(mismatch_bound.get(64), 5.0);
+        assert_eq!(mismatch_bound.get(42), 4.0);
+        assert_eq!(mismatch_bound.get(22), 3.0);
+        assert_eq!(mismatch_bound.get(17), 2.0);
+        assert_eq!(mismatch_bound.get(8), 0.0);
+        assert_eq!(mismatch_bound.get(1), 0.0);
     }
 
     #[test]
@@ -233,14 +244,7 @@ mod tests {
         let difference_model = VindijaPWM::new();
         let representative_mismatch_boundary =
             difference_model.get_representative_mismatch_penalty();
-
-        let parameters = AlignmentParameters {
-            difference_model,
-            mismatch_bound: Discrete::new(0.06, 0.02, representative_mismatch_boundary),
-            penalty_gap_open: 1.0,
-            penalty_gap_extend: 1.0,
-            chunk_size: 1,
-        };
+        let mismatch_bound = Discrete::new(0.06, 0.02, representative_mismatch_boundary);
 
         let comparison = " 17 bp:\t1 mismatch
  20 bp:\t2 mismatches
@@ -252,6 +256,6 @@ mod tests {
 208 bp:\t8 mismatches
 244 bp:\t9 mismatches";
 
-        assert_eq!(comparison, format!("{}", parameters.mismatch_bound));
+        assert_eq!(comparison, format!("{}", mismatch_bound));
     }
 }

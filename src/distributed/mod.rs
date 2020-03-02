@@ -3,12 +3,10 @@ pub mod worker;
 
 use crate::{
     map::HitInterval,
-    mismatch_bound::MismatchBound,
-    sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, Record},
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{collections::BinaryHeap, error::Error, marker::PhantomData};
+use serde::{Deserialize, Serialize};
+use std::{collections::BinaryHeap, error::Error};
 
 trait Message {
     const PROTO_LEN: usize = 8;
@@ -16,30 +14,21 @@ trait Message {
 
 /// Task wrapped in a Struct for sending to a worker
 #[derive(Serialize, Deserialize, Debug)]
-struct TaskSheet<T, U> {
+struct TaskSheet {
     encoded_size: u64,
     chunk_id: usize,
     records: Vec<Record>,
     reference_path: Option<String>,
-    alignment_parameters: Option<AlignmentParameters<T, U>>,
+    alignment_parameters: Option<AlignmentParameters>,
 }
 
-impl<T, U> Message for TaskSheet<T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync,
-{
-}
+impl Message for TaskSheet {}
 
-impl<T, U> TaskSheet<T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync,
-{
+impl TaskSheet {
     fn from_records(
         read_set: usize,
         records: Vec<Record>,
-        alignment_parameters: Option<AlignmentParameters<T, U>>,
+        alignment_parameters: Option<AlignmentParameters>,
     ) -> Self {
         Self {
             encoded_size: 0,
@@ -84,43 +73,35 @@ impl ResultSheet {
 }
 
 #[derive(Debug)]
-struct TaskRxBuffer<T, U> {
+struct TaskRxBuffer {
     pub expected_size: usize,
     pub buf: Vec<u8>,
-    phantom_data_t: PhantomData<T>,
-    phantom_data_u: PhantomData<U>,
 }
 
-impl<T, U> TaskRxBuffer<T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync,
-{
+impl TaskRxBuffer {
     fn new() -> Self {
         Self {
-            buf: vec![0; TaskSheet::<T, U>::PROTO_LEN],
-            expected_size: TaskSheet::<T, U>::PROTO_LEN,
-            phantom_data_t: PhantomData,
-            phantom_data_u: PhantomData,
+            buf: vec![0; TaskSheet::PROTO_LEN],
+            expected_size: TaskSheet::PROTO_LEN,
         }
     }
 
     fn reset(&mut self) {
         self.buf.clear();
         self.buf
-            .extend(std::iter::repeat(0).take(TaskSheet::<T, U>::PROTO_LEN));
-        self.expected_size = TaskSheet::<T, U>::PROTO_LEN;
+            .extend(std::iter::repeat(0).take(TaskSheet::PROTO_LEN));
+        self.expected_size = TaskSheet::PROTO_LEN;
     }
 
     fn buf_mut_unfilled(&mut self) -> &mut [u8] {
-        if self.expected_size == TaskSheet::<T, U>::PROTO_LEN {
+        if self.expected_size == TaskSheet::PROTO_LEN {
             &mut self.buf
         } else {
-            &mut self.buf[TaskSheet::<T, U>::PROTO_LEN..]
+            &mut self.buf[TaskSheet::PROTO_LEN..]
         }
     }
 
-    fn decode_and_reset(&mut self) -> Result<TaskSheet<T, U>, Box<dyn Error>> {
+    fn decode_and_reset(&mut self) -> Result<TaskSheet, Box<dyn Error>> {
         let out = bincode::deserialize(&self.buf)?;
         self.reset();
         Ok(out)
@@ -130,7 +111,7 @@ where
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf
-            .extend(std::iter::repeat(0).take(self.expected_size - TaskSheet::<T, U>::PROTO_LEN));
+            .extend(std::iter::repeat(0).take(self.expected_size - TaskSheet::PROTO_LEN));
         Ok(())
     }
 }
@@ -193,28 +174,20 @@ impl ResultRxBuffer {
     }
 }
 
-struct TaskTxBuffer<T, U> {
+struct TaskTxBuffer {
     bytes_sent: usize,
     buf: Vec<u8>,
-    phantom_data_t: PhantomData<T>,
-    phantom_data_u: PhantomData<U>,
 }
 
-impl<T, U> TaskTxBuffer<T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync,
-{
+impl TaskTxBuffer {
     fn new() -> Self {
         Self {
             bytes_sent: 0,
             buf: Vec::new(),
-            phantom_data_t: PhantomData,
-            phantom_data_u: PhantomData,
         }
     }
 
-    fn reload(&mut self, mut task_sheet: TaskSheet<T, U>) {
+    fn reload(&mut self, mut task_sheet: TaskSheet) {
         self.bytes_sent = 0;
         self.buf = task_sheet.encode();
     }

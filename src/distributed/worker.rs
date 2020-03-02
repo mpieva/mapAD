@@ -1,35 +1,27 @@
 use crate::{
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     map,
-    mismatch_bound::MismatchBound,
-    sequence_difference_models::SequenceDifferenceModel,
     utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
 use log::debug;
 use rayon::prelude::*;
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     cell::RefCell,
     collections::BinaryHeap,
     error::Error,
-    fmt::Debug,
     io,
     io::{Read, Write},
     net::TcpStream,
 };
 
-pub struct Worker<T, U> {
-    network_buffer: TaskRxBuffer<T, U>,
+pub struct Worker {
+    network_buffer: TaskRxBuffer,
     connection: TcpStream,
     fmd_data: Option<UnderlyingDataFMDIndex>,
-    alignment_parameters: Option<AlignmentParameters<T, U>>,
+    alignment_parameters: Option<AlignmentParameters>,
 }
 
-impl<T, U> Worker<T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync + Debug,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync + Debug,
-{
+impl Worker {
     pub fn new(host: &str, port: &str) -> Result<Self, io::Error> {
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
@@ -104,7 +96,7 @@ where
 
     /// Reads task sheet completely from connection in a blocking way
     /// and decodes it eventually
-    fn read_message(&mut self) -> Result<TaskSheet<T, U>, io::Error> {
+    fn read_message(&mut self) -> Result<TaskSheet, io::Error> {
         // Read and decode first bytes in which the message size is stored
         if self
             .connection

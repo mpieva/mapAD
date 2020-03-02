@@ -1,3 +1,5 @@
+use crate::mismatch_bound::MismatchBoundDispatch;
+use crate::sequence_difference_models::SequenceDifferenceModelDispatch;
 use bio::{
     alphabets::dna,
     data_structures::{
@@ -8,7 +10,7 @@ use bio::{
 use log::debug;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
-use std::fs::File;
+use std::{fmt::Debug, fs::File};
 
 /// Auxiliary record data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,9 +82,9 @@ impl From<bam::Record> for Record {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AlignmentParameters<T, U> {
-    pub difference_model: T,
-    pub mismatch_bound: U,
+pub struct AlignmentParameters {
+    pub difference_model: SequenceDifferenceModelDispatch,
+    pub mismatch_bound: MismatchBoundDispatch,
     pub penalty_gap_open: f32,
     pub penalty_gap_extend: f32,
     pub chunk_size: usize,

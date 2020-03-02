@@ -1,5 +1,4 @@
-use crate::mismatch_bound::MismatchBound;
-use crate::{distributed::*, map, sequence_difference_models::*, utils::*};
+use crate::{distributed::*, map, utils::*};
 use log::debug;
 use mio::{
     net::{TcpListener, TcpStream},
@@ -8,15 +7,12 @@ use mio::{
 use rand;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap},
     error::Error,
-    fmt::Debug,
     fs::File,
     io::{ErrorKind::WouldBlock, Read, Write},
     iter::Peekable,
-    marker::PhantomData,
     net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
@@ -35,22 +31,16 @@ where
 }
 
 /// Keeps track of the processing state of chunks of reads
-struct TaskQueue<'a, T, U> {
+struct TaskQueue<'a> {
     chunk_id: usize,
     chunk_size: usize,
     records: Peekable<bam::Records<'a, bam::Reader>>,
-    phantom_data_t: PhantomData<T>,
-    phantom_data_u: PhantomData<U>,
 }
 
-impl<'a, T, U> Iterator for TaskQueue<'a, T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync + Clone,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync + Debug + Clone,
-{
-    type Item = TaskSheet<T, U>;
+impl<'a> Iterator for TaskQueue<'a> {
+    type Item = TaskSheet;
 
-    fn next(&mut self) -> Option<TaskSheet<T, U>> {
+    fn next(&mut self) -> Option<TaskSheet> {
         let source_iterator_loan = &mut self.records;
 
         // If the underlying iterator is exhausted return None, too
@@ -70,42 +60,29 @@ where
     }
 }
 
-impl<'a, T, U> TaskQueue<'a, T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync + Clone,
-{
+impl<'a> TaskQueue<'a> {
     fn from_reader(reader: &'a mut bam::Reader, chunk_size: usize) -> Self {
         Self {
             chunk_id: 0,
             chunk_size,
             records: reader.records().peekable(),
-            phantom_data_t: PhantomData,
-            phantom_data_u: PhantomData,
         }
     }
 }
 
-pub struct Dispatcher<'a, 'b, T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync + Debug + Clone,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync + Debug + Clone,
-{
+pub struct Dispatcher<'a, 'b> {
     reads_path: &'b str,
     reference_path: &'b str,
     out_file_path: &'b str,
-    alignment_parameters: &'a AlignmentParameters<T, U>,
+    alignment_parameters: &'a AlignmentParameters,
     connections: HashMap<Token, TcpStream>,
     result_buffers: HashMap<Token, ResultRxBuffer>,
-    send_buffers: HashMap<Token, TaskTxBuffer<T, U>>,
+    send_buffers: HashMap<Token, TaskTxBuffer>,
     checklist: BTreeMap<usize, Token>,
     failed_tasks: BTreeSet<usize>,
 }
 
-impl<'a, 'b, T, U> Dispatcher<'a, 'b, T, U>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync + Debug + Clone,
-    U: MismatchBound + Serialize + DeserializeOwned + Sync + Debug + Clone,
-{
+impl<'a, 'b> Dispatcher<'a, 'b> {
     // Token numbering starts with '1' because of weird behaviour with Token(0) on BSDs
     const DISPATCHER_TOKEN: Token = Token(1);
 
@@ -113,7 +90,7 @@ where
         reads_path: &'b str,
         reference_path: &'b str,
         out_file_path: &'b str,
-        alignment_parameters: &'a AlignmentParameters<T, U>,
+        alignment_parameters: &'a AlignmentParameters,
     ) -> Result<Self, bam::Error> {
         Ok(Self {
             reads_path,
@@ -295,7 +272,7 @@ where
         }
     }
 
-    fn all_tasks_finished(&mut self, task_queue: &mut Peekable<TaskQueue<T, U>>) -> bool {
+    fn all_tasks_finished(&mut self, task_queue: &mut Peekable<TaskQueue>) -> bool {
         task_queue.peek().is_none() && self.checklist.is_empty() && self.failed_tasks.is_empty()
     }
 
@@ -416,7 +393,7 @@ where
     fn write_tx_buffer(
         &mut self,
         worker: Token,
-        task_queue: &mut Peekable<TaskQueue<T, U>>,
+        task_queue: &mut Peekable<TaskQueue>,
     ) -> TransportState<std::io::Error> {
         let connection = self
             .connections

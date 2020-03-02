@@ -31,7 +31,7 @@ use snap;
 
 use crate::{
     mismatch_bound::MismatchBound,
-    sequence_difference_models::SequenceDifferenceModel,
+    sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
     utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
 
@@ -382,11 +382,11 @@ struct BiDArray {
 }
 
 impl BiDArray {
-    pub(crate) fn new<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
+    pub(crate) fn new(
         pattern: &[u8],
         base_qualities: &[u8],
         split: usize,
-        alignment_parameters: &AlignmentParameters<T, U>,
+        alignment_parameters: &AlignmentParameters,
         fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     ) -> Self {
         Self {
@@ -410,12 +410,12 @@ impl BiDArray {
         }
     }
 
-    fn compute_part<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
+    fn compute_part(
         pattern_part: &[u8],
         base_qualities_part: &[u8],
         direction: Direction,
         full_pattern_length: usize,
-        alignment_parameters: &AlignmentParameters<T, U>,
+        alignment_parameters: &AlignmentParameters,
         fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     ) -> SmallVec<[f32; 64]> {
         let directed_pattern_iterator = || match direction {
@@ -544,11 +544,11 @@ where
 }
 
 /// Loads index files and launches the mapping process
-pub fn run<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
+pub fn run(
     reads_path: &str,
     reference_path: &str,
     out_file_path: &str,
-    alignment_parameters: &AlignmentParameters<T, U>,
+    alignment_parameters: &AlignmentParameters,
 ) -> Result<(), Box<dyn Error>> {
     debug!("Load FMD-index");
     let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
@@ -611,8 +611,8 @@ pub fn create_bam_header(
 }
 
 /// Maps reads and writes them to a file in BAM format
-fn map_reads<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
-    alignment_parameters: &AlignmentParameters<T, U>,
+fn map_reads(
+    alignment_parameters: &AlignmentParameters,
     reads_path: &str,
     out_file_path: &str,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
@@ -740,10 +740,10 @@ where
 /// Computes optimal per-base alignment scores for a read,
 /// conditioned on base qualitites and scoring model.
 /// This function panics if `pattern` and `base_qualities` are not of equal length.
-pub fn compute_optimal_scores<T: SequenceDifferenceModel + Sync>(
+pub fn compute_optimal_scores(
     pattern: &[u8],
     base_qualities: &[u8],
-    difference_model: &T,
+    difference_model: &SequenceDifferenceModelDispatch,
 ) -> SmallVec<[f32; 128]> {
     assert_eq!(pattern.len(), base_qualities.len());
     pattern
@@ -944,10 +944,10 @@ fn extract_edit_operations(
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
-fn check_and_push<T: SequenceDifferenceModel, U: MismatchBound>(
+fn check_and_push(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
-    alignment_parameters: &AlignmentParameters<T, U>,
+    alignment_parameters: &AlignmentParameters,
     lower_bound: f32,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<Option<EditOperation>>,
@@ -1025,10 +1025,10 @@ fn print_debug(
 
 /// Finds all suffix array intervals for the current pattern
 /// w.r.t. supplied alignment parameters
-pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync, U: MismatchBound + Sync>(
+pub fn k_mismatch_search(
     pattern: &[u8],
     base_qualities: &[u8],
-    parameters: &AlignmentParameters<T, U>,
+    parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
 ) -> BinaryHeap<HitInterval> {
@@ -1286,10 +1286,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync, U: MismatchBound + S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        mismatch_bound::Discrete,
-        sequence_difference_models::{LibraryPrep, SimpleAncientDnaModel, VindijaPWM},
-    };
+    use crate::{mismatch_bound::*, sequence_difference_models::*};
     use assert_approx_eq::assert_approx_eq;
     use bio::{
         alphabets,
@@ -1299,26 +1296,6 @@ mod tests {
         },
     };
     use rust_htslib::bam;
-
-    struct TestDiscreteMB {
-        cutoff: f32,
-    }
-
-    impl MismatchBound for TestDiscreteMB {
-        fn reject(&self, value: f32, _read_length: usize) -> bool {
-            value < self.cutoff
-        }
-
-        fn reject_iterative(&self, _value: f32, _reference: f32) -> bool {
-            false
-        }
-    }
-
-    impl TestDiscreteMB {
-        fn new(cutoff: f32) -> Self {
-            Self { cutoff }
-        }
-    }
 
     fn build_auxiliary_structures(
         reference: &mut Vec<u8>,
@@ -1362,30 +1339,15 @@ mod tests {
 
     #[test]
     fn test_inexact_search() {
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return 0.5;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SequenceDifferenceModelDispatch::from(TestDifferenceModel {
+            deam_score: 0.5,
+            mm_score: -1.0,
+            match_score: 0.0,
+        });
 
         let parameters = AlignmentParameters {
             difference_model,
-            mismatch_bound: TestDiscreteMB::new(-1.0),
+            mismatch_bound: TestBound { threshold: -1.0 }.into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1427,30 +1389,15 @@ mod tests {
 
     #[test]
     fn test_reverse_strand_search() {
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -10.0;
-                } else if from != to {
-                    return -10.0;
-                } else {
-                    return 1.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SequenceDifferenceModelDispatch::from(TestDifferenceModel {
+            deam_score: -10.0,
+            mm_score: -10.0,
+            match_score: 1.0,
+        });
 
         let parameters = AlignmentParameters {
             difference_model,
-            mismatch_bound: TestDiscreteMB::new(-1.0),
+            mismatch_bound: TestBound { threshold: -1.0 }.into(),
             penalty_gap_open: -20.0,
             penalty_gap_extend: -10.0,
             chunk_size: 1,
@@ -1496,7 +1443,7 @@ mod tests {
         let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let fmd_index = data_fmd_index.reconstruct();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.3,
                 three_prime_overhang: 0.3,
@@ -1504,14 +1451,14 @@ mod tests {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.8,
             divergence: 0.02,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
         let parameters = AlignmentParameters {
             difference_model,
-            mismatch_bound: TestDiscreteMB::new(0.0),
+            mismatch_bound: TestBound { threshold: 0.0 }.into(),
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -1552,30 +1499,15 @@ mod tests {
 
     #[test]
     fn test_gapped_alignment() {
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -10.0;
-                } else if from != to {
-                    return -10.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SequenceDifferenceModelDispatch::from(TestDifferenceModel {
+            deam_score: -10.0,
+            mm_score: -10.0,
+            match_score: 0.0,
+        });
 
         let parameters = AlignmentParameters {
             difference_model,
-            mismatch_bound: TestDiscreteMB::new(-2.0),
+            mismatch_bound: TestBound { threshold: -2.0 }.into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1614,12 +1546,12 @@ mod tests {
 
     #[test]
     fn test_vindija_pwm_alignment() {
-        let difference_model = VindijaPWM::new();
+        let difference_model = SequenceDifferenceModelDispatch::from(VindijaPWM::new());
 
         let parameters = AlignmentParameters {
             difference_model,
             // Disable gaps
-            mismatch_bound: TestDiscreteMB::new(-30.0),
+            mismatch_bound: TestBound { threshold: -30.0 }.into(),
             penalty_gap_open: -200.0,
             penalty_gap_extend: -100.0,
             chunk_size: 1,
@@ -1750,7 +1682,7 @@ mod tests {
 
     #[test]
     fn test_corner_cases() {
-        let difference_model = VindijaPWM::new();
+        let difference_model = SequenceDifferenceModelDispatch::from(VindijaPWM::new());
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
 
         let parameters = AlignmentParameters {
@@ -1758,7 +1690,7 @@ mod tests {
             penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
             difference_model,
             chunk_size: 1,
-            mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty),
+            mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty).into(),
         };
 
         let alphabet = alphabets::dna::alphabet();
@@ -1809,31 +1741,15 @@ mod tests {
 
     #[test]
     fn test_cigar_indels() {
-        #[derive(Clone)]
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -10.0;
-                } else if from != to {
-                    return -10.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = TestDifferenceModel {
+            deam_score: -10.0,
+            mm_score: -10.0,
+            match_score: 0.0,
+        };
 
         let parameters = AlignmentParameters {
-            difference_model: difference_model.clone(),
-            mismatch_bound: TestDiscreteMB::new(-3.0),
+            difference_model: difference_model.clone().into(),
+            mismatch_bound: TestBound { threshold: -3.0 }.into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1997,8 +1913,8 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let parameters = AlignmentParameters {
-            difference_model,
-            mismatch_bound: TestDiscreteMB::new(-4.0),
+            difference_model: difference_model.into(),
+            mismatch_bound: TestBound { threshold: -4.0 }.into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2031,31 +1947,15 @@ mod tests {
 
     #[test]
     fn test_md_tag() {
-        #[derive(Clone)]
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -1.0;
-                } else if from != to {
-                    return -2.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = TestDifferenceModel {
+            deam_score: -1.0,
+            mm_score: -2.0,
+            match_score: 0.0,
+        };
 
         let parameters = AlignmentParameters {
-            difference_model: difference_model.clone(),
-            mismatch_bound: TestDiscreteMB::new(-1.0),
+            difference_model: difference_model.clone().into(),
+            mismatch_bound: TestBound { threshold: -1.0 }.into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2103,8 +2003,8 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let parameters = AlignmentParameters {
-            difference_model,
-            mismatch_bound: TestDiscreteMB::new(-3.0),
+            difference_model: difference_model.into(),
+            mismatch_bound: TestBound { threshold: -3.0 }.into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2214,30 +2114,15 @@ mod tests {
 
     #[test]
     fn test_reverse_strand_search_2() {
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -1.0;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SequenceDifferenceModelDispatch::from(TestDifferenceModel {
+            deam_score: -1.0,
+            mm_score: -1.0,
+            match_score: 0.0,
+        });
 
         let parameters = AlignmentParameters {
             difference_model,
-            mismatch_bound: TestDiscreteMB::new(0.0),
+            mismatch_bound: TestBound { threshold: 0.0 }.into(),
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2294,30 +2179,15 @@ mod tests {
 
     #[test]
     fn test_edit_operations_reverse_strand() {
-        struct TestDifferenceModel {}
-        impl SequenceDifferenceModel for TestDifferenceModel {
-            fn get(
-                &self,
-                _i: usize,
-                _read_length: usize,
-                from: u8,
-                to: u8,
-                _base_quality: u8,
-            ) -> f32 {
-                if from == b'C' && to == b'T' {
-                    return -1.0;
-                } else if from != to {
-                    return -1.0;
-                } else {
-                    return 0.0;
-                }
-            }
-        }
-        let difference_model = TestDifferenceModel {};
+        let difference_model = SequenceDifferenceModelDispatch::from(TestDifferenceModel {
+            deam_score: -1.0,
+            mm_score: -1.0,
+            match_score: 0.0,
+        });
 
         let parameters = AlignmentParameters {
             difference_model,
-            mismatch_bound: TestDiscreteMB::new(-1.0),
+            mismatch_bound: TestBound { threshold: -1.0 }.into(),
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,

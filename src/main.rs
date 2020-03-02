@@ -4,7 +4,10 @@ use mapad::{
     distributed::{dispatcher, worker},
     index, map,
     mismatch_bound::{Continuous, Discrete},
-    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
+    sequence_difference_models::{
+        LibraryPrep, SequenceDifferenceModel, SequenceDifferenceModelDispatch,
+        SimpleAncientDnaModel,
+    },
     utils,
 };
 
@@ -262,7 +265,7 @@ fn main() {
                 ),
                 _ => unreachable!(),
             };
-            let difference_model = SimpleAncientDnaModel {
+            let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
                 library_prep,
                 ds_deamination_rate: value_t!(map_matches.value_of("ds_deamination_rate"), f32)
                     .unwrap_or_else(|e| e.exit()),
@@ -272,105 +275,71 @@ fn main() {
                 divergence: value_t!(map_matches.value_of("divergence"), f32)
                     .unwrap_or_else(|e| e.exit())
                     / 3.0,
-            };
+            });
 
             let reads_path = map_matches.value_of("reads").unwrap();
             let reference_path = map_matches.value_of("reference").unwrap();
             let out_file_path = map_matches.value_of("output").unwrap();
 
-            if map_matches.is_present("poisson_prob") {
-                let mismatch_bound = Discrete::new(
+            let mismatch_bound = if map_matches.is_present("poisson_prob") {
+                Discrete::new(
                     value_t!(map_matches.value_of("poisson_prob"), f32)
                         .unwrap_or_else(|e| e.exit()),
                     0.02,
                     difference_model.get_representative_mismatch_penalty(),
-                );
-
-                let alignment_parameters = utils::AlignmentParameters {
-                    penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
-                        .unwrap_or_else(|e| e.exit())
-                        .log2(),
-                    penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
-                    difference_model,
-                    chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
-                        .unwrap_or_else(|e| e.exit()),
-                    mismatch_bound,
-                };
-
-                if map_matches.is_present("dispatcher") {
-                    println!("Dispatcher mode");
-                    let mut dispatcher = dispatcher::Dispatcher::new(
-                        reads_path,
-                        reference_path,
-                        out_file_path,
-                        &alignment_parameters,
-                    )
-                    .expect("Application error");
-
-                    let port =
-                        value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
-                    if let Err(e) = dispatcher.run(port) {
-                        println!("Application error: {}", e);
-                    }
-                } else if let Err(e) = map::run(
-                    reads_path,
-                    reference_path,
-                    out_file_path,
-                    &alignment_parameters,
-                ) {
-                    println!("Application error: {}", e);
-                }
+                )
+                .into()
             } else {
-                let mismatch_bound = Continuous {
+                Continuous {
                     cutoff: value_t!(map_matches.value_of("as_cutoff"), f32)
                         .unwrap_or_else(|e| e.exit())
                         * -1.0,
                     exponent: value_t!(map_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
                     representative_mismatch_penalty: difference_model
                         .get_representative_mismatch_penalty(),
-                };
+                }
+                .into()
+            };
 
-                let alignment_parameters = utils::AlignmentParameters {
-                    penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
-                        .unwrap_or_else(|e| e.exit())
-                        .log2(),
-                    penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
-                    difference_model,
-                    chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
-                        .unwrap_or_else(|e| e.exit()),
-                    mismatch_bound,
-                };
+            let alignment_parameters = utils::AlignmentParameters {
+                penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
+                    .unwrap_or_else(|e| e.exit())
+                    .log2(),
+                penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
+                difference_model,
+                chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
+                    .unwrap_or_else(|e| e.exit()),
+                mismatch_bound,
+            };
 
-                if map_matches.is_present("dispatcher") {
-                    println!("Dispatcher mode");
-                    let mut dispatcher = dispatcher::Dispatcher::new(
-                        reads_path,
-                        reference_path,
-                        out_file_path,
-                        &alignment_parameters,
-                    )
-                    .expect("Application error");
-
-                    let port =
-                        value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
-                    if let Err(e) = dispatcher.run(port) {
-                        println!("Application error: {}", e);
-                    }
-                } else if let Err(e) = map::run(
+            if map_matches.is_present("dispatcher") {
+                println!("Dispatcher mode");
+                let mut dispatcher = dispatcher::Dispatcher::new(
                     reads_path,
                     reference_path,
                     out_file_path,
                     &alignment_parameters,
-                ) {
+                )
+                .expect("Application error");
+
+                let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+                if let Err(e) = dispatcher.run(port) {
                     println!("Application error: {}", e);
                 }
-            };
+            } else if let Err(e) = map::run(
+                reads_path,
+                reference_path,
+                out_file_path,
+                &alignment_parameters,
+            ) {
+                println!("Application error: {}", e);
+            }
         }
 
         ("worker", Some(worker_matches)) => {
             let host = worker_matches.value_of("host").unwrap();
             let port = worker_matches.value_of("port").unwrap();
-            let mut worker = worker::Worker::<SimpleAncientDnaModel, Discrete>::new(
+            let mut worker = worker::Worker::new(
                 host,
                 port,
             ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
