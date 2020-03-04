@@ -1,33 +1,27 @@
 use crate::{
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     map,
-    sequence_difference_models::SequenceDifferenceModel,
-    utils::{AlignmentParameters, AllowedMismatches, Record, UnderlyingDataFMDIndex},
+    utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
 use log::debug;
 use rayon::prelude::*;
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     cell::RefCell,
     collections::BinaryHeap,
     error::Error,
-    fmt::Debug,
     io,
     io::{Read, Write},
     net::TcpStream,
 };
 
-pub struct Worker<T> {
-    network_buffer: TaskRxBuffer<T>,
+pub struct Worker {
+    network_buffer: TaskRxBuffer,
     connection: TcpStream,
     fmd_data: Option<UnderlyingDataFMDIndex>,
-    alignment_parameters: Option<AlignmentParameters<T>>,
+    alignment_parameters: Option<AlignmentParameters>,
 }
 
-impl<T> Worker<T>
-where
-    T: SequenceDifferenceModel + Serialize + DeserializeOwned + Sync + Debug,
-{
+impl Worker {
     pub fn new(host: &str, port: &str) -> Result<Self, io::Error> {
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
@@ -62,7 +56,6 @@ where
                         if let Some(alignment_parameters) = &self.alignment_parameters {
                             debug!("Reconstruct FMD-index");
                             let fmd_index = data_fmd_index.reconstruct();
-                            let allowed_mismatches = AllowedMismatches::new(alignment_parameters);
 
                             debug!("Map reads");
                             thread_local! {
@@ -71,24 +64,14 @@ where
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
                                 .map(|record: Record| {
-                                    let seq_len = record.sequence.len();
-                                    let allowed_number_of_mismatches =
-                                        allowed_mismatches.get(seq_len);
-                                    let representative_mismatch_penalty = alignment_parameters
-                                        .difference_model
-                                        .get_representative_mismatch_penalty();
-
                                     STACK_BUF.with(|stack_buf| {
                                         let hit_intervals = map::k_mismatch_search(
                                             &record.sequence,
                                             &record.base_qualities,
-                                            allowed_number_of_mismatches
-                                                * representative_mismatch_penalty,
                                             alignment_parameters,
                                             &fmd_index,
                                             &mut stack_buf.borrow_mut(),
                                         );
-
                                         (record, hit_intervals)
                                     })
                                 })
@@ -113,7 +96,7 @@ where
 
     /// Reads task sheet completely from connection in a blocking way
     /// and decodes it eventually
-    fn read_message(&mut self) -> Result<TaskSheet<T>, io::Error> {
+    fn read_message(&mut self) -> Result<TaskSheet, io::Error> {
         // Read and decode first bytes in which the message size is stored
         if self
             .connection

@@ -62,9 +62,10 @@ Please note that the resulting binary is not portable.
 The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively. 
 Adding ` --help` will print a list of available and required command line options. 
 
-### Example
+### Examples
+#### 1) Vindija-like deamination parameters, BWA-like mismatch bound
 The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference.
-#### Local 
+##### Local
 ```bash
 mapad -vvv map \
 --library single_stranded \
@@ -80,7 +81,7 @@ mapad -vvv map \
 --output "${output_bam}"
 ```
 
-#### Distributed
+##### Distributed
 The following example starts a dispatcher node and then spawns multi-threaded workers on cluster nodes that have more than 64GB of free RAM. 
 Start the dispatcher:
 ```bash
@@ -97,6 +98,26 @@ qsub -N "mapAD_worker" -pe "smp" 1-128 -t 1-65535 -l "h_vmem=64G,s_vmem=64G,virt
 ```bash
 #!/bin/bash
 mapad -vvv worker --host <HOST>
+```
+
+#### 2) Sima-like deamination model, continuous mismatch bound
+The following example aligns reads that are expected to have a Sima-like deamination pattern to an existing index of the hg19 reference.
+It uses a continuous mismatch bound that seems to maximize sensitivity, specificity, and speed -- especially at short read lengths.
+##### Local
+```bash
+mapad -vvv map \
+--library single_stranded \
+-c 0.375 \
+-e 1.1 \
+-f 0.6 \
+-t 0.55 \
+-d 0.001 \
+-s 1.0 \
+-D 0.02 \
+-i 0.00001 \
+--reads "${input_bam}" \
+--reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
+--output "${output_bam}"
 ```
 
 ## Performance/ Hardware Requirements

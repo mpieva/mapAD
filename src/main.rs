@@ -3,7 +3,11 @@ use clap::{crate_description, crate_version, value_t, App, AppSettings, Arg, Sub
 use mapad::{
     distributed::{dispatcher, worker},
     index, map,
-    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
+    mismatch_bound::{Continuous, Discrete},
+    sequence_difference_models::{
+        LibraryPrep, SequenceDifferenceModel, SequenceDifferenceModelDispatch,
+        SimpleAncientDnaModel,
+    },
     utils,
 };
 
@@ -87,14 +91,29 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("poisson_prob")
-                        .required(true)
                         .short("p")
-                        .conflicts_with("max_diff")
+                        .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under 0.02 base error rate")
                         .takes_value(true)
                         // .default_value("0.04")
                         .value_name("PROBABILITY")
                         .validator(probability_validator),
+                )
+                .arg(
+                Arg::with_name("as_cutoff")
+                    .short("c")
+                    .group("allowed_mm")
+                    .help("Per-base average log-likelihood cutoff")
+                    .takes_value(true)
+                    .value_name("FLOAT"),
+                )
+                .arg(
+                    Arg::with_name("as_cutoff_exponent")
+                        .short("e")
+                        .help("Exponent for read length dependency")
+                        .takes_value(true)
+                        .default_value("1.0")
+                        .value_name("FLOAT"),
                 )
                 .arg(
                     Arg::with_name("library")
@@ -246,7 +265,7 @@ fn main() {
                 ),
                 _ => unreachable!(),
             };
-            let difference_model = SimpleAncientDnaModel {
+            let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
                 library_prep,
                 ds_deamination_rate: value_t!(map_matches.value_of("ds_deamination_rate"), f32)
                     .unwrap_or_else(|e| e.exit()),
@@ -256,11 +275,33 @@ fn main() {
                 divergence: value_t!(map_matches.value_of("divergence"), f32)
                     .unwrap_or_else(|e| e.exit())
                     / 3.0,
+            });
+
+            let reads_path = map_matches.value_of("reads").unwrap();
+            let reference_path = map_matches.value_of("reference").unwrap();
+            let out_file_path = map_matches.value_of("output").unwrap();
+
+            let mismatch_bound = if map_matches.is_present("poisson_prob") {
+                Discrete::new(
+                    value_t!(map_matches.value_of("poisson_prob"), f32)
+                        .unwrap_or_else(|e| e.exit()),
+                    0.02,
+                    difference_model.get_representative_mismatch_penalty(),
+                )
+                .into()
+            } else {
+                Continuous {
+                    cutoff: value_t!(map_matches.value_of("as_cutoff"), f32)
+                        .unwrap_or_else(|e| e.exit())
+                        * -1.0,
+                    exponent: value_t!(map_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
+                    representative_mismatch_penalty: difference_model
+                        .get_representative_mismatch_penalty(),
+                }
+                .into()
             };
+
             let alignment_parameters = utils::AlignmentParameters {
-                base_error_rate: 0.02,
-                poisson_threshold: value_t!(map_matches.value_of("poisson_prob"), f32)
-                    .unwrap_or_else(|e| e.exit()),
                 penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
                     .unwrap_or_else(|e| e.exit())
                     .log2(),
@@ -268,10 +309,8 @@ fn main() {
                 difference_model,
                 chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
                     .unwrap_or_else(|e| e.exit()),
+                mismatch_bound,
             };
-            let reads_path = map_matches.value_of("reads").unwrap();
-            let reference_path = map_matches.value_of("reference").unwrap();
-            let out_file_path = map_matches.value_of("output").unwrap();
 
             if map_matches.is_present("dispatcher") {
                 println!("Dispatcher mode");
@@ -296,10 +335,11 @@ fn main() {
                 println!("Application error: {}", e);
             }
         }
+
         ("worker", Some(worker_matches)) => {
             let host = worker_matches.value_of("host").unwrap();
             let port = worker_matches.value_of("port").unwrap();
-            let mut worker = worker::Worker::<SimpleAncientDnaModel>::new(
+            let mut worker = worker::Worker::new(
                 host,
                 port,
             ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");

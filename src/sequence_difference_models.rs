@@ -1,9 +1,9 @@
 use either::Either;
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-// TODO: Use lookup tables instead of computing scores on-demand
-
 /// Sequence difference models are expected to yield only non-positive values (and 0.0), for example log probabilities.
+#[enum_dispatch]
 pub trait SequenceDifferenceModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32;
     fn get_representative_mismatch_penalty(&self) -> f32 {
@@ -27,9 +27,17 @@ pub trait SequenceDifferenceModel {
             Either::Right(iterator)
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
-        .map(|penalty| penalty.min(0.0))
         .fold(std::f32::MIN, |acc, v| acc.max(v))
+        .min(0.0)
     }
+}
+
+#[enum_dispatch(SequenceDifferenceModel)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SequenceDifferenceModelDispatch {
+    SimpleAncientDnaModel,
+    VindijaPWM,
+    TestDifferenceModel,
 }
 
 /// Library preparation methods commonly used for ancient DNA. Values are overhang probabilities.
@@ -134,7 +142,7 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
 /// Very simple model of ancient DNA degradation for starters.
 /// It only takes C->T deaminations into account and assumes
 /// symmetry between 5' and 3' ends of the deamination pattern.
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct VindijaPWM {
     // "Sparse" position probability matrix
     ppm_read_ends_symmetric_ct: [f32; 7],
@@ -185,10 +193,28 @@ impl SequenceDifferenceModel for VindijaPWM {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestDifferenceModel {
+    pub deam_score: f32,
+    pub mm_score: f32,
+    pub match_score: f32,
+}
+
+impl SequenceDifferenceModel for TestDifferenceModel {
+    fn get(&self, _i: usize, _read_len: usize, from: u8, to: u8, _base_quality: u8) -> f32 {
+        if from == b'C' && to == b'T' {
+            self.deam_score
+        } else if from == to {
+            self.match_score
+        } else {
+            self.mm_score
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use assert_approx_eq::assert_approx_eq;
 
     #[test]

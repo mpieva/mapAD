@@ -10,9 +10,8 @@ use bio::{
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use mapad::{
-    map::k_mismatch_search,
-    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
-    utils::{AlignmentParameters, AllowedMismatches},
+    map::k_mismatch_search, mismatch_bound::*, sequence_difference_models::*,
+    utils::AlignmentParameters,
 };
 use std::collections::BinaryHeap;
 
@@ -20,7 +19,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -28,14 +27,17 @@ fn criterion_benchmark(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
+
+        let mismatch_bound =
+            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
+
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.02,
             difference_model,
+            mismatch_bound,
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -58,8 +60,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let allowed_mismatches = AllowedMismatches::new(&parameters);
-
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
@@ -68,7 +68,6 @@ fn criterion_benchmark(c: &mut Criterion) {
             k_mismatch_search(
                 &pattern,
                 &base_qualities,
-                -allowed_mismatches.get(pattern.len()),
                 &parameters,
                 &fmd_index,
                 &mut stack,
@@ -89,7 +88,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -97,14 +96,17 @@ fn bench_multiple_reads(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
+
+        let mismatch_bound =
+            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
+
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.02,
             difference_model,
+            mismatch_bound,
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -127,8 +129,6 @@ fn bench_multiple_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let allowed_mismatches = AllowedMismatches::new(&parameters);
-
         let patterns = vec![
             "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
                 .as_bytes()
@@ -143,7 +143,6 @@ fn bench_multiple_reads(c: &mut Criterion) {
                 k_mismatch_search(
                     &pattern,
                     &base_qualities,
-                    -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
                     &mut stack,
@@ -165,7 +164,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             .as_bytes()
             .to_owned();
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -173,14 +172,17 @@ fn bench_exogenous_reads(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
+
+        let mismatch_bound =
+            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
+
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.02,
             difference_model,
+            mismatch_bound,
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -203,8 +205,6 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let allowed_mismatches = AllowedMismatches::new(&parameters);
-
         let patterns = vec![
             "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
                 .as_bytes()
@@ -219,7 +219,6 @@ fn bench_exogenous_reads(c: &mut Criterion) {
                 k_mismatch_search(
                     &pattern,
                     &base_qualities,
-                    -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
                     &mut stack,
@@ -234,7 +233,7 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
         let mut ref_seq = "GTCTGCATCCCCAGGACCACCATGGGTGGGGAGGGCAGAGATTGGGGAGCACCTATAGAGGCTCTAATGCTCTAAGGTGACAGTGATGAGGACCTGGGTGCACCCATGAGTGGAGAAGCTAGGCCTGTCCAGAGAAGCAAGACAAACACACACATACACACTCACACACACACAGGCACATATGCATACACAAATACATTGCAT".as_bytes().to_owned();
         let patterns = vec!["ACTAAAGAGCTTCTGCACAGGAAAAGAAACTACCATCAGAACCACCAGGCAACCTACAACATGGGATAAAATTTTCACAACCTACTCATCTGACAAAGGGCCAATATCCAGAATCTACAATGAACTCCAACAAATTTACAAGAAAAAAACAAACAACCCCATCAAAAAGTGGGCAAAGGACATGAACAGACACTTCTCAAAAGAAGATATTTATGCAGCCAAGAAAACACATAAAAA".as_bytes().to_owned(); 100];
 
-        let difference_model = SimpleAncientDnaModel {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: (LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -242,14 +241,16 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
             ds_deamination_rate: 0.001,
             ss_deamination_rate: 0.9,
             divergence: 0.02 / 3.0,
-        };
+        });
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
+
+        let mismatch_bound = MismatchBoundDispatch::from(Discrete::new(0.04, 0.02, representative_mismatch_penalty));
+
         let parameters = AlignmentParameters {
-            base_error_rate: 0.02,
-            poisson_threshold: 0.04,
             difference_model,
+            mismatch_bound,
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -272,8 +273,6 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
         let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
         let fmd_index = FMDIndex::from(fm_index);
 
-        let allowed_mismatches = AllowedMismatches::new(&parameters);
-
         let base_qualities = vec![40; patterns[0].len()];
 
         let mut stack = BinaryHeap::new();
@@ -282,7 +281,6 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
                 k_mismatch_search(
                     &pattern,
                     &base_qualities,
-                    -allowed_mismatches.get(pattern.len()),
                     &parameters,
                     &fmd_index,
                     &mut stack,
