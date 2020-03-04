@@ -969,7 +969,7 @@ fn check_and_push(
 
     if let Some(best_scoring_interval) = intervals.peek() {
         if alignment_parameters.mismatch_bound.reject_iterative(
-            stack_frame.alignment_score,
+            stack_frame.alignment_score + lower_bound,
             best_scoring_interval.alignment_score,
         ) {
             return;
@@ -1092,7 +1092,7 @@ pub fn k_mismatch_search(
         // better scoring frames on the stack, so we are going to stop the search.
         if let Some(best_scoring_interval) = hit_intervals.peek() {
             if parameters.mismatch_bound.reject_iterative(
-                stack_frame.alignment_score,
+                stack_frame.alignment_score + lower_bound,
                 best_scoring_interval.alignment_score,
             ) {
                 break;
