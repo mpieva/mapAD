@@ -66,7 +66,7 @@ where
 
                             debug!("Map reads");
                             thread_local! {
-                                static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 6))
+                                static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 9))
                             }
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()

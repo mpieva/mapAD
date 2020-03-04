@@ -626,7 +626,7 @@ fn map_reads<T: SequenceDifferenceModel + Sync>(
         .map(|chunk| {
             trace!("Map chunk of reads in parallel");
             thread_local! {
-                static STACK_BUF: RefCell<BinaryHeap<MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(STACK_LIMIT + 6))
+                static STACK_BUF: RefCell<BinaryHeap<MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(STACK_LIMIT + 9))
             }
             let results = chunk
                 .par_iter()
@@ -1062,7 +1062,7 @@ pub fn k_mismatch_search<T: SequenceDifferenceModel + Sync>(
     let max_allowed_penalties = max_allowed_penalties + optimal_score_global;
 
     let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
-    let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 6);
+    let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 9);
 
     stack.clear();
 
