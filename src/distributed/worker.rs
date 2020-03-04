@@ -32,6 +32,10 @@ impl Worker {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        thread_local! {
+            static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 9))
+        }
+
         loop {
             // Receive task
             match self.read_message() {
@@ -58,9 +62,6 @@ impl Worker {
                             let fmd_index = data_fmd_index.reconstruct();
 
                             debug!("Map reads");
-                            thread_local! {
-                                static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 9))
-                            }
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
                                 .map(|record: Record| {

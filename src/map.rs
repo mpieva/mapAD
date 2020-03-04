@@ -625,13 +625,14 @@ fn map_reads(
     let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
     let _ = out_file.set_threads(4);
 
+    thread_local! {
+        static STACK_BUF: RefCell<BinaryHeap<MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(STACK_LIMIT + 9))
+    }
+
     debug!("Map reads");
     ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
         .map(|chunk| {
             trace!("Map chunk of reads in parallel");
-            thread_local! {
-                static STACK_BUF: RefCell<BinaryHeap<MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(STACK_LIMIT + 9))
-            }
             let results = chunk
                 .par_iter()
                 .map(|record| {
@@ -661,7 +662,9 @@ fn map_reads(
                                 &record.sequence,
                                 &record.base_qualities,
                                 &alignment_parameters.difference_model,
-                            ).iter().sum(),
+                            )
+                            .iter()
+                            .sum(),
                             Some(&duration),
                             &mut rng,
                         )
