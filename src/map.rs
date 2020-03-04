@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use snap;
 
 use crate::{
-    mismatch_bound::MismatchBound,
+    mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
     utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
@@ -1286,7 +1286,7 @@ pub fn k_mismatch_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{mismatch_bound::*, sequence_difference_models::*};
+    use crate::{mismatch_bounds::*, sequence_difference_models::*};
     use assert_approx_eq::assert_approx_eq;
     use bio::{
         alphabets,

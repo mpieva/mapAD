@@ -3,7 +3,7 @@ use clap::{crate_description, crate_version, value_t, App, AppSettings, Arg, Sub
 use mapad::{
     distributed::{dispatcher, worker},
     index, map,
-    mismatch_bound::{Continuous, Discrete},
+    mismatch_bounds::{Continuous, Discrete},
     sequence_difference_models::{
         LibraryPrep, SequenceDifferenceModel, SequenceDifferenceModelDispatch,
         SimpleAncientDnaModel,

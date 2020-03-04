@@ -10,7 +10,7 @@ use bio::{
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use mapad::{
-    map::k_mismatch_search, mismatch_bound::*, sequence_difference_models::*,
+    map::k_mismatch_search, mismatch_bounds::*, sequence_difference_models::*,
     utils::AlignmentParameters,
 };
 use std::collections::BinaryHeap;

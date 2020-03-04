@@ -1,4 +1,4 @@
-use crate::mismatch_bound::MismatchBoundDispatch;
+use crate::mismatch_bounds::MismatchBoundDispatch;
 use crate::sequence_difference_models::SequenceDifferenceModelDispatch;
 use bio::{
     alphabets::dna,
