@@ -40,5 +40,3 @@ panic = "abort"
 [profile.bench]
 lto = "fat"
 codegen-units = 1
-panic = "abort"
-
