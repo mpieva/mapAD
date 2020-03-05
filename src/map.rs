@@ -310,6 +310,7 @@ pub struct MismatchSearchStackFrame {
     gap_backwards: GapState,
     alignment_score: f32,
     edit_node_id: NodeId,
+    lookahead_score: f32,
 }
 
 impl PartialOrd for MismatchSearchStackFrame {
@@ -320,15 +321,15 @@ impl PartialOrd for MismatchSearchStackFrame {
 
 impl Ord for MismatchSearchStackFrame {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.alignment_score
-            .partial_cmp(&other.alignment_score)
+        self.lookahead_score
+            .partial_cmp(&other.lookahead_score)
             .expect("This is not expected to fail")
     }
 }
 
 impl PartialEq for MismatchSearchStackFrame {
     fn eq(&self, other: &Self) -> bool {
-        self.alignment_score.eq(&other.alignment_score)
+        self.lookahead_score.eq(&other.lookahead_score)
     }
 }
 
@@ -658,13 +659,6 @@ fn map_reads(
                             &mut hit_interval,
                             suffix_array,
                             identifier_position_map,
-                            compute_optimal_scores(
-                                &record.sequence,
-                                &record.base_qualities,
-                                &alignment_parameters.difference_model,
-                            )
-                            .iter()
-                            .sum(),
                             Some(&duration),
                             &mut rng,
                         )
@@ -691,7 +685,6 @@ pub fn intervals_to_bam<R>(
     intervals: &mut BinaryHeap<HitInterval>,
     suffix_array: &Vec<usize>,
     identifier_position_map: &FastaIdPositions,
-    optimal_score: f32,
     duration: Option<&Duration>,
     rng: &mut R,
 ) -> Vec<bam::Record>
@@ -699,7 +692,7 @@ where
     R: RngCore,
 {
     let record = if let Some(best_alignment) = intervals.pop() {
-        let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals, optimal_score);
+        let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
         best_alignment
             .interval
             .forward()
@@ -764,12 +757,11 @@ pub fn compute_optimal_scores(
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
     other_alignments: &BinaryHeap<HitInterval>,
-    optimal_score: f32,
 ) -> u8 {
     const MAX_MAPQ: f32 = 37.0;
 
     let alignment_probability = {
-        let ratio_best = 2_f32.powf(best_alignment.alignment_score - optimal_score);
+        let ratio_best = 2_f32.powf(best_alignment.alignment_score);
         if best_alignment.interval.size > 1 {
             // Multi-mapping
             1.0 / best_alignment.interval.size as f32
@@ -782,7 +774,7 @@ fn estimate_mapping_quality(
                 other_alignments
                     .iter()
                     .fold(0.0, |acc, suboptimal_alignment| {
-                        acc + 2_f32.powf(suboptimal_alignment.alignment_score - optimal_score)
+                        acc + 2_f32.powf(suboptimal_alignment.alignment_score)
                             * suboptimal_alignment.interval.size as f32
                     });
             ratio_best / (ratio_best + weighted_suboptimal_alignments)
@@ -957,22 +949,17 @@ fn check_and_push(
     stack: &mut BinaryHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
 ) {
-    // Empty interval
-    if stack_frame.current_interval.size < 1 {
-        return;
-    }
-
     // Too many mismatches
     if alignment_parameters
         .mismatch_bound
-        .reject(stack_frame.alignment_score + lower_bound, pattern.len())
+        .reject(stack_frame.lookahead_score, pattern.len())
     {
         return;
     }
 
     if let Some(best_scoring_interval) = intervals.peek() {
         if alignment_parameters.mismatch_bound.reject_iterative(
-            stack_frame.alignment_score + lower_bound,
+            stack_frame.lookahead_score,
             best_scoring_interval.alignment_score,
         ) {
             return;
@@ -1062,6 +1049,7 @@ pub fn k_mismatch_search(
         gap_forwards: GapState::Closed,
         alignment_score: 0.0,
         edit_node_id: edit_tree.root().id(),
+        lookahead_score: 0.0,
     });
 
     while let Some(stack_frame) = stack.pop() {
@@ -1095,7 +1083,7 @@ pub fn k_mismatch_search(
         // better scoring frames on the stack, so we are going to stop the search.
         if let Some(best_scoring_interval) = hit_intervals.peek() {
             if parameters.mismatch_bound.reject_iterative(
-                stack_frame.alignment_score + lower_bound,
+                stack_frame.lookahead_score,
                 best_scoring_interval.alignment_score,
             ) {
                 break;
@@ -1105,7 +1093,7 @@ pub fn k_mismatch_search(
         //
         // Insertion in read / deletion in reference
         //
-        let penalty = if (stack_frame.gap_backwards == GapState::Insertion
+        let new_alignment_score = if (stack_frame.gap_backwards == GapState::Insertion
             && stack_frame.direction.is_forward())
             || (stack_frame.gap_forwards == GapState::Insertion
                 && stack_frame.direction.is_backward())
@@ -1113,7 +1101,8 @@ pub fn k_mismatch_search(
             parameters.penalty_gap_extend
         } else {
             parameters.penalty_gap_open
-        };
+        } - optimal_penalty
+            + stack_frame.alignment_score;
 
         check_and_push(
             MismatchSearchStackFrame {
@@ -1132,7 +1121,8 @@ pub fn k_mismatch_search(
                 } else {
                     GapState::Insertion
                 },
-                alignment_score: stack_frame.alignment_score + penalty - optimal_penalty,
+                alignment_score: new_alignment_score,
+                lookahead_score: new_alignment_score + lower_bound,
                 ..stack_frame
             },
             pattern,
@@ -1185,7 +1175,7 @@ pub fn k_mismatch_search(
             //
             // Deletion in read / insertion in reference
             //
-            let penalty = if (stack_frame.gap_forwards == GapState::Deletion
+            let new_alignment_score = if (stack_frame.gap_forwards == GapState::Deletion
                 && stack_frame.direction.is_forward())
                 || (stack_frame.gap_backwards == GapState::Deletion
                     && stack_frame.direction.is_backward())
@@ -1193,7 +1183,8 @@ pub fn k_mismatch_search(
                 parameters.penalty_gap_extend
             } else {
                 parameters.penalty_gap_open
-            };
+            } - optimal_penalty
+                + stack_frame.alignment_score;
 
             check_and_push(
                 MismatchSearchStackFrame {
@@ -1209,7 +1200,8 @@ pub fn k_mismatch_search(
                     } else {
                         stack_frame.gap_forwards
                     },
-                    alignment_score: stack_frame.alignment_score + penalty,
+                    alignment_score: new_alignment_score,
+                    lookahead_score: new_alignment_score + lower_bound,
                     ..stack_frame
                 },
                 pattern,
@@ -1224,13 +1216,14 @@ pub fn k_mismatch_search(
             //
             // Match/mismatch
             //
-            let penalty = parameters.difference_model.get(
+            let new_alignment_score = parameters.difference_model.get(
                 stack_frame.j as usize,
                 pattern.len(),
                 c,
                 pattern[stack_frame.j as usize],
                 base_qualities[stack_frame.j as usize],
-            );
+            ) - optimal_penalty
+                + stack_frame.alignment_score;
 
             check_and_push(
                 MismatchSearchStackFrame {
@@ -1250,7 +1243,8 @@ pub fn k_mismatch_search(
                     } else {
                         GapState::Closed
                     },
-                    alignment_score: stack_frame.alignment_score + penalty - optimal_penalty,
+                    alignment_score: new_alignment_score,
+                    lookahead_score: new_alignment_score + lower_bound,
                     ..stack_frame
                 },
                 pattern,
@@ -1582,7 +1576,7 @@ mod tests {
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
-        assert_eq!(alignment_score[0], -4.6416917);
+        assert_eq!(alignment_score[0], -4.641691);
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
@@ -1647,6 +1641,7 @@ mod tests {
     fn test_ord_impl() {
         let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
+            lookahead_score: -5.0,
             j: 0,
             current_interval: BiInterval {
                 lower: 5,
@@ -1663,6 +1658,7 @@ mod tests {
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
+            lookahead_score: -20.0,
             j: 0,
             current_interval: BiInterval {
                 lower: 5,
