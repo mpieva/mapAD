@@ -4,10 +4,10 @@ use crate::{
     utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
 use log::debug;
+use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use std::{
     cell::RefCell,
-    collections::BinaryHeap,
     error::Error,
     io,
     io::{Read, Write},
@@ -33,7 +33,7 @@ impl Worker {
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         thread_local! {
-            static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 9))
+            static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT + 9))
         }
 
         loop {
