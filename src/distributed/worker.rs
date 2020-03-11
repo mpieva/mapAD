@@ -3,6 +3,7 @@ use crate::{
     map,
     utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
 };
+use backtrack_tree::Tree;
 use log::debug;
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
@@ -33,7 +34,8 @@ impl Worker {
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         thread_local! {
-            static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT + 9))
+            static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT + 9));
+            static TREE_BUF: RefCell<Tree<Option<map::EditOperation>>> = RefCell::new(Tree::with_capacity(map::STACK_LIMIT + 9));
         }
 
         loop {
@@ -66,14 +68,17 @@ impl Worker {
                                 .into_par_iter()
                                 .map(|record: Record| {
                                     STACK_BUF.with(|stack_buf| {
-                                        let hit_intervals = map::k_mismatch_search(
-                                            &record.sequence,
-                                            &record.base_qualities,
-                                            alignment_parameters,
-                                            &fmd_index,
-                                            &mut stack_buf.borrow_mut(),
-                                        );
-                                        (record, hit_intervals)
+                                        TREE_BUF.with(|tree_buf| {
+                                            let hit_intervals = map::k_mismatch_search(
+                                                &record.sequence,
+                                                &record.base_qualities,
+                                                alignment_parameters,
+                                                &fmd_index,
+                                                &mut stack_buf.borrow_mut(),
+                                                &mut tree_buf.borrow_mut(),
+                                            );
+                                            (record, hit_intervals)
+                                        })
                                     })
                                 })
                                 .collect::<Vec<_>>();

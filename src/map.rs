@@ -112,7 +112,7 @@ impl Direction {
 
 /// Variants store position in the read and, if necessary, the reference base
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-enum EditOperation {
+pub enum EditOperation {
     Insertion(u16),
     Deletion(u16, u8),
     Match(u16),
@@ -628,7 +628,8 @@ fn map_reads(
     let _ = out_file.set_threads(4);
 
     thread_local! {
-        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9))
+        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
+        static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
     }
 
     debug!("Map reads");
@@ -639,17 +640,20 @@ fn map_reads(
                 .par_iter()
                 .map(|record| {
                     STACK_BUF.with(|stack_buf| {
-                        let start = Instant::now();
-                        let hit_intervals = k_mismatch_search(
-                            &record.sequence,
-                            &record.base_qualities,
-                            alignment_parameters,
-                            fmd_index,
-                            &mut stack_buf.borrow_mut(),
-                        );
-                        let duration = start.elapsed();
+                        TREE_BUF.with(|tree_buf| {
+                            let start = Instant::now();
+                            let hit_intervals = k_mismatch_search(
+                                &record.sequence,
+                                &record.base_qualities,
+                                alignment_parameters,
+                                fmd_index,
+                                &mut stack_buf.borrow_mut(),
+                                &mut tree_buf.borrow_mut(),
+                            );
+                            let duration = start.elapsed();
 
-                        (record, hit_intervals, duration)
+                            (record, hit_intervals, duration)
+                        })
                     })
                 })
                 .map_init(
@@ -1013,6 +1017,7 @@ pub fn k_mismatch_search(
     parameters: &AlignmentParameters,
     fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
+    edit_tree: &mut Tree<Option<EditOperation>>,
 ) -> BinaryHeap<HitInterval> {
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
@@ -1027,9 +1032,9 @@ pub fn k_mismatch_search(
         compute_optimal_scores(pattern, base_qualities, &parameters.difference_model);
 
     let mut hit_intervals = BinaryHeap::new();
-    let mut edit_tree = Tree::with_capacity(STACK_LIMIT + 9);
 
     stack.clear();
+    edit_tree.clear();
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read as i16,
@@ -1121,7 +1126,7 @@ pub fn k_mismatch_search(
             &parameters,
             lower_bound,
             EditOperation::Insertion(stack_frame.j as u16),
-            &mut edit_tree,
+            edit_tree,
             stack,
             &mut hit_intervals,
         );
@@ -1200,7 +1205,7 @@ pub fn k_mismatch_search(
                 &parameters,
                 lower_bound,
                 EditOperation::Deletion(stack_frame.j as u16, c),
-                &mut edit_tree,
+                edit_tree,
                 stack,
                 &mut hit_intervals,
             );
@@ -1247,7 +1252,7 @@ pub fn k_mismatch_search(
                 } else {
                     EditOperation::Mismatch(stack_frame.j as u16, c)
                 },
-                &mut edit_tree,
+                edit_tree,
                 stack,
                 &mut hit_intervals,
             );
@@ -1360,6 +1365,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1367,6 +1373,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1410,6 +1417,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1417,6 +1425,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let mut positions: Vec<usize> = intervals
@@ -1520,6 +1529,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1527,6 +1537,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let mut positions: Vec<usize> = intervals
@@ -1563,6 +1574,7 @@ mod tests {
         let base_qualities = vec![40; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1570,6 +1582,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1587,6 +1600,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1594,6 +1608,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1621,6 +1636,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1628,6 +1644,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1710,12 +1727,14 @@ mod tests {
         let base_qualities = vec![40; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_scores = intervals
@@ -1768,6 +1787,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1775,6 +1795,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1803,6 +1824,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1810,6 +1832,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let best_hit = intervals.pop().unwrap();
@@ -1840,6 +1863,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1847,6 +1871,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1876,6 +1901,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1883,6 +1909,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1920,6 +1947,7 @@ mod tests {
         };
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1927,6 +1955,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1974,6 +2003,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1981,6 +2011,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2010,6 +2041,7 @@ mod tests {
         };
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2017,6 +2049,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2038,6 +2071,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2045,6 +2079,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let best_hit = intervals.pop().unwrap();
@@ -2067,6 +2102,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2074,6 +2110,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2095,6 +2132,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2102,6 +2140,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2140,6 +2179,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2147,6 +2187,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let positions = if let Some(best_alignment) = intervals.pop() {
@@ -2205,6 +2246,7 @@ mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2212,6 +2254,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let best_alignment = intervals.peek().unwrap();
