@@ -1030,9 +1030,9 @@ pub fn k_mismatch_search(
 
     let optimal_penalties =
         compute_optimal_scores(pattern, base_qualities, &parameters.difference_model);
-
     let mut hit_intervals = BinaryHeap::new();
 
+    let mut stack_size_limit_reported = false;
     stack.clear();
     edit_tree.clear();
 
@@ -1266,13 +1266,17 @@ pub fn k_mismatch_search(
         }
 
         // Limit stack size
-        if stack.len() >= STACK_LIMIT {
-            trace!(
-                "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack.",
-                pattern.len()
-            );
+        if edit_tree.len() >= STACK_LIMIT {
+            if !stack_size_limit_reported {
+                trace!(
+                    "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (size: {}).",
+                    pattern.len(),
+                    stack.len(),
+                );
+                stack_size_limit_reported = true;
+            }
 
-            for _ in 0..(stack.len() - STACK_LIMIT + 9) {
+            for _ in 0..(edit_tree.len() - STACK_LIMIT + 9) {
                 if let Some(poor_frame) = stack.pop_min() {
                     edit_tree.remove(poor_frame.edit_node_id);
                 }
