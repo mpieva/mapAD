@@ -1,13 +1,18 @@
 use crate::{
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     map,
-    utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
+    utils::{load_index_from_path, AlignmentParameters},
+};
+use backtrack_tree::Tree;
+use bio::data_structures::{
+    bwt::{Less, Occ, BWT},
+    fmindex::FMDIndex,
 };
 use log::debug;
+use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use std::{
     cell::RefCell,
-    collections::BinaryHeap,
     error::Error,
     io,
     io::{Read, Write},
@@ -17,7 +22,7 @@ use std::{
 pub struct Worker {
     network_buffer: TaskRxBuffer,
     connection: TcpStream,
-    fmd_data: Option<UnderlyingDataFMDIndex>,
+    fmd_index: Option<FMDIndex<BWT, Less, Occ>>,
     alignment_parameters: Option<AlignmentParameters>,
 }
 
@@ -26,14 +31,15 @@ impl Worker {
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
             connection: TcpStream::connect(format!("{}:{}", host, port))?,
-            fmd_data: None,
+            fmd_index: None,
             alignment_parameters: None,
         })
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         thread_local! {
-            static STACK_BUF: RefCell<BinaryHeap<map::MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(map::STACK_LIMIT + 9))
+            static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT + 9));
+            static TREE_BUF: RefCell<Tree<Option<map::EditOperation>>> = RefCell::new(Tree::with_capacity(map::STACK_LIMIT + 9));
         }
 
         loop {
@@ -41,39 +47,40 @@ impl Worker {
             match self.read_message() {
                 Ok(mut task) => {
                     // Load FMD index if necessary
-                    if self.fmd_data.is_none() {
+                    if self.fmd_index.is_none() {
                         if let Some(reference_path) = task.reference_path {
                             debug!("Load FMD-index");
-                            self.fmd_data = Some(UnderlyingDataFMDIndex::load(&reference_path)?);
+                            self.fmd_index = Some(load_index_from_path(&reference_path)?);
                         }
                     }
 
                     // Extract alignment parameters if necessary
                     if self.alignment_parameters.is_none() {
+                        debug!("Extract alignment parameters");
                         if let Some(alignment_parameters) = task.alignment_parameters {
                             self.alignment_parameters = Some(alignment_parameters);
                         }
                     }
 
                     // If requirements are met, run task
-                    if let Some(data_fmd_index) = &self.fmd_data {
+                    if let Some(fmd_index) = &self.fmd_index {
                         if let Some(alignment_parameters) = &self.alignment_parameters {
-                            debug!("Reconstruct FMD-index");
-                            let fmd_index = data_fmd_index.reconstruct();
-
                             debug!("Map reads");
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
-                                .map(|record: Record| {
+                                .map(|record| {
                                     STACK_BUF.with(|stack_buf| {
-                                        let hit_intervals = map::k_mismatch_search(
-                                            &record.sequence,
-                                            &record.base_qualities,
-                                            alignment_parameters,
-                                            &fmd_index,
-                                            &mut stack_buf.borrow_mut(),
-                                        );
-                                        (record, hit_intervals)
+                                        TREE_BUF.with(|tree_buf| {
+                                            let hit_intervals = map::k_mismatch_search(
+                                                &record.sequence,
+                                                &record.base_qualities,
+                                                alignment_parameters,
+                                                fmd_index,
+                                                &mut stack_buf.borrow_mut(),
+                                                &mut tree_buf.borrow_mut(),
+                                            );
+                                            (record, hit_intervals)
+                                        })
                                     })
                                 })
                                 .collect::<Vec<_>>();

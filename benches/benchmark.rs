@@ -6,14 +6,14 @@ use bio::{
         suffix_array::suffix_array,
     },
 };
-
 use criterion::{criterion_group, criterion_main, Criterion};
+use min_max_heap::MinMaxHeap;
 
+use backtrack_tree::Tree;
 use mapad::{
     map::k_mismatch_search, mismatch_bounds::*, sequence_difference_models::*,
     utils::AlignmentParameters,
 };
-use std::collections::BinaryHeap;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
@@ -57,13 +57,13 @@ fn criterion_benchmark(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = BinaryHeap::new();
+        let mut stack = MinMaxHeap::new();
+        let mut tree = Tree::new();
         b.iter(|| {
             k_mismatch_search(
                 &pattern,
@@ -71,6 +71,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 &parameters,
                 &fmd_index,
                 &mut stack,
+                &mut tree,
             )
         })
     });
@@ -126,8 +127,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let patterns = vec![
             "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
@@ -137,7 +137,8 @@ fn bench_multiple_reads(c: &mut Criterion) {
         ];
         let base_qualities = vec![40; patterns[0].len()];
 
-        let mut stack = BinaryHeap::new();
+        let mut stack = MinMaxHeap::new();
+        let mut tree = Tree::new();
         for pattern in patterns.iter() {
             b.iter(|| {
                 k_mismatch_search(
@@ -146,6 +147,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
                     &parameters,
                     &fmd_index,
                     &mut stack,
+                    &mut tree,
                 )
             })
         }
@@ -202,8 +204,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let patterns = vec![
             "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
@@ -213,7 +214,8 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         ];
         let base_qualities = vec![40; patterns[0].len()];
 
-        let mut stack = BinaryHeap::new();
+        let mut stack = MinMaxHeap::new();
+        let mut tree = Tree::new();
         for pattern in patterns.iter() {
             b.iter(|| {
                 k_mismatch_search(
@@ -222,6 +224,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
                     &parameters,
                     &fmd_index,
                     &mut stack,
+                    &mut tree,
                 )
             })
         }
@@ -270,12 +273,12 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let base_qualities = vec![40; patterns[0].len()];
 
-        let mut stack = BinaryHeap::new();
+        let mut stack = MinMaxHeap::new();
+        let mut tree = Tree::new();
         for pattern in patterns.iter() {
             b.iter(|| {
                 k_mismatch_search(
@@ -284,6 +287,7 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
                     &parameters,
                     &fmd_index,
                     &mut stack,
+                    &mut tree,
                 )
             })
         }

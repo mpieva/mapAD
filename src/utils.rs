@@ -1,9 +1,11 @@
-use crate::mismatch_bounds::MismatchBoundDispatch;
-use crate::sequence_difference_models::SequenceDifferenceModelDispatch;
+use crate::{
+    mismatch_bounds::MismatchBoundDispatch,
+    sequence_difference_models::SequenceDifferenceModelDispatch,
+};
 use bio::{
     alphabets::dna,
     data_structures::{
-        bwt::Occ,
+        bwt::{Less, Occ, BWT},
         fmindex::{FMDIndex, FMIndex},
     },
 };
@@ -90,42 +92,25 @@ pub struct AlignmentParameters {
     pub chunk_size: usize,
 }
 
-/// Helper struct to bundle index files
-pub struct UnderlyingDataFMDIndex {
-    bwt: Vec<u8>,
-    less: Vec<usize>,
-    occ: Occ,
-}
+pub fn load_index_from_path(path: &str) -> Result<FMDIndex<BWT, Less, Occ>, bincode::Error> {
+    debug!("Load BWT");
+    let bwt: BWT = {
+        let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);
+        bincode::deserialize_from(d_bwt)?
+    };
 
-impl UnderlyingDataFMDIndex {
-    pub fn load(path: &str) -> Result<UnderlyingDataFMDIndex, bincode::Error> {
-        debug!("Load BWT");
-        let bwt: Vec<u8> = {
-            let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);
-            bincode::deserialize_from(d_bwt)?
-        };
+    debug!("Load \"C\" table");
+    let less: Less = {
+        let d_less = snap::read::FrameDecoder::new(File::open(format!("{}.tle", path))?);
+        bincode::deserialize_from(d_less)?
+    };
 
-        debug!("Load \"C\" table");
-        let less: Vec<usize> = {
-            let d_less = snap::read::FrameDecoder::new(File::open(format!("{}.tle", path))?);
-            bincode::deserialize_from(d_less)?
-        };
+    debug!("Load \"Occ\" table");
+    let occ: Occ = {
+        let d_occ = snap::read::FrameDecoder::new(File::open(format!("{}.toc", path))?);
+        bincode::deserialize_from(d_occ)?
+    };
 
-        debug!("Load \"Occ\" table");
-        let occ: Occ = {
-            let d_occ = snap::read::FrameDecoder::new(File::open(format!("{}.toc", path))?);
-            bincode::deserialize_from(d_occ)?
-        };
-
-        Ok(UnderlyingDataFMDIndex { bwt, less, occ })
-    }
-}
-
-impl UnderlyingDataFMDIndex {
-    pub fn new(bwt: Vec<u8>, less: Vec<usize>, occ: Occ) -> Self {
-        Self { bwt, less, occ }
-    }
-    pub fn reconstruct(&self) -> FMDIndex<&Vec<u8>, &Vec<usize>, &Occ> {
-        FMDIndex::from(FMIndex::new(&self.bwt, &self.less, &self.occ))
-    }
+    debug!("Reconstruct index");
+    Ok(FMDIndex::from(FMIndex::new(bwt, less, occ)))
 }

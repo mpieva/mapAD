@@ -4,14 +4,15 @@ use std::{
     collections::{binary_heap::BinaryHeap, BTreeMap},
     error::Error,
     fs::File,
-    iter::{once, Peekable},
+    iter::Peekable,
     time::{Duration, Instant},
 };
 
+use backtrack_tree::{NodeId, Tree};
 use clap::{crate_name, crate_version};
-use ego_tree::{NodeId, Tree};
 use either::Either;
 use log::{debug, trace};
+use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -19,8 +20,9 @@ use smallvec::SmallVec;
 use bio::{
     alphabets::dna,
     data_structures::{
-        bwt::Occ,
+        bwt::{Less, Occ, BWT},
         fmindex::{BiInterval, FMDIndex, FMIndexable},
+        suffix_array::{RawSuffixArray, SuffixArray},
     },
 };
 
@@ -32,11 +34,11 @@ use snap;
 use crate::{
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
-    utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
+    utils::{load_index_from_path, AlignmentParameters, Record},
 };
 
 pub const CRATE_NAME: &str = "mapAD";
-pub const STACK_LIMIT: usize = 2_000_000;
+pub const STACK_LIMIT: usize = 5_000_000;
 
 /// Derive serde Traits for remote Struct
 #[derive(Serialize, Deserialize)]
@@ -111,7 +113,7 @@ impl Direction {
 
 /// Variants store position in the read and, if necessary, the reference base
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-enum EditOperation {
+pub enum EditOperation {
     Insertion(u16),
     Deletion(u16, u8),
     Match(u16),
@@ -388,7 +390,7 @@ impl BiDArray {
         base_qualities: &[u8],
         split: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+        fmd_index: &FMDIndex<BWT, Less, Occ>,
     ) -> Self {
         Self {
             d_backwards: Self::compute_part(
@@ -417,7 +419,7 @@ impl BiDArray {
         direction: Direction,
         full_pattern_length: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+        fmd_index: &FMDIndex<BWT, Less, Occ>,
     ) -> SmallVec<[f32; 64]> {
         let directed_pattern_iterator = || match direction {
             Direction::Forward => Either::Left(pattern_part.iter()),
@@ -552,12 +554,10 @@ pub fn run(
     alignment_parameters: &AlignmentParameters,
 ) -> Result<(), Box<dyn Error>> {
     debug!("Load FMD-index");
-    let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
-    debug!("Reconstruct FMD-index");
-    let fmd_index = data_fmd_index.reconstruct();
+    let fmd_index = load_index_from_path(reference_path)?;
 
     debug!("Load suffix array");
-    let suffix_array: Vec<usize> = {
+    let suffix_array: RawSuffixArray = {
         let d_suffix_array =
             snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
         bincode::deserialize_from(d_suffix_array)?
@@ -569,15 +569,66 @@ pub fn run(
         bincode::deserialize_from(d_pi)?
     };
 
-    map_reads(
-        alignment_parameters,
-        reads_path,
-        out_file_path,
-        &fmd_index,
-        &suffix_array,
-        &identifier_position_map,
-    )?;
+    let mut reads_reader = bam::Reader::from_path(reads_path)?;
+    let _ = reads_reader.set_threads(4);
+    let header = create_bam_header(&reads_reader, &identifier_position_map);
+    let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+    let _ = out_file.set_threads(4);
 
+    thread_local! {
+        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
+        static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
+    }
+
+    debug!("Map reads");
+    ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
+        .map(|chunk| {
+            trace!("Map chunk of reads in parallel");
+            let results = chunk
+                .par_iter()
+                .map(|record| {
+                    STACK_BUF.with(|stack_buf| {
+                        TREE_BUF.with(|tree_buf| {
+                            let start = Instant::now();
+                            let hit_intervals = k_mismatch_search(
+                                &record.sequence,
+                                &record.base_qualities,
+                                alignment_parameters,
+                                &fmd_index,
+                                &mut stack_buf.borrow_mut(),
+                                &mut tree_buf.borrow_mut(),
+                            );
+                            let duration = start.elapsed();
+
+                            (record, hit_intervals, duration)
+                        })
+                    })
+                })
+                .map_init(
+                    rand::thread_rng,
+                    |mut rng, (record, mut hit_interval, duration)| {
+                        intervals_to_bam(
+                            record,
+                            &mut hit_interval,
+                            &suffix_array,
+                            &identifier_position_map,
+                            Some(&duration),
+                            &mut rng,
+                        )
+                    },
+                )
+                .flatten()
+                .collect::<Vec<_>>();
+
+            trace!("Write BAM records to output file serially");
+            results
+                .iter()
+                .map(|record| out_file.write(record))
+                .collect()
+        })
+        .collect::<Result<(), _>>()?;
+
+    debug!("Done");
     Ok(())
 }
 
@@ -611,85 +662,18 @@ pub fn create_bam_header(
     header
 }
 
-/// Maps reads and writes them to a file in BAM format
-fn map_reads(
-    alignment_parameters: &AlignmentParameters,
-    reads_path: &str,
-    out_file_path: &str,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-    suffix_array: &Vec<usize>,
-    identifier_position_map: &FastaIdPositions,
-) -> Result<(), Box<dyn Error>> {
-    let mut reads_reader = bam::Reader::from_path(reads_path)?;
-    let _ = reads_reader.set_threads(4);
-    let header = create_bam_header(&reads_reader, identifier_position_map);
-    let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
-    let _ = out_file.set_threads(4);
-
-    thread_local! {
-        static STACK_BUF: RefCell<BinaryHeap<MismatchSearchStackFrame>> = RefCell::new(BinaryHeap::with_capacity(STACK_LIMIT + 9))
-    }
-
-    debug!("Map reads");
-    ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
-        .map(|chunk| {
-            trace!("Map chunk of reads in parallel");
-            let results = chunk
-                .par_iter()
-                .map(|record| {
-                    STACK_BUF.with(|stack_buf| {
-                        let start = Instant::now();
-                        let hit_intervals = k_mismatch_search(
-                            &record.sequence,
-                            &record.base_qualities,
-                            alignment_parameters,
-                            fmd_index,
-                            &mut stack_buf.borrow_mut(),
-                        );
-                        let duration = start.elapsed();
-
-                        (record, hit_intervals, duration)
-                    })
-                })
-                .map_init(
-                    rand::thread_rng,
-                    |mut rng, (record, mut hit_interval, duration)| {
-                        intervals_to_bam(
-                            record,
-                            &mut hit_interval,
-                            suffix_array,
-                            identifier_position_map,
-                            Some(&duration),
-                            &mut rng,
-                        )
-                    },
-                )
-                .flatten()
-                .collect::<Vec<_>>();
-
-            trace!("Write BAM records to output file serially");
-            results
-                .iter()
-                .map(|record| out_file.write(record))
-                .collect()
-        })
-        .collect::<Result<(), _>>()?;
-
-    debug!("Done");
-    Ok(())
-}
-
 /// Convert suffix array intervals to positions and BAM records
-pub fn intervals_to_bam<R>(
-    record: &Record,
+pub fn intervals_to_bam<R, S>(
+    input_record: &Record,
     intervals: &mut BinaryHeap<HitInterval>,
-    suffix_array: &Vec<usize>,
+    suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
     duration: Option<&Duration>,
     rng: &mut R,
 ) -> Vec<bam::Record>
 where
     R: RngCore,
+    S: SuffixArray,
 {
     let record = if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
@@ -715,8 +699,8 @@ where
                     position,
                     best_alignment.edit_operations.effective_len(),
                 );
-                create_bam_record(
-                    record,
+                bam_record_helper(
+                    input_record,
                     position,
                     Some(&best_alignment),
                     Some(mapping_quality),
@@ -728,7 +712,7 @@ where
             .unwrap()
     } else {
         // No match found, report unmapped read
-        create_bam_record(record, -1, None, None, -1, None, duration)
+        bam_record_helper(input_record, -1, None, None, -1, None, duration)
     };
     vec![record]
 }
@@ -749,7 +733,7 @@ pub fn compute_optimal_scores(
         .map(|(i, (&base, &quality))| {
             difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
         })
-        .collect::<SmallVec<[_; 128]>>()
+        .collect::<SmallVec<_>>()
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
@@ -791,7 +775,7 @@ fn estimate_mapping_quality(
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
-fn create_bam_record(
+fn bam_record_helper(
     input_record: &Record,
     position: i32,
     hit_interval: Option<&HitInterval>,
@@ -902,13 +886,8 @@ fn extract_edit_operations(
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
     let mut cigar_order_outer: BTreeMap<u16, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
 
-    let end_node = edit_tree
-        .get(end_node)
-        .expect("This is not expected to fail");
-
-    once(end_node)
-        .chain(end_node.ancestors())
-        .map(|node| node.value())
+    edit_tree
+        .ancestors(end_node)
         .filter_map(|&edit_operation| edit_operation)
         .for_each(|edit_operation| {
             let position = match edit_operation {
@@ -939,14 +918,14 @@ fn extract_edit_operations(
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
-fn check_and_push(
+fn check_and_push_stack_frame(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
     alignment_parameters: &AlignmentParameters,
     lower_bound: f32,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<Option<EditOperation>>,
-    stack: &mut BinaryHeap<MismatchSearchStackFrame>,
+    stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
 ) {
     // Too many mismatches
@@ -966,11 +945,7 @@ fn check_and_push(
         }
     }
 
-    stack_frame.edit_node_id = edit_tree
-        .get_mut(stack_frame.edit_node_id)
-        .expect("This is not expected to fail")
-        .append(Some(edit_operation))
-        .id();
+    stack_frame.edit_node_id = edit_tree.add_node(Some(edit_operation), stack_frame.edit_node_id);
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as i16 - 1) {
@@ -1019,8 +994,9 @@ pub fn k_mismatch_search(
     pattern: &[u8],
     base_qualities: &[u8],
     parameters: &AlignmentParameters,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-    stack: &mut BinaryHeap<MismatchSearchStackFrame>,
+    fmd_index: &FMDIndex<BWT, Less, Occ>,
+    stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
+    edit_tree: &mut Tree<Option<EditOperation>>,
 ) -> BinaryHeap<HitInterval> {
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
@@ -1033,11 +1009,11 @@ pub fn k_mismatch_search(
 
     let optimal_penalties =
         compute_optimal_scores(pattern, base_qualities, &parameters.difference_model);
+    let mut hit_intervals = BinaryHeap::new();
 
-    let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
-    let mut edit_tree: Tree<Option<EditOperation>> = Tree::with_capacity(None, STACK_LIMIT + 9);
-
+    let mut stack_size_limit_reported = false;
     stack.clear();
+    edit_tree.clear();
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read as i16,
@@ -1048,11 +1024,11 @@ pub fn k_mismatch_search(
         gap_backwards: GapState::Closed,
         gap_forwards: GapState::Closed,
         alignment_score: 0.0,
-        edit_node_id: edit_tree.root().id(),
+        edit_node_id: edit_tree.add_node(None, None),
         lookahead_score: 0.0,
     });
 
-    while let Some(stack_frame) = stack.pop() {
+    while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
         let next_j;
         let next_backward_index;
@@ -1104,7 +1080,7 @@ pub fn k_mismatch_search(
         } - optimal_penalty
             + stack_frame.alignment_score;
 
-        check_and_push(
+        check_and_push_stack_frame(
             MismatchSearchStackFrame {
                 j: next_j,
                 backward_index: next_backward_index,
@@ -1129,7 +1105,7 @@ pub fn k_mismatch_search(
             &parameters,
             lower_bound,
             EditOperation::Insertion(stack_frame.j as u16),
-            &mut edit_tree,
+            edit_tree,
             stack,
             &mut hit_intervals,
         );
@@ -1186,7 +1162,7 @@ pub fn k_mismatch_search(
             } - optimal_penalty
                 + stack_frame.alignment_score;
 
-            check_and_push(
+            check_and_push_stack_frame(
                 MismatchSearchStackFrame {
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
@@ -1208,7 +1184,7 @@ pub fn k_mismatch_search(
                 &parameters,
                 lower_bound,
                 EditOperation::Deletion(stack_frame.j as u16, c),
-                &mut edit_tree,
+                edit_tree,
                 stack,
                 &mut hit_intervals,
             );
@@ -1225,7 +1201,7 @@ pub fn k_mismatch_search(
             ) - optimal_penalty
                 + stack_frame.alignment_score;
 
-            check_and_push(
+            check_and_push_stack_frame(
                 MismatchSearchStackFrame {
                     j: next_j,
                     current_interval: interval_prime,
@@ -1255,7 +1231,7 @@ pub fn k_mismatch_search(
                 } else {
                     EditOperation::Mismatch(stack_frame.j as u16, c)
                 },
-                &mut edit_tree,
+                edit_tree,
                 stack,
                 &mut hit_intervals,
             );
@@ -1269,12 +1245,21 @@ pub fn k_mismatch_search(
         }
 
         // Limit stack size
-        if stack.len() >= STACK_LIMIT {
-            trace!(
-                "Stack size limit reached, report unmapped read (length: {} bp)",
-                pattern.len()
-            );
-            return hit_intervals;
+        if edit_tree.len() >= STACK_LIMIT {
+            if !stack_size_limit_reported {
+                trace!(
+                    "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (size: {}).",
+                    pattern.len(),
+                    stack.len(),
+                );
+                stack_size_limit_reported = true;
+            }
+
+            for _ in 0..(edit_tree.len() - STACK_LIMIT + 9) {
+                if let Some(poor_frame) = stack.pop_min() {
+                    edit_tree.remove(poor_frame.edit_node_id);
+                }
+            }
         }
     }
     hit_intervals
@@ -1289,6 +1274,7 @@ mod tests {
         alphabets,
         data_structures::{
             bwt::{bwt, less},
+            fmindex::FMIndex,
             suffix_array::suffix_array,
         },
     };
@@ -1297,7 +1283,7 @@ mod tests {
     fn build_auxiliary_structures(
         reference: &mut Vec<u8>,
         alphabet: &alphabets::Alphabet,
-    ) -> UnderlyingDataFMDIndex {
+    ) -> FMDIndex<BWT, Less, Occ> {
         let ref_seq_rev_compl = alphabets::dna::revcomp(reference.iter());
         reference.extend_from_slice(b"$");
         reference.extend_from_slice(&ref_seq_rev_compl);
@@ -1309,7 +1295,7 @@ mod tests {
         let less = less(&bwt, &alphabet);
         let occ = Occ::new(&bwt, 3, &alphabet);
 
-        UnderlyingDataFMDIndex::new(bwt, less, occ)
+        FMDIndex::from(FMIndex::new(bwt, less, occ))
     }
 
     #[test]
@@ -1317,9 +1303,8 @@ mod tests {
         let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         // Test occurring pattern
         let pattern_1 = b"TA";
@@ -1354,15 +1339,14 @@ mod tests {
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1370,6 +1354,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1404,15 +1389,14 @@ mod tests {
         let mut ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1420,6 +1404,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let mut positions: Vec<usize> = intervals
@@ -1437,8 +1422,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: LibraryPrep::SingleStranded {
@@ -1514,15 +1498,14 @@ mod tests {
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1530,6 +1513,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let mut positions: Vec<usize> = intervals
@@ -1558,14 +1542,14 @@ mod tests {
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let sar = suffix_array(&ref_seq);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1573,6 +1557,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1589,7 +1574,8 @@ mod tests {
         let pattern = "CCCCCC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1597,6 +1583,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1617,13 +1604,13 @@ mod tests {
         let mut ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1631,6 +1618,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1639,6 +1627,9 @@ mod tests {
 
     #[test]
     fn test_ord_impl() {
+        let mut edit_tree = Tree::new();
+        let root_id = edit_tree.add_node(1, None);
+
         let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
             lookahead_score: -5.0,
@@ -1654,7 +1645,7 @@ mod tests {
             direction: Direction::Backward,
             gap_forwards: GapState::Closed,
             gap_backwards: GapState::Closed,
-            edit_node_id: Tree::new(0).root().id(),
+            edit_node_id: root_id,
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
@@ -1671,7 +1662,7 @@ mod tests {
             direction: Direction::Backward,
             gap_forwards: GapState::Closed,
             gap_backwards: GapState::Closed,
-            edit_node_id: Tree::new(0).root().id(),
+            edit_node_id: root_id,
         };
 
         assert!(map_params_large > map_params_small);
@@ -1700,8 +1691,7 @@ mod tests {
             .to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let sar = suffix_array(&ref_seq);
 
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
@@ -1709,13 +1699,15 @@ mod tests {
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let alignment_scores = intervals
@@ -1761,13 +1753,13 @@ mod tests {
         let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1775,6 +1767,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1796,13 +1789,13 @@ mod tests {
         let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1810,6 +1803,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let best_hit = intervals.pop().unwrap();
@@ -1833,13 +1827,13 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1847,6 +1841,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1869,13 +1864,13 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1883,6 +1878,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1905,8 +1901,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1919,7 +1914,8 @@ mod tests {
             chunk_size: 1,
         };
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1927,6 +1923,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit
@@ -1967,13 +1964,13 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -1981,6 +1978,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -1995,8 +1993,7 @@ mod tests {
         let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2009,7 +2006,8 @@ mod tests {
             chunk_size: 1,
         };
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2017,6 +2015,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2031,13 +2030,13 @@ mod tests {
         let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2045,6 +2044,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let best_hit = intervals.pop().unwrap();
@@ -2060,13 +2060,13 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2074,6 +2074,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2088,13 +2089,13 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2102,6 +2103,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit
@@ -2131,15 +2133,14 @@ mod tests {
         let mut ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2147,6 +2148,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let positions = if let Some(best_alignment) = intervals.pop() {
@@ -2196,15 +2198,14 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TAGT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = BinaryHeap::new();
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
             &base_qualities,
@@ -2212,6 +2213,7 @@ mod tests {
             &parameters,
             &fmd_index,
             &mut stack_buf,
+            &mut tree_buf,
         );
 
         let best_alignment = intervals.peek().unwrap();
