@@ -1,7 +1,7 @@
 use crate::{
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     map,
-    utils::{load_index_from_path, AlignmentParameters, Record},
+    utils::{load_index_from_path, AlignmentParameters},
 };
 use backtrack_tree::Tree;
 use bio::data_structures::{
@@ -67,7 +67,7 @@ impl Worker {
                             debug!("Map reads");
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
-                                .map(|record: Record| {
+                                .map(|record| {
                                     STACK_BUF.with(|stack_buf| {
                                         TREE_BUF.with(|tree_buf| {
                                             let hit_intervals = map::k_mismatch_search(
