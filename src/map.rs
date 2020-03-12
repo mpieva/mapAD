@@ -20,8 +20,9 @@ use smallvec::SmallVec;
 use bio::{
     alphabets::dna,
     data_structures::{
-        bwt::Occ,
+        bwt::{Less, Occ, BWT},
         fmindex::{BiInterval, FMDIndex, FMIndexable},
+        suffix_array::{RawSuffixArray, SuffixArray},
     },
 };
 
@@ -33,7 +34,7 @@ use snap;
 use crate::{
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
-    utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
+    utils::{load_index_from_path, AlignmentParameters, Record},
 };
 
 pub const CRATE_NAME: &str = "mapAD";
@@ -389,7 +390,7 @@ impl BiDArray {
         base_qualities: &[u8],
         split: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+        fmd_index: &FMDIndex<BWT, Less, Occ>,
     ) -> Self {
         Self {
             d_backwards: Self::compute_part(
@@ -418,7 +419,7 @@ impl BiDArray {
         direction: Direction,
         full_pattern_length: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+        fmd_index: &FMDIndex<BWT, Less, Occ>,
     ) -> SmallVec<[f32; 64]> {
         let directed_pattern_iterator = || match direction {
             Direction::Forward => Either::Left(pattern_part.iter()),
@@ -553,12 +554,10 @@ pub fn run(
     alignment_parameters: &AlignmentParameters,
 ) -> Result<(), Box<dyn Error>> {
     debug!("Load FMD-index");
-    let data_fmd_index = UnderlyingDataFMDIndex::load(reference_path)?;
-    debug!("Reconstruct FMD-index");
-    let fmd_index = data_fmd_index.reconstruct();
+    let fmd_index = load_index_from_path(reference_path)?;
 
     debug!("Load suffix array");
-    let suffix_array: Vec<usize> = {
+    let suffix_array: RawSuffixArray = {
         let d_suffix_array =
             snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
         bincode::deserialize_from(d_suffix_array)?
@@ -613,14 +612,17 @@ pub fn create_bam_header(
 }
 
 /// Maps reads and writes them to a file in BAM format
-fn map_reads(
+fn map_reads<S>(
     alignment_parameters: &AlignmentParameters,
     reads_path: &str,
     out_file_path: &str,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
-    suffix_array: &Vec<usize>,
+    fmd_index: &FMDIndex<BWT, Less, Occ>,
+    suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn Error>>
+where
+    S: SuffixArray + Sync,
+{
     let mut reads_reader = bam::Reader::from_path(reads_path)?;
     let _ = reads_reader.set_threads(4);
     let header = create_bam_header(&reads_reader, identifier_position_map);
@@ -685,16 +687,17 @@ fn map_reads(
 }
 
 /// Convert suffix array intervals to positions and BAM records
-pub fn intervals_to_bam<R>(
+pub fn intervals_to_bam<R, S>(
     record: &Record,
     intervals: &mut BinaryHeap<HitInterval>,
-    suffix_array: &Vec<usize>,
+    suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
     duration: Option<&Duration>,
     rng: &mut R,
 ) -> Vec<bam::Record>
 where
     R: RngCore,
+    S: SuffixArray,
 {
     let record = if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
@@ -1015,7 +1018,7 @@ pub fn k_mismatch_search(
     pattern: &[u8],
     base_qualities: &[u8],
     parameters: &AlignmentParameters,
-    fmd_index: &FMDIndex<&Vec<u8>, &Vec<usize>, &Occ>,
+    fmd_index: &FMDIndex<BWT, Less, Occ>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     edit_tree: &mut Tree<Option<EditOperation>>,
 ) -> BinaryHeap<HitInterval> {
@@ -1295,6 +1298,7 @@ mod tests {
         alphabets,
         data_structures::{
             bwt::{bwt, less},
+            fmindex::FMIndex,
             suffix_array::suffix_array,
         },
     };
@@ -1303,7 +1307,7 @@ mod tests {
     fn build_auxiliary_structures(
         reference: &mut Vec<u8>,
         alphabet: &alphabets::Alphabet,
-    ) -> UnderlyingDataFMDIndex {
+    ) -> FMDIndex<BWT, Less, Occ> {
         let ref_seq_rev_compl = alphabets::dna::revcomp(reference.iter());
         reference.extend_from_slice(b"$");
         reference.extend_from_slice(&ref_seq_rev_compl);
@@ -1315,7 +1319,7 @@ mod tests {
         let less = less(&bwt, &alphabet);
         let occ = Occ::new(&bwt, 3, &alphabet);
 
-        UnderlyingDataFMDIndex::new(bwt, less, occ)
+        FMDIndex::from(FMIndex::new(bwt, less, occ))
     }
 
     #[test]
@@ -1323,9 +1327,8 @@ mod tests {
         let alphabet = alphabets::dna::alphabet();
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         // Test occurring pattern
         let pattern_1 = b"TA";
@@ -1360,10 +1363,8 @@ mod tests {
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1412,10 +1413,8 @@ mod tests {
         let mut ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1447,8 +1446,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
             library_prep: LibraryPrep::SingleStranded {
@@ -1524,10 +1522,8 @@ mod tests {
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1570,8 +1566,7 @@ mod tests {
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let sar = suffix_array(&ref_seq);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
@@ -1633,8 +1628,7 @@ mod tests {
         let mut ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1721,8 +1715,7 @@ mod tests {
             .to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let sar = suffix_array(&ref_seq);
 
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
@@ -1784,8 +1777,7 @@ mod tests {
         let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1821,8 +1813,7 @@ mod tests {
         let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1860,8 +1851,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1898,8 +1888,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1936,8 +1925,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2000,8 +1988,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2030,8 +2017,7 @@ mod tests {
         let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2068,8 +2054,7 @@ mod tests {
         let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2099,8 +2084,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2129,8 +2113,7 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let fmd_index = data_fmd_index.reconstruct();
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2174,10 +2157,8 @@ mod tests {
         let mut ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2241,10 +2222,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
 
         // Reference
-        let data_fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-
+        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
         let suffix_array = suffix_array(&ref_seq);
-        let fmd_index = data_fmd_index.reconstruct();
 
         let pattern = "TAGT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];

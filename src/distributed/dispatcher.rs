@@ -1,4 +1,5 @@
 use crate::{distributed::*, map, utils::*};
+use bio::data_structures::suffix_array::SuffixArray;
 use log::debug;
 use mio::{
     net::{TcpListener, TcpStream},
@@ -280,13 +281,16 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         self.checklist.remove(&chunk_id);
     }
 
-    fn write_results(
+    fn write_results<S>(
         &self,
         mut hits: Vec<(Record, BinaryHeap<map::HitInterval>)>,
-        suffix_array: &Vec<usize>,
+        suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
         out_file: &mut bam::Writer,
-    ) -> Result<(), bam::Error> {
+    ) -> Result<(), bam::Error>
+    where
+        S: SuffixArray + Sync,
+    {
         let bam_records = hits
             .par_iter_mut()
             .map_init(rand::thread_rng, |mut rng, (record, hit_interval)| {

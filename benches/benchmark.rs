@@ -57,8 +57,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -128,8 +127,7 @@ fn bench_multiple_reads(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let patterns = vec![
             "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
@@ -206,8 +204,7 @@ fn bench_exogenous_reads(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let patterns = vec![
             "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
@@ -276,8 +273,7 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
         let lessa = less(&bwtr, &alphabet);
         let occ = Occ::new(&bwtr, 3, &alphabet);
 
-        let fm_index = FMIndex::new(&bwtr, &lessa, &occ);
-        let fmd_index = FMDIndex::from(fm_index);
+        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
         let base_qualities = vec![40; patterns[0].len()];
 

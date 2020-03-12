@@ -1,9 +1,13 @@
 use crate::{
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     map,
-    utils::{AlignmentParameters, Record, UnderlyingDataFMDIndex},
+    utils::{load_index_from_path, AlignmentParameters, Record},
 };
 use backtrack_tree::Tree;
+use bio::data_structures::{
+    bwt::{Less, Occ, BWT},
+    fmindex::FMDIndex,
+};
 use log::debug;
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
@@ -18,7 +22,7 @@ use std::{
 pub struct Worker {
     network_buffer: TaskRxBuffer,
     connection: TcpStream,
-    fmd_data: Option<UnderlyingDataFMDIndex>,
+    fmd_index: Option<FMDIndex<BWT, Less, Occ>>,
     alignment_parameters: Option<AlignmentParameters>,
 }
 
@@ -27,7 +31,7 @@ impl Worker {
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
             connection: TcpStream::connect(format!("{}:{}", host, port))?,
-            fmd_data: None,
+            fmd_index: None,
             alignment_parameters: None,
         })
     }
@@ -43,10 +47,10 @@ impl Worker {
             match self.read_message() {
                 Ok(mut task) => {
                     // Load FMD index if necessary
-                    if self.fmd_data.is_none() {
+                    if self.fmd_index.is_none() {
                         if let Some(reference_path) = task.reference_path {
                             debug!("Load FMD-index");
-                            self.fmd_data = Some(UnderlyingDataFMDIndex::load(&reference_path)?);
+                            self.fmd_index = Some(load_index_from_path(&reference_path)?);
                         }
                     }
 
@@ -58,11 +62,8 @@ impl Worker {
                     }
 
                     // If requirements are met, run task
-                    if let Some(data_fmd_index) = &self.fmd_data {
+                    if let Some(fmd_index) = &self.fmd_index {
                         if let Some(alignment_parameters) = &self.alignment_parameters {
-                            debug!("Reconstruct FMD-index");
-                            let fmd_index = data_fmd_index.reconstruct();
-
                             debug!("Map reads");
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
@@ -73,7 +74,7 @@ impl Worker {
                                                 &record.sequence,
                                                 &record.base_qualities,
                                                 alignment_parameters,
-                                                &fmd_index,
+                                                fmd_index,
                                                 &mut stack_buf.borrow_mut(),
                                                 &mut tree_buf.borrow_mut(),
                                             );
