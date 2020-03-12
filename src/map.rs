@@ -569,15 +569,66 @@ pub fn run(
         bincode::deserialize_from(d_pi)?
     };
 
-    map_reads(
-        alignment_parameters,
-        reads_path,
-        out_file_path,
-        &fmd_index,
-        &suffix_array,
-        &identifier_position_map,
-    )?;
+    let mut reads_reader = bam::Reader::from_path(reads_path)?;
+    let _ = reads_reader.set_threads(4);
+    let header = create_bam_header(&reads_reader, &identifier_position_map);
+    let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+    let _ = out_file.set_threads(4);
 
+    thread_local! {
+        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
+        static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
+    }
+
+    debug!("Map reads");
+    ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
+        .map(|chunk| {
+            trace!("Map chunk of reads in parallel");
+            let results = chunk
+                .par_iter()
+                .map(|record| {
+                    STACK_BUF.with(|stack_buf| {
+                        TREE_BUF.with(|tree_buf| {
+                            let start = Instant::now();
+                            let hit_intervals = k_mismatch_search(
+                                &record.sequence,
+                                &record.base_qualities,
+                                alignment_parameters,
+                                &fmd_index,
+                                &mut stack_buf.borrow_mut(),
+                                &mut tree_buf.borrow_mut(),
+                            );
+                            let duration = start.elapsed();
+
+                            (record, hit_intervals, duration)
+                        })
+                    })
+                })
+                .map_init(
+                    rand::thread_rng,
+                    |mut rng, (record, mut hit_interval, duration)| {
+                        intervals_to_bam(
+                            record,
+                            &mut hit_interval,
+                            &suffix_array,
+                            &identifier_position_map,
+                            Some(&duration),
+                            &mut rng,
+                        )
+                    },
+                )
+                .flatten()
+                .collect::<Vec<_>>();
+
+            trace!("Write BAM records to output file serially");
+            results
+                .iter()
+                .map(|record| out_file.write(record))
+                .collect()
+        })
+        .collect::<Result<(), _>>()?;
+
+    debug!("Done");
     Ok(())
 }
 
@@ -611,84 +662,9 @@ pub fn create_bam_header(
     header
 }
 
-/// Maps reads and writes them to a file in BAM format
-fn map_reads<S>(
-    alignment_parameters: &AlignmentParameters,
-    reads_path: &str,
-    out_file_path: &str,
-    fmd_index: &FMDIndex<BWT, Less, Occ>,
-    suffix_array: &S,
-    identifier_position_map: &FastaIdPositions,
-) -> Result<(), Box<dyn Error>>
-where
-    S: SuffixArray + Sync,
-{
-    let mut reads_reader = bam::Reader::from_path(reads_path)?;
-    let _ = reads_reader.set_threads(4);
-    let header = create_bam_header(&reads_reader, identifier_position_map);
-    let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
-    let _ = out_file.set_threads(4);
-
-    thread_local! {
-        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
-        static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
-    }
-
-    debug!("Map reads");
-    ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
-        .map(|chunk| {
-            trace!("Map chunk of reads in parallel");
-            let results = chunk
-                .par_iter()
-                .map(|record| {
-                    STACK_BUF.with(|stack_buf| {
-                        TREE_BUF.with(|tree_buf| {
-                            let start = Instant::now();
-                            let hit_intervals = k_mismatch_search(
-                                &record.sequence,
-                                &record.base_qualities,
-                                alignment_parameters,
-                                fmd_index,
-                                &mut stack_buf.borrow_mut(),
-                                &mut tree_buf.borrow_mut(),
-                            );
-                            let duration = start.elapsed();
-
-                            (record, hit_intervals, duration)
-                        })
-                    })
-                })
-                .map_init(
-                    rand::thread_rng,
-                    |mut rng, (record, mut hit_interval, duration)| {
-                        intervals_to_bam(
-                            record,
-                            &mut hit_interval,
-                            suffix_array,
-                            identifier_position_map,
-                            Some(&duration),
-                            &mut rng,
-                        )
-                    },
-                )
-                .flatten()
-                .collect::<Vec<_>>();
-
-            trace!("Write BAM records to output file serially");
-            results
-                .iter()
-                .map(|record| out_file.write(record))
-                .collect()
-        })
-        .collect::<Result<(), _>>()?;
-
-    debug!("Done");
-    Ok(())
-}
-
 /// Convert suffix array intervals to positions and BAM records
 pub fn intervals_to_bam<R, S>(
-    record: &Record,
+    input_record: &Record,
     intervals: &mut BinaryHeap<HitInterval>,
     suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
@@ -723,8 +699,8 @@ where
                     position,
                     best_alignment.edit_operations.effective_len(),
                 );
-                create_bam_record(
-                    record,
+                bam_record_helper(
+                    input_record,
                     position,
                     Some(&best_alignment),
                     Some(mapping_quality),
@@ -736,7 +712,7 @@ where
             .unwrap()
     } else {
         // No match found, report unmapped read
-        create_bam_record(record, -1, None, None, -1, None, duration)
+        bam_record_helper(input_record, -1, None, None, -1, None, duration)
     };
     vec![record]
 }
@@ -757,7 +733,7 @@ pub fn compute_optimal_scores(
         .map(|(i, (&base, &quality))| {
             difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
         })
-        .collect::<SmallVec<[_; 128]>>()
+        .collect::<SmallVec<_>>()
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
@@ -799,7 +775,7 @@ fn estimate_mapping_quality(
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
-fn create_bam_record(
+fn bam_record_helper(
     input_record: &Record,
     position: i32,
     hit_interval: Option<&HitInterval>,
