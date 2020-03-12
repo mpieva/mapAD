@@ -56,6 +56,7 @@ impl Worker {
 
                     // Extract alignment parameters if necessary
                     if self.alignment_parameters.is_none() {
+                        debug!("Extract alignment parameters");
                         if let Some(alignment_parameters) = task.alignment_parameters {
                             self.alignment_parameters = Some(alignment_parameters);
                         }
