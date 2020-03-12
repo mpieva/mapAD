@@ -918,7 +918,7 @@ fn extract_edit_operations(
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
-fn check_and_push(
+fn check_and_push_stack_frame(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
     alignment_parameters: &AlignmentParameters,
@@ -1080,7 +1080,7 @@ pub fn k_mismatch_search(
         } - optimal_penalty
             + stack_frame.alignment_score;
 
-        check_and_push(
+        check_and_push_stack_frame(
             MismatchSearchStackFrame {
                 j: next_j,
                 backward_index: next_backward_index,
@@ -1162,7 +1162,7 @@ pub fn k_mismatch_search(
             } - optimal_penalty
                 + stack_frame.alignment_score;
 
-            check_and_push(
+            check_and_push_stack_frame(
                 MismatchSearchStackFrame {
                     current_interval: interval_prime,
                     // Mark open gap at the corresponding end
@@ -1201,7 +1201,7 @@ pub fn k_mismatch_search(
             ) - optimal_penalty
                 + stack_frame.alignment_score;
 
-            check_and_push(
+            check_and_push_stack_frame(
                 MismatchSearchStackFrame {
                     j: next_j,
                     current_interval: interval_prime,
