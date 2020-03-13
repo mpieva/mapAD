@@ -262,7 +262,7 @@ fn parse_arguments(matches: ArgMatches) {
         0 => log::Level::Warn,
         1 => log::Level::Info,
         2 => log::Level::Debug,
-        3 | _ => log::Level::Trace,
+        _ => log::Level::Trace,
     })
     .unwrap();
 }
