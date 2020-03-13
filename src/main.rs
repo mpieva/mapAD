@@ -14,7 +14,7 @@ use mapad::{
 };
 
 fn main() {
-    parse_arguments(define_cli());
+    handle_arguments(define_cli());
 }
 
 fn define_cli<'a>() -> ArgMatches<'a> {
@@ -238,22 +238,16 @@ fn define_cli<'a>() -> ArgMatches<'a> {
         .get_matches()
 }
 
-fn parse_arguments(matches: ArgMatches) {
+fn handle_arguments(matches: ArgMatches) {
     match matches.subcommand() {
-        ("index", Some(index_matches)) => {
-            if let Err(e) = index::run(
-                index_matches.value_of("reference").unwrap(),
-                value_t!(index_matches.value_of("seed"), u64).unwrap(),
-            ) {
-                println!("Application error: {}", e);
-            }
+        ("index", Some(arg_matches)) => {
+            start_indexer(arg_matches);
         }
-        ("map", Some(map_matches)) => {
-            start_mapper(map_matches);
+        ("map", Some(arg_matches)) => {
+            start_mapper(arg_matches);
         }
-
-        ("worker", Some(worker_matches)) => {
-            start_worker(worker_matches);
+        ("worker", Some(arg_matches)) => {
+            start_worker(arg_matches);
         }
         _ => unreachable!(),
     }
@@ -265,6 +259,15 @@ fn parse_arguments(matches: ArgMatches) {
         _ => log::Level::Trace,
     })
     .unwrap();
+}
+
+fn start_indexer(arg_matches: &ArgMatches) {
+    if let Err(e) = index::run(
+        arg_matches.value_of("reference").unwrap(),
+        value_t!(arg_matches.value_of("seed"), u64).unwrap(),
+    ) {
+        println!("Application error: {}", e);
+    }
 }
 
 fn start_mapper(map_matches: &ArgMatches) {
@@ -296,6 +299,19 @@ fn start_mapper(map_matches: &ArgMatches) {
     ) {
         println!("Application error: {}", e);
     }
+}
+
+fn start_worker(arg_matches: &ArgMatches) {
+    let host = arg_matches.value_of("host").unwrap();
+    let port = arg_matches.value_of("port").unwrap();
+    let mut worker = worker::Worker::new(
+        host,
+        port,
+    ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
+
+    worker.run().expect(
+        "Could not successfully complete the tasks given. Please double-check the results.",
+    );
 }
 
 fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
@@ -350,17 +366,4 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
             .unwrap_or_else(|e| e.exit()),
         mismatch_bound,
     }
-}
-
-fn start_worker(arg_matches: &ArgMatches) {
-    let host = arg_matches.value_of("host").unwrap();
-    let port = arg_matches.value_of("port").unwrap();
-    let mut worker = worker::Worker::new(
-            host,
-            port,
-        ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
-
-    worker.run().expect(
-        "Could not successfully complete the tasks given. Please double-check the results.",
-    );
 }
