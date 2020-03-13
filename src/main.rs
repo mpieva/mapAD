@@ -1,4 +1,6 @@
-use clap::{crate_description, crate_version, value_t, App, AppSettings, Arg, SubCommand};
+use clap::{
+    crate_description, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand,
+};
 
 use mapad::{
     distributed::{dispatcher, worker},
@@ -8,10 +10,14 @@ use mapad::{
         LibraryPrep, SequenceDifferenceModel, SequenceDifferenceModelDispatch,
         SimpleAncientDnaModel,
     },
-    utils,
+    utils::AlignmentParameters,
 };
 
 fn main() {
+    parse_arguments(define_cli());
+}
+
+fn define_cli<'a>() -> ArgMatches<'a> {
     let probability_validator = |v: String| {
         let error_message = String::from("Please specify a value between 0 and 1");
         let v: f32 = match v.parse() {
@@ -24,7 +30,7 @@ fn main() {
         Err(error_message)
     };
 
-    let matches = App::new(map::CRATE_NAME)
+    App::new(map::CRATE_NAME)
         .about(crate_description!())
         .version(crate_version!())
         .setting(AppSettings::SubcommandRequiredElseHelp)
@@ -100,12 +106,12 @@ fn main() {
                         .validator(probability_validator),
                 )
                 .arg(
-                Arg::with_name("as_cutoff")
-                    .short("c")
-                    .group("allowed_mm")
-                    .help("Per-base average log-likelihood cutoff")
-                    .takes_value(true)
-                    .value_name("FLOAT"),
+                    Arg::with_name("as_cutoff")
+                        .short("c")
+                        .group("allowed_mm")
+                        .help("Per-base average log-likelihood cutoff")
+                        .takes_value(true)
+                        .value_name("FLOAT"),
                 )
                 .arg(
                     Arg::with_name("as_cutoff_exponent")
@@ -229,16 +235,10 @@ fn main() {
                         .default_value("3130")
                 ),
         )
-        .get_matches();
+        .get_matches()
+}
 
-    simple_logger::init_with_level(match matches.occurrences_of("v") {
-        0 => log::Level::Warn,
-        1 => log::Level::Info,
-        2 => log::Level::Debug,
-        3 | _ => log::Level::Trace,
-    })
-    .unwrap();
-
+fn parse_arguments(matches: ArgMatches) {
     match matches.subcommand() {
         ("index", Some(index_matches)) => {
             if let Err(e) = index::run(
@@ -249,105 +249,118 @@ fn main() {
             }
         }
         ("map", Some(map_matches)) => {
-            let library_prep = match map_matches.value_of("library").unwrap() {
-                "single_stranded" => LibraryPrep::SingleStranded {
-                    five_prime_overhang: value_t!(map_matches.value_of("five_prime_overhang"), f32)
-                        .unwrap_or_else(|e| e.exit()),
-                    three_prime_overhang: value_t!(
-                        map_matches.value_of("three_prime_overhang"),
-                        f32
-                    )
-                    .unwrap_or_else(|e| e.exit()),
-                },
-                "double_stranded" => LibraryPrep::DoubleStranded(
-                    value_t!(map_matches.value_of("five_prime_overhang"), f32)
-                        .unwrap_or_else(|e| e.exit()),
-                ),
-                _ => unreachable!(),
-            };
-            let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
-                library_prep,
-                ds_deamination_rate: value_t!(map_matches.value_of("ds_deamination_rate"), f32)
-                    .unwrap_or_else(|e| e.exit()),
-                ss_deamination_rate: value_t!(map_matches.value_of("ss_deamination_rate"), f32)
-                    .unwrap_or_else(|e| e.exit()),
-                // Divergence is divided by three because it is used for testing each of the three possible substitutions
-                divergence: value_t!(map_matches.value_of("divergence"), f32)
-                    .unwrap_or_else(|e| e.exit())
-                    / 3.0,
-            });
-
-            let reads_path = map_matches.value_of("reads").unwrap();
-            let reference_path = map_matches.value_of("reference").unwrap();
-            let out_file_path = map_matches.value_of("output").unwrap();
-
-            let mismatch_bound = if map_matches.is_present("poisson_prob") {
-                Discrete::new(
-                    value_t!(map_matches.value_of("poisson_prob"), f32)
-                        .unwrap_or_else(|e| e.exit()),
-                    0.02,
-                    difference_model.get_representative_mismatch_penalty(),
-                )
-                .into()
-            } else {
-                Continuous {
-                    cutoff: value_t!(map_matches.value_of("as_cutoff"), f32)
-                        .unwrap_or_else(|e| e.exit())
-                        * -1.0,
-                    exponent: value_t!(map_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
-                    representative_mismatch_penalty: difference_model
-                        .get_representative_mismatch_penalty(),
-                }
-                .into()
-            };
-
-            let alignment_parameters = utils::AlignmentParameters {
-                penalty_gap_open: value_t!(map_matches.value_of("indel_rate"), f32)
-                    .unwrap_or_else(|e| e.exit())
-                    .log2(),
-                penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
-                difference_model,
-                chunk_size: value_t!(map_matches.value_of("chunk_size"), usize)
-                    .unwrap_or_else(|e| e.exit()),
-                mismatch_bound,
-            };
-
-            if map_matches.is_present("dispatcher") {
-                println!("Dispatcher mode");
-                let mut dispatcher = dispatcher::Dispatcher::new(
-                    reads_path,
-                    reference_path,
-                    out_file_path,
-                    &alignment_parameters,
-                )
-                .expect("Application error");
-
-                let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
-                if let Err(e) = dispatcher.run(port) {
-                    println!("Application error: {}", e);
-                }
-            } else if let Err(e) = map::run(
-                reads_path,
-                reference_path,
-                out_file_path,
-                &alignment_parameters,
-            ) {
-                println!("Application error: {}", e);
-            }
+            start_mapper(map_matches);
         }
 
         ("worker", Some(worker_matches)) => {
-            let host = worker_matches.value_of("host").unwrap();
-            let port = worker_matches.value_of("port").unwrap();
-            let mut worker = worker::Worker::new(
-                host,
-                port,
-            ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
-
-            worker.run().expect(
-                "Could not successfully complete the tasks given. Please double-check the results.",
-            );
+            start_worker(worker_matches);
         }
         _ => unreachable!(),
     }
+
+    simple_logger::init_with_level(match matches.occurrences_of("v") {
+        0 => log::Level::Warn,
+        1 => log::Level::Info,
+        2 => log::Level::Debug,
+        3 | _ => log::Level::Trace,
+    })
+    .unwrap();
+}
+
+fn start_mapper(map_matches: &ArgMatches) {
+    let reads_path = map_matches.value_of("reads").unwrap();
+    let reference_path = map_matches.value_of("reference").unwrap();
+    let out_file_path = map_matches.value_of("output").unwrap();
+
+    let alignment_parameters = build_alignment_parameters(map_matches);
+
+    if map_matches.is_present("dispatcher") {
+        println!("Dispatcher mode");
+        let mut dispatcher = dispatcher::Dispatcher::new(
+            reads_path,
+            reference_path,
+            out_file_path,
+            &alignment_parameters,
+        )
+        .expect("Application error");
+
+        let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+        if let Err(e) = dispatcher.run(port) {
+            println!("Application error: {}", e);
+        }
+    } else if let Err(e) = map::run(
+        reads_path,
+        reference_path,
+        out_file_path,
+        &alignment_parameters,
+    ) {
+        println!("Application error: {}", e);
+    }
+}
+
+fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
+    let library_prep = match arg_matches.value_of("library").unwrap() {
+        "single_stranded" => LibraryPrep::SingleStranded {
+            five_prime_overhang: value_t!(arg_matches.value_of("five_prime_overhang"), f32)
+                .unwrap_or_else(|e| e.exit()),
+            three_prime_overhang: value_t!(arg_matches.value_of("three_prime_overhang"), f32)
+                .unwrap_or_else(|e| e.exit()),
+        },
+        "double_stranded" => LibraryPrep::DoubleStranded(
+            value_t!(arg_matches.value_of("five_prime_overhang"), f32).unwrap_or_else(|e| e.exit()),
+        ),
+        _ => unreachable!(),
+    };
+
+    let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
+        library_prep,
+        ds_deamination_rate: value_t!(arg_matches.value_of("ds_deamination_rate"), f32)
+            .unwrap_or_else(|e| e.exit()),
+        ss_deamination_rate: value_t!(arg_matches.value_of("ss_deamination_rate"), f32)
+            .unwrap_or_else(|e| e.exit()),
+        // Divergence is divided by three because it is used for testing each of the three possible substitutions
+        divergence: value_t!(arg_matches.value_of("divergence"), f32).unwrap_or_else(|e| e.exit())
+            / 3.0,
+    });
+
+    let mismatch_bound = if arg_matches.is_present("poisson_prob") {
+        Discrete::new(
+            value_t!(arg_matches.value_of("poisson_prob"), f32).unwrap_or_else(|e| e.exit()),
+            0.02,
+            difference_model.get_representative_mismatch_penalty(),
+        )
+        .into()
+    } else {
+        Continuous {
+            cutoff: value_t!(arg_matches.value_of("as_cutoff"), f32).unwrap_or_else(|e| e.exit())
+                * -1.0,
+            exponent: value_t!(arg_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
+            representative_mismatch_penalty: difference_model.get_representative_mismatch_penalty(),
+        }
+        .into()
+    };
+
+    AlignmentParameters {
+        penalty_gap_open: value_t!(arg_matches.value_of("indel_rate"), f32)
+            .unwrap_or_else(|e| e.exit())
+            .log2(),
+        penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
+        difference_model,
+        chunk_size: value_t!(arg_matches.value_of("chunk_size"), usize)
+            .unwrap_or_else(|e| e.exit()),
+        mismatch_bound,
+    }
+}
+
+fn start_worker(arg_matches: &ArgMatches) {
+    let host = arg_matches.value_of("host").unwrap();
+    let port = arg_matches.value_of("port").unwrap();
+    let mut worker = worker::Worker::new(
+            host,
+            port,
+        ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
+
+    worker.run().expect(
+        "Could not successfully complete the tasks given. Please double-check the results.",
+    );
 }
