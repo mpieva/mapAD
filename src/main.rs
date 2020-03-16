@@ -239,6 +239,14 @@ fn define_cli<'a>() -> ArgMatches<'a> {
 }
 
 fn handle_arguments(matches: ArgMatches) {
+    simple_logger::init_with_level(match matches.occurrences_of("v") {
+        0 => log::Level::Warn,
+        1 => log::Level::Info,
+        2 => log::Level::Debug,
+        _ => log::Level::Trace,
+    })
+    .unwrap();
+
     match matches.subcommand() {
         ("index", Some(arg_matches)) => {
             start_indexer(arg_matches);
@@ -251,14 +259,6 @@ fn handle_arguments(matches: ArgMatches) {
         }
         _ => unreachable!(),
     }
-
-    simple_logger::init_with_level(match matches.occurrences_of("v") {
-        0 => log::Level::Warn,
-        1 => log::Level::Info,
-        2 => log::Level::Debug,
-        _ => log::Level::Trace,
-    })
-    .unwrap();
 }
 
 fn start_indexer(arg_matches: &ArgMatches) {
