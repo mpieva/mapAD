@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "mapad"
-version = "0.0.18-alpha.0"
+version = "0.0.18"
 dependencies = [
  "assert_approx_eq",
  "backtrack-tree",
