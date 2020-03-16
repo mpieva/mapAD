@@ -1424,15 +1424,15 @@ mod tests {
         // Reference
         let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
-        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel {
-            library_prep: LibraryPrep::SingleStranded {
+        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
+            LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.3,
                 three_prime_overhang: 0.3,
             },
-            ds_deamination_rate: 0.001,
-            ss_deamination_rate: 0.8,
-            divergence: 0.02,
-        });
+            0.001,
+            0.8,
+            0.02,
+        ));
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();

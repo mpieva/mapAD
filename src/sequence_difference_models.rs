@@ -53,16 +53,20 @@ pub enum LibraryPrep {
 /// Model of deamination (aDNA degradation), divergence, and sequencing error
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimpleAncientDnaModel {
-    pub library_prep: LibraryPrep,
+    library_prep: LibraryPrep,
     // Deamination rate in double-stranded stems
-    pub ds_deamination_rate: f32,
+    ds_deamination_rate: f32,
     // Deamination rate in single-stranded overhangs
-    pub ss_deamination_rate: f32,
-    pub divergence: f32,
+    ss_deamination_rate: f32,
+    divergence: f32,
+    cache: Vec<f32>,
 }
 
 impl SequenceDifferenceModel for SimpleAncientDnaModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32 {
+        let fp_dist = i;
+        let tp_dist = read_length - 1 - i;
+
         // Only C->T and G->A substitutions are part of the deamination model.
         // Therefore, the following calculations are offloaded into a closure that
         // is only called when one of those substitutions is observed.
@@ -72,8 +76,8 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
                     five_prime_overhang,
                     three_prime_overhang,
                 } => {
-                    let five_prime_overhang = five_prime_overhang.powi((i + 1) as i32);
-                    let three_prime_overhang = three_prime_overhang.powi((read_length - i) as i32);
+                    let five_prime_overhang = five_prime_overhang.powi(fp_dist as i32 + 1);
+                    let three_prime_overhang = three_prime_overhang.powi(tp_dist as i32 + 1);
                     (
                         (five_prime_overhang + three_prime_overhang)
                             - (five_prime_overhang * three_prime_overhang),
@@ -81,8 +85,8 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
                     )
                 }
                 LibraryPrep::DoubleStranded(overhang) => (
-                    overhang.powi(i as i32 + 1),
-                    overhang.powi((read_length - i) as i32),
+                    overhang.powi(fp_dist as i32 + 1),
+                    overhang.powi(tp_dist as i32 + 1),
                 ),
             };
 
@@ -95,7 +99,10 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
             (c_to_t, g_to_a)
         };
 
-        let sequencing_error = 10_f32.powf(-1.0 * f32::from(base_quality) / 10.0);
+        let sequencing_error = match self.cache.get(base_quality as usize) {
+            Some(&v) => v,
+            None => 10_f32.powf(-1.0 * base_quality as f32 / 10.0),
+        };
 
         // Probability of seeing a mutation or sequencing error
         // Artificial boundary at 0.25 to ensure the model's output won't be negative
@@ -136,6 +143,26 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
             _ => independent_error,
         }
         .log2()
+    }
+}
+
+impl SimpleAncientDnaModel {
+    pub fn new(
+        library_prep: LibraryPrep,
+        ds_deamination_rate: f32,
+        ss_deamination_rate: f32,
+        divergence: f32,
+    ) -> Self {
+        let cache = (0..=40)
+            .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0))
+            .collect::<Vec<_>>();
+        Self {
+            library_prep,
+            ds_deamination_rate,
+            ss_deamination_rate,
+            divergence,
+            cache,
+        }
     }
 }
 
@@ -243,15 +270,15 @@ mod tests {
 
     #[test]
     fn test_simple_adna_model() {
-        let adna_model = SimpleAncientDnaModel {
-            library_prep: (LibraryPrep::SingleStranded {
+        let adna_model = SimpleAncientDnaModel::new(
+            LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
-            }),
-            ds_deamination_rate: 0.001,
-            ss_deamination_rate: 0.9,
-            divergence: 0.02 / 3.0,
-        };
+            },
+            0.001,
+            0.9,
+            0.02 / 3.0,
+        );
 
         // 'C' -> 'T'
         assert_approx_eq!(-1.504131, adna_model.get(0, 25, b'C', b'T', 10));
