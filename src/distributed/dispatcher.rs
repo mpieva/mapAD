@@ -110,18 +110,14 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         // Set up networking
         let mut max_token = Self::DISPATCHER_TOKEN.0;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let listener = TcpListener::bind(&addr)?;
+        let mut listener = TcpListener::bind(addr)?;
 
         // Create a poll instance
-        let poll = Poll::new()?;
+        let mut poll = Poll::new()?;
 
         // Start listening for incoming connection attempts and store connections
-        poll.register(
-            &listener,
-            Self::DISPATCHER_TOKEN,
-            Ready::readable(),
-            PollOpt::edge(),
-        )?;
+        poll.registry()
+            .register(&mut listener, Self::DISPATCHER_TOKEN, Interest::READABLE)?;
 
         debug!("Load position map");
         let identifier_position_map: map::FastaIdPositions = {
@@ -157,15 +153,14 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 match event.token() {
                     // Workers of the world, register!
                     Self::DISPATCHER_TOKEN => {
-                        while let Ok((remote_stream, remote_addr)) = listener.accept() {
+                        while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
                             debug!("Connection established ({:?})", remote_addr);
                             max_token += 1;
                             let remote_token = Token(max_token);
-                            poll.register(
-                                &remote_stream,
+                            poll.registry().register(
+                                &mut remote_stream,
                                 remote_token,
-                                Ready::all(),
-                                PollOpt::edge(),
+                                Interest::READABLE | Interest::WRITABLE,
                             )?;
                             self.connections.insert(remote_token, remote_stream);
                         }
@@ -176,7 +171,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     //
                     _ => {
                         // Receive results from workers
-                        if event.readiness().is_readable() {
+                        if event.is_readable() {
                             // After finishing previous tasks, the worker is ready to receive fresh jobs
                             match self.read_rx_buffer(event.token()) {
                                 TransportState::Finished => {
@@ -200,23 +195,21 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                         self.mark_task_completed(results.chunk_id);
                                     }
 
-                                    poll.reregister(
+                                    poll.registry().reregister(
                                         self.connections
-                                            .get(&event.token())
+                                            .get_mut(&event.token())
                                             .expect("This is not expected to fail"),
                                         event.token(),
-                                        Ready::all(),
-                                        PollOpt::edge(),
+                                        Interest::READABLE | Interest::WRITABLE,
                                     )?;
                                 }
                                 TransportState::Stalled => {
-                                    poll.reregister(
+                                    poll.registry().reregister(
                                         self.connections
-                                            .get(&event.token())
+                                            .get_mut(&event.token())
                                             .expect("This is not expected to fail"),
                                         event.token(),
-                                        Ready::readable(),
-                                        PollOpt::edge(),
+                                        Interest::READABLE,
                                     )?;
                                 }
                                 TransportState::Error(_) => {
@@ -232,26 +225,24 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                         }
 
                         // Distribution of work
-                        if event.readiness().is_writable() {
+                        if event.is_writable() {
                             match self.write_tx_buffer(event.token(), &mut task_queue) {
                                 TransportState::Finished => {
-                                    poll.reregister(
+                                    poll.registry().reregister(
                                         self.connections
-                                            .get(&event.token())
+                                            .get_mut(&event.token())
                                             .expect("This is not expected to fail"),
                                         event.token(),
-                                        Ready::readable(),
-                                        PollOpt::edge(),
+                                        Interest::READABLE,
                                     )?;
                                 }
                                 TransportState::Stalled => {
-                                    poll.reregister(
+                                    poll.registry().reregister(
                                         self.connections
-                                            .get(&event.token())
+                                            .get_mut(&event.token())
                                             .expect("This is not expected to fail"),
                                         event.token(),
-                                        Ready::all(),
-                                        PollOpt::edge(),
+                                        Interest::READABLE | Interest::WRITABLE,
                                     )?;
                                 }
                                 TransportState::Error(_) => {
