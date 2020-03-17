@@ -344,12 +344,11 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         )
         .into()
     } else {
-        Continuous {
-            cutoff: value_t!(arg_matches.value_of("as_cutoff"), f32).unwrap_or_else(|e| e.exit())
-                * -1.0,
-            exponent: value_t!(arg_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
-            representative_mismatch_penalty: difference_model.get_representative_mismatch_penalty(),
-        }
+        Continuous::new(
+            value_t!(arg_matches.value_of("as_cutoff"), f32).unwrap_or_else(|e| e.exit()) * -1.0,
+            value_t!(arg_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
+            difference_model.get_representative_mismatch_penalty(),
+        )
         .into()
     };
 

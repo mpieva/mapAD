@@ -6,6 +6,8 @@ use std::{
     iter::once,
 };
 
+const MAX_CACHED_READ_LENGTH: usize = 256;
+
 #[enum_dispatch]
 pub trait MismatchBound {
     fn reject(&self, value: f32, read_length: usize) -> bool;
@@ -26,17 +28,38 @@ pub enum MismatchBoundDispatch {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Continuous {
-    pub cutoff: f32,
-    pub exponent: f32,
-    pub representative_mismatch_penalty: f32,
+    cutoff: f32,
+    exponent: f32,
+    representative_mismatch_penalty: f32,
+    cache: Vec<f32>,
 }
 
 impl MismatchBound for Continuous {
     fn reject(&self, value: f32, read_length: usize) -> bool {
-        (value / (read_length as f32).powf(self.exponent)) < self.cutoff
+        let scaled_read_length = match self.cache.get(read_length) {
+            Some(&v) => v,
+            None => (read_length as f32).powf(self.exponent),
+        };
+        (value / scaled_read_length) < self.cutoff
     }
+
     fn reject_iterative(&self, value: f32, reference: f32) -> bool {
         value < reference + self.representative_mismatch_penalty
+    }
+}
+
+impl Continuous {
+    pub fn new(cutoff: f32, exponent: f32, representative_mismatch_penalty: f32) -> Self {
+        let cache = (0..MAX_CACHED_READ_LENGTH)
+            .map(|read_length| (read_length as f32).powf(exponent))
+            .collect();
+
+        Self {
+            cutoff,
+            exponent,
+            representative_mismatch_penalty,
+            cache,
+        }
     }
 }
 
@@ -61,11 +84,10 @@ impl MismatchBound for Discrete {
 
 impl Display for Discrete {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let max_length = 256;
-        let width = (max_length as f32).log10().ceil() as usize;
+        let width = (MAX_CACHED_READ_LENGTH as f32).log10().ceil() as usize;
 
         let text = {
-            let mut tmp = (Discrete::MIN_READ_LENGTH..=max_length)
+            let mut tmp = (Self::MIN_READ_LENGTH..=MAX_CACHED_READ_LENGTH)
                 .map(|read_length| (read_length, self.get(read_length)))
                 .scan(
                     std::f32::MIN,
@@ -110,18 +132,18 @@ impl Discrete {
         base_error_rate: f32,
         representative_mismatch_penalty: f32,
     ) -> Discrete {
-        let cache = (0..128)
+        let cache = (0..MAX_CACHED_READ_LENGTH)
             .map(|read_length| {
-                Discrete::calculate_max_num_mismatches(
+                Self::calculate_max_num_mismatches(
                     // Read lengths are stored with an offset to cache the "hot" lengths
-                    read_length + Discrete::MIN_READ_LENGTH,
+                    read_length + Self::MIN_READ_LENGTH,
                     poisson_threshold,
                     base_error_rate,
                 )
             })
             .collect();
 
-        Discrete {
+        Self {
             poisson_threshold,
             base_error_rate,
             representative_mismatch_penalty,
@@ -158,16 +180,16 @@ impl Discrete {
 
     fn get(&self, read_length: usize) -> f32 {
         // Reads shorter than the threshold are not allowed to differ
-        if read_length < Discrete::MIN_READ_LENGTH {
+        if read_length < Self::MIN_READ_LENGTH {
             return 0.0;
         }
 
         match self
             .cache
             // An offset must be subtracted to point to the correct cache entries
-            .get(read_length - Discrete::MIN_READ_LENGTH)
+            .get(read_length - Self::MIN_READ_LENGTH)
         {
-            None => Discrete::calculate_max_num_mismatches(
+            None => Self::calculate_max_num_mismatches(
                 read_length,
                 self.poisson_threshold,
                 self.base_error_rate,
