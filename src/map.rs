@@ -362,14 +362,14 @@ impl FastaIdPositions {
 
     /// Find the corresponding reference identifier by position. The function
     /// returns a tuple: ("target ID", "relative position")
-    fn get_reference_identifier(&self, position: usize, pattern_length: usize) -> (i32, i32) {
+    fn get_reference_identifier(&self, position: usize, pattern_length: usize) -> (i32, i64) {
         self.id_position
             .iter()
             .enumerate()
             .find(|(_, identifier)| {
                 (identifier.start <= position) && (position + pattern_length - 1 <= identifier.end)
             })
-            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i32))
+            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i64))
             .unwrap_or((-1, -1))
     }
 }
@@ -777,7 +777,7 @@ fn estimate_mapping_quality(
 /// Create and return a BAM record of either a hit or an unmapped read
 fn bam_record_helper(
     input_record: &Record,
-    position: i32,
+    position: i64,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
     tid: i32,
