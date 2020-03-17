@@ -11,7 +11,7 @@ publish = false
 clap = "2.33.0"
 log = "0.4.8"
 rust-htslib = { git = "https://vcs.eva.mpg.de/christian_heide/rust-htslib.git", branch = "feature/get_all_bam_tags" }
-simple_logger = "1.5.0"
+simple_logger = "1.6.0"
 bincode = "1.2.1"
 bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biinterval_pub", features = ["runtime-dispatch-simd"] }
 assert_approx_eq = "1.1.0"
