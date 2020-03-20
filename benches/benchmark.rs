@@ -72,13 +72,13 @@ fn criterion_benchmark(c: &mut Criterion) {
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-            )
+            );
         })
     });
 }
 
-fn bench_multiple_reads(c: &mut Criterion) {
-    c.bench_function("bench_multiple_reads", |b| {
+fn bench_mapping_read(c: &mut Criterion) {
+    c.bench_function("bench_mapping_read", |b| {
         let mut ref_seq = "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGA\
                            TTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTA\
                            CAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG\
@@ -129,33 +129,29 @@ fn bench_multiple_reads(c: &mut Criterion) {
 
         let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
-        let patterns = vec![
-            "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
-                .as_bytes()
-                .to_owned();
-            100
-        ];
-        let base_qualities = vec![40; patterns[0].len()];
+        let pattern = "TAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG"
+            .as_bytes()
+            .to_owned();
+        let base_qualities = vec![40; pattern.len()];
 
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
-        for pattern in patterns.iter() {
-            b.iter(|| {
-                k_mismatch_search(
-                    &pattern,
-                    &base_qualities,
-                    &parameters,
-                    &fmd_index,
-                    &mut stack,
-                    &mut tree,
-                )
-            })
-        }
+
+        b.iter(|| {
+            k_mismatch_search(
+                &pattern,
+                &base_qualities,
+                &parameters,
+                &fmd_index,
+                &mut stack,
+                &mut tree,
+            );
+        })
     });
 }
 
-fn bench_exogenous_reads(c: &mut Criterion) {
-    c.bench_function("bench_exogenous_reads", |b| {
+fn bench_exogenous_read(c: &mut Criterion) {
+    c.bench_function("bench_exogenous_read", |b| {
         let mut ref_seq = "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGA\
                            TTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTA\
                            CAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG\
@@ -206,35 +202,31 @@ fn bench_exogenous_reads(c: &mut Criterion) {
 
         let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
-        let patterns = vec![
-            "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
-                .as_bytes()
-                .to_owned();
-            100
-        ];
-        let base_qualities = vec![40; patterns[0].len()];
+        let pattern = "TTTTTTTTTTGGGGGTTACAGATTACAGATTACAGGGGGGTTTTTTTTTT"
+            .as_bytes()
+            .to_owned();
+        let base_qualities = vec![40; pattern.len()];
 
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
-        for pattern in patterns.iter() {
-            b.iter(|| {
-                k_mismatch_search(
-                    &pattern,
-                    &base_qualities,
-                    &parameters,
-                    &fmd_index,
-                    &mut stack,
-                    &mut tree,
-                )
-            })
-        }
+
+        b.iter(|| {
+            k_mismatch_search(
+                &pattern,
+                &base_qualities,
+                &parameters,
+                &fmd_index,
+                &mut stack,
+                &mut tree,
+            );
+        })
     });
 }
 
-fn bench_multiple_long_reads(c: &mut Criterion) {
-    c.bench_function("bench_multiple_long_reads", |b| {
+fn bench_long_read(c: &mut Criterion) {
+    c.bench_function("bench_long_read", |b| {
         let mut ref_seq = "GTCTGCATCCCCAGGACCACCATGGGTGGGGAGGGCAGAGATTGGGGAGCACCTATAGAGGCTCTAATGCTCTAAGGTGACAGTGATGAGGACCTGGGTGCACCCATGAGTGGAGAAGCTAGGCCTGTCCAGAGAAGCAAGACAAACACACACATACACACTCACACACACACAGGCACATATGCATACACAAATACATTGCAT".as_bytes().to_owned();
-        let patterns = vec!["ACTAAAGAGCTTCTGCACAGGAAAAGAAACTACCATCAGAACCACCAGGCAACCTACAACATGGGATAAAATTTTCACAACCTACTCATCTGACAAAGGGCCAATATCCAGAATCTACAATGAACTCCAACAAATTTACAAGAAAAAAACAAACAACCCCATCAAAAAGTGGGCAAAGGACATGAACAGACACTTCTCAAAAGAAGATATTTATGCAGCCAAGAAAACACATAAAAA".as_bytes().to_owned(); 100];
+        let pattern = "ACTAAAGAGCTTCTGCACAGGAAAAGAAACTACCATCAGAACCACCAGGCAACCTACAACATGGGATAAAATTTTCACAACCTACTCATCTGACAAAGGGCCAATATCCAGAATCTACAATGAACTCCAACAAATTTACAAGAAAAAAACAAACAACCCCATCAAAAAGTGGGCAAAGGACATGAACAGACACTTCTCAAAAGAAGATATTTATGCAGCCAAGAAAACACATAAAAA".as_bytes().to_owned();
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
@@ -275,30 +267,28 @@ fn bench_multiple_long_reads(c: &mut Criterion) {
 
         let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
-        let base_qualities = vec![40; patterns[0].len()];
+        let base_qualities = vec![40; pattern.len()];
 
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
-        for pattern in patterns.iter() {
             b.iter(|| {
-                k_mismatch_search(
-                    &pattern,
-                    &base_qualities,
-                    &parameters,
-                    &fmd_index,
-                    &mut stack,
-                    &mut tree,
-                )
+                    k_mismatch_search(
+                        &pattern,
+                        &base_qualities,
+                        &parameters,
+                        &fmd_index,
+                        &mut stack,
+                        &mut tree,
+                    );
             })
-        }
     });
 }
 
 criterion_group!(
     benches,
     criterion_benchmark,
-    bench_multiple_reads,
-    bench_exogenous_reads,
-    bench_multiple_long_reads,
+    bench_mapping_read,
+    bench_exogenous_read,
+    bench_long_read,
 );
 criterion_main!(benches);
