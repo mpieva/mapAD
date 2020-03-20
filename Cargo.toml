@@ -17,7 +17,7 @@ bio = { git = "https://vcs.eva.mpg.de/christian_heide/rust-bio", branch = "biint
 assert_approx_eq = "1.1.0"
 smallvec = "1.2.0"
 rand = "0.7.3"
-serde = { version = "1.0.104", features = ["derive"] }
+serde = { version = "1.0.105", features = ["derive"] }
 snap = "1.0.0"
 either = "1.5.3"
 rayon = "1.3.0"
@@ -41,3 +41,4 @@ panic = "abort"
 [profile.bench]
 lto = "fat"
 codegen-units = 1
+
