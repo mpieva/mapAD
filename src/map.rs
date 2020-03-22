@@ -1159,8 +1159,7 @@ pub fn k_mismatch_search(
                 parameters.penalty_gap_extend
             } else {
                 parameters.penalty_gap_open
-            } - optimal_penalty
-                + stack_frame.alignment_score;
+            } + stack_frame.alignment_score;
 
             check_and_push_stack_frame(
                 MismatchSearchStackFrame {
