@@ -490,4 +490,30 @@ mod tests {
         assert_approx_eq!(-7.207481, adna_model.get(15, 25, b'T', b'A', 40));
         assert_approx_eq!(-3.237864, adna_model.get(5, 25, b'C', b'G', 10));
     }
+
+    #[test]
+    fn test_simple_adna_wo_deam() {
+        let adna_model = SimpleAncientDnaModel::new(
+            LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.0,
+                three_prime_overhang: 0.0,
+            },
+            0.0,
+            0.0,
+            0.02 / 3.0,
+        );
+
+        assert_eq!(
+            adna_model.get(0, 25, b'C', b'T', 40),
+            adna_model.get(13, 25, b'T', b'A', 40)
+        );
+        assert_eq!(
+            adna_model.get(24, 25, b'C', b'T', 40),
+            adna_model.get(13, 25, b'T', b'A', 40)
+        );
+        assert_eq!(
+            adna_model.get(13, 25, b'C', b'C', 40),
+            adna_model.get(0, 25, b'C', b'C', 40)
+        );
+    }
 }
