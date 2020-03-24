@@ -24,6 +24,9 @@ pub trait SequenceDifferenceModel {
         if only_mismatches {
             Either::Left(iterator.filter(|&&base| base != to))
         } else {
+            if b"ACGT".iter().all(|&symbol| symbol != to) {
+                return 0.0;
+            }
             Either::Right(iterator)
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
