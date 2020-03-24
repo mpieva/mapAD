@@ -1713,7 +1713,7 @@ mod tests {
             .iter()
             .map(|f| f.alignment_score)
             .collect::<Vec<_>>();
-        assert_eq!(alignment_scores, vec![-10.936638, -38.379524, -10.965062]);
+        assert_eq!(alignment_scores, vec![-10.936638, -38.376995, -10.965062]);
 
         let mut positions: Vec<usize> = intervals
             .iter()
