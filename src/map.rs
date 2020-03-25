@@ -435,10 +435,7 @@ impl BiDArray {
             .scan(
                 (0.0, None, fmd_index.init_interval()),
                 |(z, last_mismatch_pos, interval), (index, &base)| {
-                    *interval = match direction {
-                        Direction::Forward => FMDIndex::forward_ext,
-                        Direction::Backward => FMDIndex::backward_ext,
-                    }(fmd_index, &interval, base);
+                    *interval = Self::fmd_extend_optimized(&interval, base, direction, fmd_index);
                     if interval.size < 1 {
                         *z += directed_pattern_iterator()
                             .take(index + 1)
@@ -498,6 +495,61 @@ impl BiDArray {
         let out = inner().unwrap_or(0.0);
         debug_assert!(out <= 0.0);
         out
+    }
+
+    fn fmd_extend_optimized(
+        interval: &BiInterval,
+        base: u8,
+        direction: Direction,
+        fmd_index: &FMDIndex<BWT, Less, Occ>,
+    ) -> BiInterval {
+        fn backward_ext(
+            interval: &BiInterval,
+            base: u8,
+            fmd_index: &FMDIndex<BWT, Less, Occ>,
+        ) -> BiInterval {
+            let mut s = 0;
+            let mut o = 0;
+            let mut l = interval.lower_rev;
+            for &c in b"$TGCA".iter() {
+                l += s;
+                o = if interval.lower == 0 {
+                    0
+                } else {
+                    fmd_index.occ(interval.lower - 1, c)
+                };
+
+                // Interval size I^s
+                s = fmd_index.occ(interval.lower + interval.size - 1, c) - o;
+
+                // No need to branch for technical characters and zero-sized intervals
+                if c == base {
+                    break;
+                }
+            }
+
+            BiInterval {
+                lower: fmd_index.less(base) + o,
+                lower_rev: l,
+                size: s,
+                match_size: interval.match_size + 1,
+            }
+        }
+
+        match base {
+            b'A' | b'C' | b'G' | b'T' => match direction {
+                Direction::Backward => backward_ext(interval, base, fmd_index),
+                Direction::Forward => {
+                    backward_ext(&interval.swapped(), dna::complement(base), fmd_index).swapped()
+                }
+            },
+            _ => BiInterval {
+                lower: 0,
+                lower_rev: 0,
+                size: 0,
+                match_size: 0,
+            },
+        }
     }
 }
 
@@ -1314,7 +1366,7 @@ mod tests {
 
     #[test]
     fn test_exact_search() {
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
@@ -1349,7 +1401,7 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
@@ -1399,7 +1451,7 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
@@ -1432,7 +1484,7 @@ mod tests {
 
     #[test]
     fn test_d() {
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
 
         // Reference
@@ -1510,7 +1562,7 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
@@ -1554,7 +1606,7 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
@@ -1699,7 +1751,7 @@ mod tests {
             mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty).into(),
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
         // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
         let mut ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAGAAAAAAAAAAAAAAAAAAAATTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
@@ -1761,7 +1813,7 @@ mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
         };
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
         //
         // Deletion
@@ -1972,7 +2024,7 @@ mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
         };
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
         //
         // Mutation
@@ -2145,7 +2197,7 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
 
         // Reference
@@ -2210,7 +2262,7 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
 
         // Reference
@@ -2295,7 +2347,7 @@ mod tests {
         drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
         let sa = suffix_array(&ref_seq);
         let bwtr = bwt(&ref_seq, &sa);

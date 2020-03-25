@@ -20,7 +20,7 @@ use snap;
 
 use crate::map::{FastaIdPosition, FastaIdPositions};
 
-const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
+pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 const DNA_PURINES: &[u8; 2] = b"AG";
 const DNA_PYRIMIDINES: &[u8; 2] = b"CT";
 const DNA_KETONE: &[u8; 2] = b"GT";
@@ -36,7 +36,7 @@ const DNA_NOT_T: &[u8; 3] = b"ACG";
 pub fn run(reference_path: &str, seed: u64) -> Result<(), Box<dyn Error>> {
     let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
 
-    let alphabet = dna::alphabet();
+    let alphabet = Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
     // Index the genome
     index(reference_path, &alphabet, reference_path, &mut rng)?;

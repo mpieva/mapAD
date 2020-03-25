@@ -21,12 +21,15 @@ pub trait SequenceDifferenceModel {
         base_quality: u8,
         only_mismatches: bool,
     ) -> f32 {
-        let iterator = b"ACGT".iter();
+        let iterator = crate::index::DNA_UPPERCASE_ALPHABET.iter();
 
         if only_mismatches {
             Either::Left(iterator.filter(|&&base| base != to))
         } else {
-            if b"ACGT".iter().all(|&symbol| symbol != to) {
+            if crate::index::DNA_UPPERCASE_ALPHABET
+                .iter()
+                .all(|&symbol| symbol != to)
+            {
                 return 0.0;
             }
             Either::Right(iterator)

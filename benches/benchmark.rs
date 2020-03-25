@@ -50,7 +50,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         drop(ref_seq_rev_compl);
         ref_seq.extend_from_slice(b"$");
 
-        let alphabet = alphabets::dna::alphabet();
+        let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
 
         let sa = suffix_array(&ref_seq);
         let bwtr = bwt(&ref_seq, &sa);
@@ -210,7 +210,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
 
-    let alphabet = alphabets::dna::alphabet();
+    let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
 
     let sa = suffix_array(&ref_seq);
     let bwtr = bwt(&ref_seq, &sa);
