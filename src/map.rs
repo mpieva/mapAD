@@ -442,12 +442,12 @@ impl BiDArray {
                     if interval.size < 1 {
                         *z += directed_pattern_iterator()
                             .take(index + 1)
+                            .enumerate()
                             .skip(if let Some(lmp) = *last_mismatch_pos {
                                 lmp + 1
                             } else {
                                 0
                             })
-                            .enumerate()
                             .map(|(j, &base_j)| {
                                 let best_penalty_mm_only =
                                     alignment_parameters.difference_model.get_min_penalty(
@@ -1459,7 +1459,7 @@ mod tests {
         assert_eq!(&*bi_d_array.d_backwards, &[0.0, -1.7041414, -1.7041414]);
         assert_eq!(
             &*bi_d_array.d_forwards,
-            &[0.0, -1.9092996, -1.9092996, -3.8185992]
+            &[0.0, -1.9092996, -1.9092996, -7.4289274]
         );
 
         assert_eq!(
