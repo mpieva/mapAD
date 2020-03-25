@@ -413,6 +413,8 @@ impl BiDArray {
         }
     }
 
+    /// Computes either left or right part of the Bi-D-Array for the given pattern.
+    /// `Direction` here is the opposite of the read alignment direction in `k_mismatch_search`.
     fn compute_part(
         pattern_part: &[u8],
         base_qualities_part: &[u8],
@@ -435,7 +437,7 @@ impl BiDArray {
             .scan(
                 (0.0, None, fmd_index.init_interval()),
                 |(z, last_mismatch_pos, interval), (index, &base)| {
-                    *interval = Self::fmd_extend_optimized(&interval, base, direction, fmd_index);
+                    *interval = Self::fmd_extend_opt(&interval, base, direction, fmd_index);
                     if interval.size < 1 {
                         *z += directed_pattern_iterator()
                             .take(index + 1)
@@ -446,9 +448,10 @@ impl BiDArray {
                                 0
                             })
                             .map(|(j, &base_j)| {
+                                let idx_mapped_to_read = directed_index(j, full_pattern_length);
                                 let best_penalty_mm_only =
                                     alignment_parameters.difference_model.get_min_penalty(
-                                        directed_index(j, full_pattern_length),
+                                        idx_mapped_to_read,
                                         full_pattern_length,
                                         base_j,
                                         base_qualities_part
@@ -457,7 +460,7 @@ impl BiDArray {
                                     );
                                 let optimal_penalty =
                                     alignment_parameters.difference_model.get_min_penalty(
-                                        directed_index(j, full_pattern_length),
+                                        idx_mapped_to_read,
                                         full_pattern_length,
                                         base_j,
                                         base_qualities_part
@@ -497,7 +500,8 @@ impl BiDArray {
         out
     }
 
-    fn fmd_extend_optimized(
+    /// Extension of FMD derived suffix array intervals on the reduced alphabet {A,C,G,T}
+    fn fmd_extend_opt(
         interval: &BiInterval,
         base: u8,
         direction: Direction,
