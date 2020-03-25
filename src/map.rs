@@ -1112,12 +1112,11 @@ pub fn k_mismatch_search(
 
         // Bidirectional extension of the (hit) interval
         let mut s = 0;
-        let mut o;
         let mut l = fmd_ext_interval.lower_rev;
         for &c in b"$TGCA".iter() {
             let mut interval_prime = {
                 l += s;
-                o = if fmd_ext_interval.lower == 0 {
+                let o = if fmd_ext_interval.lower == 0 {
                     0
                 } else {
                     fmd_index.occ(fmd_ext_interval.lower - 1, c)
