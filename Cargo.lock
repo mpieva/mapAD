@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "hts-sys"
 version = "1.10.2"
-source = "git+https://vcs.eva.mpg.de/christian_heide/rust-htslib.git?branch=feature/get_all_bam_tags#836be3a29a3df524fe7dd657b3475f90b04c06df"
+source = "git+https://vcs.eva.mpg.de/christian_heide/rust-htslib.git?branch=feature/get_all_bam_tags#61e8b4092d3a6a2b12b261f7d392fe8c8c9ac5d3"
 dependencies = [
  "bindgen",
  "bzip2-sys",
@@ -1233,8 +1233,8 @@ checksum = "7fe5bd57d1d7414c6b5ed48563a2c855d995ff777729dcd91c369ec7fea395ae"
 
 [[package]]
 name = "rust-htslib"
-version = "0.28.0"
-source = "git+https://vcs.eva.mpg.de/christian_heide/rust-htslib.git?branch=feature/get_all_bam_tags#836be3a29a3df524fe7dd657b3475f90b04c06df"
+version = "0.29.0"
+source = "git+https://vcs.eva.mpg.de/christian_heide/rust-htslib.git?branch=feature/get_all_bam_tags#61e8b4092d3a6a2b12b261f7d392fe8c8c9ac5d3"
 dependencies = [
  "bio-types",
  "bitflags",
