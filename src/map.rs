@@ -1075,47 +1075,49 @@ pub fn k_mismatch_search(
         //
         // Insertion in read / deletion in reference
         //
-        let new_alignment_score = if (stack_frame.gap_backwards == GapState::Insertion
-            && stack_frame.direction.is_forward())
-            || (stack_frame.gap_forwards == GapState::Insertion
-                && stack_frame.direction.is_backward())
         {
-            parameters.penalty_gap_extend
-        } else {
-            parameters.penalty_gap_open
-        } - optimal_penalty
-            + stack_frame.alignment_score;
+            let new_alignment_score = if (stack_frame.gap_backwards == GapState::Insertion
+                && stack_frame.direction.is_backward())
+                || (stack_frame.gap_forwards == GapState::Insertion
+                    && stack_frame.direction.is_forward())
+            {
+                parameters.penalty_gap_extend
+            } else {
+                parameters.penalty_gap_open
+            } - optimal_penalty
+                + stack_frame.alignment_score;
 
-        check_and_push_stack_frame(
-            MismatchSearchStackFrame {
-                j: next_j,
-                backward_index: next_backward_index,
-                forward_index: next_forward_index,
-                direction: stack_frame.direction.reverse(),
-                // Mark opened gap at the corresponding end
-                gap_backwards: if stack_frame.direction.is_backward() {
-                    stack_frame.gap_backwards
-                } else {
-                    GapState::Insertion
+            check_and_push_stack_frame(
+                MismatchSearchStackFrame {
+                    j: next_j,
+                    backward_index: next_backward_index,
+                    forward_index: next_forward_index,
+                    direction: stack_frame.direction.reverse(),
+                    // Mark opened gap at the corresponding end
+                    gap_backwards: if stack_frame.direction.is_backward() {
+                        GapState::Insertion
+                    } else {
+                        stack_frame.gap_backwards
+                    },
+                    gap_forwards: if stack_frame.direction.is_forward() {
+                        GapState::Insertion
+                    } else {
+                        stack_frame.gap_forwards
+                    },
+                    alignment_score: new_alignment_score,
+                    lookahead_score: new_alignment_score + lower_bound,
+                    ..stack_frame
                 },
-                gap_forwards: if stack_frame.direction.is_forward() {
-                    stack_frame.gap_forwards
-                } else {
-                    GapState::Insertion
-                },
-                alignment_score: new_alignment_score,
-                lookahead_score: new_alignment_score + lower_bound,
-                ..stack_frame
-            },
-            pattern,
-            &parameters,
-            lower_bound,
-            EditOperation::Insertion(stack_frame.j as u16),
-            edit_tree,
-            stack,
-            &mut hit_intervals,
-            last_lookahead_score,
-        );
+                pattern,
+                &parameters,
+                lower_bound,
+                EditOperation::Insertion(stack_frame.j as u16),
+                edit_tree,
+                stack,
+                &mut hit_intervals,
+                last_lookahead_score,
+            );
+        }
 
         // Bidirectional extension of the (hit) interval
         let mut s = 0;
@@ -1157,91 +1159,95 @@ pub fn k_mismatch_search(
             //
             // Deletion in read / insertion in reference
             //
-            let new_alignment_score = if (stack_frame.gap_forwards == GapState::Deletion
-                && stack_frame.direction.is_forward())
-                || (stack_frame.gap_backwards == GapState::Deletion
-                    && stack_frame.direction.is_backward())
             {
-                parameters.penalty_gap_extend
-            } else {
-                parameters.penalty_gap_open
-            } + stack_frame.alignment_score;
+                let new_alignment_score = if (stack_frame.gap_backwards == GapState::Deletion
+                    && stack_frame.direction.is_backward())
+                    || (stack_frame.gap_forwards == GapState::Deletion
+                        && stack_frame.direction.is_forward())
+                {
+                    parameters.penalty_gap_extend
+                } else {
+                    parameters.penalty_gap_open
+                } + stack_frame.alignment_score;
 
-            check_and_push_stack_frame(
-                MismatchSearchStackFrame {
-                    current_interval: interval_prime,
-                    // Mark open gap at the corresponding end
-                    gap_backwards: if stack_frame.direction.is_backward() {
-                        GapState::Deletion
-                    } else {
-                        stack_frame.gap_backwards
+                check_and_push_stack_frame(
+                    MismatchSearchStackFrame {
+                        current_interval: interval_prime,
+                        // Mark open gap at the corresponding end
+                        gap_backwards: if stack_frame.direction.is_backward() {
+                            GapState::Deletion
+                        } else {
+                            stack_frame.gap_backwards
+                        },
+                        gap_forwards: if stack_frame.direction.is_forward() {
+                            GapState::Deletion
+                        } else {
+                            stack_frame.gap_forwards
+                        },
+                        alignment_score: new_alignment_score,
+                        lookahead_score: new_alignment_score + lower_bound,
+                        ..stack_frame
                     },
-                    gap_forwards: if stack_frame.direction.is_forward() {
-                        GapState::Deletion
-                    } else {
-                        stack_frame.gap_forwards
-                    },
-                    alignment_score: new_alignment_score,
-                    lookahead_score: new_alignment_score + lower_bound,
-                    ..stack_frame
-                },
-                pattern,
-                &parameters,
-                lower_bound,
-                EditOperation::Deletion(stack_frame.j as u16, c),
-                edit_tree,
-                stack,
-                &mut hit_intervals,
-                last_lookahead_score,
-            );
+                    pattern,
+                    &parameters,
+                    lower_bound,
+                    EditOperation::Deletion(stack_frame.j as u16, c),
+                    edit_tree,
+                    stack,
+                    &mut hit_intervals,
+                    last_lookahead_score,
+                );
+            }
 
             //
             // Match/mismatch
             //
-            let new_alignment_score = parameters.difference_model.get(
-                stack_frame.j as usize,
-                pattern.len(),
-                c,
-                pattern[stack_frame.j as usize],
-                base_qualities[stack_frame.j as usize],
-            ) - optimal_penalty
-                + stack_frame.alignment_score;
+            {
+                let new_alignment_score = parameters.difference_model.get(
+                    stack_frame.j as usize,
+                    pattern.len(),
+                    c,
+                    pattern[stack_frame.j as usize],
+                    base_qualities[stack_frame.j as usize],
+                ) - optimal_penalty
+                    + stack_frame.alignment_score;
 
-            check_and_push_stack_frame(
-                MismatchSearchStackFrame {
-                    j: next_j,
-                    current_interval: interval_prime,
-                    backward_index: next_backward_index,
-                    forward_index: next_forward_index,
-                    direction: stack_frame.direction.reverse(),
-                    // Mark closed gap at the corresponding end
-                    gap_backwards: if stack_frame.direction.is_backward() {
-                        stack_frame.gap_backwards
-                    } else {
-                        GapState::Closed
+                check_and_push_stack_frame(
+                    MismatchSearchStackFrame {
+                        j: next_j,
+                        current_interval: interval_prime,
+                        backward_index: next_backward_index,
+                        forward_index: next_forward_index,
+                        direction: stack_frame.direction.reverse(),
+                        // Mark closed gap at the corresponding end
+                        gap_backwards: if stack_frame.direction.is_backward() {
+                            GapState::Closed
+                        } else {
+                            stack_frame.gap_backwards
+                        },
+                        gap_forwards: if stack_frame.direction.is_forward() {
+                            GapState::Closed
+                        } else {
+                            stack_frame.gap_forwards
+                        },
+                        alignment_score: new_alignment_score,
+                        lookahead_score: new_alignment_score + lower_bound,
+                        ..stack_frame
                     },
-                    gap_forwards: if stack_frame.direction.is_forward() {
-                        stack_frame.gap_forwards
+                    pattern,
+                    &parameters,
+                    lower_bound,
+                    if c == pattern[stack_frame.j as usize] {
+                        EditOperation::Match(stack_frame.j as u16)
                     } else {
-                        GapState::Closed
+                        EditOperation::Mismatch(stack_frame.j as u16, c)
                     },
-                    alignment_score: new_alignment_score,
-                    lookahead_score: new_alignment_score + lower_bound,
-                    ..stack_frame
-                },
-                pattern,
-                &parameters,
-                lower_bound,
-                if c == pattern[stack_frame.j as usize] {
-                    EditOperation::Match(stack_frame.j as u16)
-                } else {
-                    EditOperation::Mismatch(stack_frame.j as u16, c)
-                },
-                edit_tree,
-                stack,
-                &mut hit_intervals,
-                last_lookahead_score,
-            );
+                    edit_tree,
+                    stack,
+                    &mut hit_intervals,
+                    last_lookahead_score,
+                );
+            }
         }
 
         // Only search until we've found a multi-hit
