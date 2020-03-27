@@ -1459,7 +1459,7 @@ mod tests {
         };
 
         let pattern = b"CCCCCCC";
-        let base_qualities = [9, 100, 100, 100, 100, 9, 100];
+        let base_qualities = [10, 40, 40, 40, 40, 10, 40];
 
         let center_of_read = pattern.len() / 2;
 
@@ -1471,10 +1471,10 @@ mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -1.7041414, -1.7041414]);
+        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -2.136519, -2.136519]);
         assert_eq!(
             &*bi_d_array.d_forwards,
-            &[0.0, -1.9092996, -1.9092996, -7.4289274]
+            &[0.0, -2.363441, -2.363441, -7.87557]
         );
 
         assert_eq!(
@@ -1489,6 +1489,8 @@ mod tests {
             bi_d_array.get(0, 6),
             bi_d_array.d_backwards[0] + bi_d_array.d_forwards[0]
         );
+
+        assert_eq!(bi_d_array.get(0, pattern.len() as i16 - 1), 0.0,);
     }
 
     #[test]
@@ -1980,7 +1982,7 @@ mod tests {
         let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
-        let base_qualities = vec![0; pattern.len()];
+        let base_qualities = vec![40; pattern.len()];
 
         let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
@@ -2275,8 +2277,7 @@ mod tests {
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound =
-            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
+        let mismatch_bound = MismatchBoundDispatch::from(TestBound { threshold: -14.0 });
 
         let parameters = AlignmentParameters {
             difference_model,
@@ -2302,20 +2303,38 @@ mod tests {
 
         let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
 
-        let pattern = "NNNNNNNNNN".as_bytes().to_owned();
-        let base_qualities = vec![40; pattern.len()];
+        {
+            let pattern = "NNNNNNNNNN".as_bytes().to_owned();
+            let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
-        let mut tree = Tree::new();
-        let intervals = k_mismatch_search(
-            &pattern,
-            &base_qualities,
-            &parameters,
-            &fmd_index,
-            &mut stack,
-            &mut tree,
-        );
+            let mut stack = MinMaxHeap::new();
+            let mut tree = Tree::new();
+            let intervals = k_mismatch_search(
+                &pattern,
+                &base_qualities,
+                &parameters,
+                &fmd_index,
+                &mut stack,
+                &mut tree,
+            );
+            assert_eq!(intervals.len(), 0);
+        }
 
-        assert_eq!(intervals.len(), 0);
+        {
+            let pattern = "AGATNACAG".as_bytes().to_owned();
+            let base_qualities = vec![40; pattern.len()];
+
+            let mut stack = MinMaxHeap::new();
+            let mut tree = Tree::new();
+            let intervals = k_mismatch_search(
+                &pattern,
+                &base_qualities,
+                &parameters,
+                &fmd_index,
+                &mut stack,
+                &mut tree,
+            );
+            assert_eq!(intervals.len(), 1);
+        }
     }
 }
