@@ -1037,21 +1037,19 @@ pub fn k_mismatch_search(
 
     while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
-        let next_j;
-        let next_backward_index;
-        let next_forward_index;
-        let fmd_ext_interval = match stack_frame.direction {
+        let (next_j, next_backward_index, next_forward_index, fmd_ext_interval);
+        match stack_frame.direction {
             Direction::Forward => {
                 next_forward_index = stack_frame.forward_index + 1;
                 next_backward_index = stack_frame.backward_index;
                 next_j = stack_frame.backward_index;
-                stack_frame.current_interval.swapped()
+                fmd_ext_interval = stack_frame.current_interval.swapped();
             }
             Direction::Backward => {
                 next_forward_index = stack_frame.forward_index;
                 next_backward_index = stack_frame.backward_index - 1;
                 next_j = stack_frame.forward_index;
-                stack_frame.current_interval
+                fmd_ext_interval = stack_frame.current_interval;
             }
         };
 
