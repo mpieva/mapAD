@@ -927,7 +927,14 @@ fn check_and_push_stack_frame(
     edit_tree: &mut Tree<Option<EditOperation>>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
+    last_lookahead_score: f32,
 ) {
+    // If lower bound is not "used" by penalties, it gets carried forward, because it is now expected to be closer to the reads' end.
+    let lower_bound_diff = last_lookahead_score - stack_frame.lookahead_score;
+    if lower_bound_diff.is_sign_negative() {
+        stack_frame.lookahead_score += lower_bound_diff;
+    }
+
     // Too many mismatches
     if alignment_parameters
         .mismatch_bound
@@ -1052,6 +1059,7 @@ pub fn k_mismatch_search(
 
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
+        let last_lookahead_score = stack_frame.lookahead_score;
 
         print_debug(&stack_frame, &hit_intervals, lower_bound); // FIXME
 
@@ -1108,6 +1116,7 @@ pub fn k_mismatch_search(
             edit_tree,
             stack,
             &mut hit_intervals,
+            last_lookahead_score,
         );
 
         // Bidirectional extension of the (hit) interval
@@ -1185,6 +1194,7 @@ pub fn k_mismatch_search(
                 edit_tree,
                 stack,
                 &mut hit_intervals,
+                last_lookahead_score,
             );
 
             //
@@ -1232,6 +1242,7 @@ pub fn k_mismatch_search(
                 edit_tree,
                 stack,
                 &mut hit_intervals,
+                last_lookahead_score,
             );
         }
 
