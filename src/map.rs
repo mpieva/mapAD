@@ -922,7 +922,6 @@ fn check_and_push_stack_frame(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
     alignment_parameters: &AlignmentParameters,
-    lower_bound: f32,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<Option<EditOperation>>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
@@ -963,7 +962,7 @@ fn check_and_push_stack_frame(
             alignment_score: stack_frame.alignment_score,
             edit_operations,
         });
-        print_debug(&stack_frame, intervals, lower_bound); // FIXME
+        print_debug(&stack_frame, intervals, edit_tree); // FIXME
         return;
     }
 
@@ -974,7 +973,7 @@ fn check_and_push_stack_frame(
 fn print_debug(
     stack_frame: &MismatchSearchStackFrame,
     intervals: &BinaryHeap<HitInterval>,
-    lower_bound: f32,
+    edit_tree: &Tree<Option<EditOperation>>,
 ) {
     let switch = false; // TODO: Switch me on/off!
 
@@ -985,12 +984,13 @@ fn print_debug(
         };
 
         eprintln!(
-            "{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{:?}",
             stack_frame.alignment_score,
-            stack_frame.alignment_score + lower_bound,
+            stack_frame.lookahead_score,
             stack_frame.backward_index,
             stack_frame.forward_index,
             best_as,
+            edit_tree.ancestors(stack_frame.edit_node_id).next(),
         );
     }
 }
@@ -1059,7 +1059,7 @@ pub fn k_mismatch_search(
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
         let last_lookahead_score = stack_frame.lookahead_score;
 
-        print_debug(&stack_frame, &hit_intervals, lower_bound); // FIXME
+        print_debug(&stack_frame, &hit_intervals, edit_tree); // FIXME
 
         // Since we operate on a priority stack, we can assume that there are no
         // better scoring frames on the stack, so we are going to stop the search.
@@ -1110,7 +1110,6 @@ pub fn k_mismatch_search(
                 },
                 pattern,
                 &parameters,
-                lower_bound,
                 EditOperation::Insertion(stack_frame.j as u16),
                 edit_tree,
                 stack,
@@ -1190,7 +1189,6 @@ pub fn k_mismatch_search(
                     },
                     pattern,
                     &parameters,
-                    lower_bound,
                     EditOperation::Deletion(stack_frame.j as u16, c),
                     edit_tree,
                     stack,
@@ -1236,7 +1234,6 @@ pub fn k_mismatch_search(
                     },
                     pattern,
                     &parameters,
-                    lower_bound,
                     if c == pattern[stack_frame.j as usize] {
                         EditOperation::Match(stack_frame.j as u16)
                     } else {
