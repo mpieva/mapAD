@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 pub trait SequenceDifferenceModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32;
     fn get_representative_mismatch_penalty(&self) -> f32 {
-        self.get(40, 80, b'T', b'A', 40) - self.get(40, 80, b'T', b'T', 40)
+        let read_length = 80;
+        self.get(read_length / 2, read_length, b'T', b'A', u8::max_value())
+            - self.get(read_length / 2, read_length, b'T', b'T', u8::max_value())
     }
 
     /// Needed for the calculation of D arrays
