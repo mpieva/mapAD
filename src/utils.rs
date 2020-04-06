@@ -1,12 +1,13 @@
 use crate::{
-    mismatch_bounds::MismatchBoundDispatch,
+    fmd_index::RtFMDIndex, mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
 };
 use bio::{
-    alphabets::dna,
+    alphabets,
+    alphabets::{dna, RankTransform},
     data_structures::{
-        bwt::{Less, Occ, BWT},
-        fmindex::{FMDIndex, FMIndex},
+        bwt::{bwt, less, Less, Occ, BWT},
+        suffix_array::{suffix_array, RawSuffixArray},
     },
 };
 use log::debug;
@@ -92,7 +93,7 @@ pub struct AlignmentParameters {
     pub chunk_size: usize,
 }
 
-pub fn load_index_from_path(path: &str) -> Result<FMDIndex<BWT, Less, Occ>, bincode::Error> {
+pub fn load_index_from_path(path: &str) -> Result<RtFMDIndex, bincode::Error> {
     debug!("Load BWT");
     let bwt: BWT = {
         let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);
@@ -111,6 +112,36 @@ pub fn load_index_from_path(path: &str) -> Result<FMDIndex<BWT, Less, Occ>, binc
         bincode::deserialize_from(d_occ)?
     };
 
+    debug!("Load \"RT\" table");
+    let rt: RankTransform = {
+        let d_rt = snap::read::FrameDecoder::new(File::open(format!("{}.trt", path))?);
+        bincode::deserialize_from(d_rt)?
+    };
+
     debug!("Reconstruct index");
-    Ok(FMDIndex::from(FMIndex::new(bwt, less, occ)))
+    Ok(RtFMDIndex::new(bwt, less, occ, rt))
+}
+
+/// This is only used in tests and benchmarks
+pub fn build_auxiliary_structures(
+    reference: &mut Vec<u8>,
+    mut src_alphabet: alphabets::Alphabet,
+) -> (RtFMDIndex, RawSuffixArray) {
+    let ref_seq_revcomp = alphabets::dna::revcomp(reference.iter());
+    reference.extend_from_slice(b"$");
+    reference.extend_from_slice(&ref_seq_revcomp);
+    drop(ref_seq_revcomp);
+    reference.extend_from_slice(b"$");
+
+    src_alphabet.insert(b'$');
+    let rank_transform = RankTransform::new(&src_alphabet);
+    let reference = rank_transform.transform(reference);
+    let rank_alphabet = alphabets::Alphabet::new(rank_transform.ranks.values());
+
+    let sar = suffix_array(&reference);
+    let bwt = bwt(&reference, &sar);
+    let less = less(&bwt, &rank_alphabet);
+    let occ = Occ::new(&bwt, 3, &rank_alphabet);
+
+    (RtFMDIndex::new(bwt, less, occ, rank_transform), sar)
 }

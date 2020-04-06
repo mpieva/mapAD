@@ -1,18 +1,13 @@
-use bio::{
-    alphabets,
-    data_structures::{
-        bwt::{bwt, less, Occ},
-        fmindex::{FMDIndex, FMIndex},
-        suffix_array::suffix_array,
-    },
-};
+use bio::alphabets;
 use criterion::{criterion_group, criterion_main, Criterion};
 use min_max_heap::MinMaxHeap;
 
 use backtrack_tree::Tree;
 use mapad::{
-    map::k_mismatch_search, mismatch_bounds::*, sequence_difference_models::*,
-    utils::AlignmentParameters,
+    map::k_mismatch_search,
+    mismatch_bounds::*,
+    sequence_difference_models::*,
+    utils::{build_auxiliary_structures, AlignmentParameters},
 };
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -51,13 +46,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         ref_seq.extend_from_slice(b"$");
 
         let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
-
-        let sa = suffix_array(&ref_seq);
-        let bwtr = bwt(&ref_seq, &sa);
-        let lessa = less(&bwtr, &alphabet);
-        let occ = Occ::new(&bwtr, 3, &alphabet);
-
-        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -211,13 +200,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
     ref_seq.extend_from_slice(b"$");
 
     let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
-
-    let sa = suffix_array(&ref_seq);
-    let bwtr = bwt(&ref_seq, &sa);
-    let lessa = less(&bwtr, &alphabet);
-    let occ = Occ::new(&bwtr, 3, &alphabet);
-
-    let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
+    let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
     c.bench_function("bench_exogenous_read", |b| {
         let pattern = "GATATCTCGGCTGACAAACCAACAAAAAGTATCGGAACATCGCGGCGGCGTAGATGAATCTTAACCACACTCGACAGCTGTGCTTCTATACTAGCATTAC"

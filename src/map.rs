@@ -19,11 +19,7 @@ use smallvec::SmallVec;
 
 use bio::{
     alphabets::dna,
-    data_structures::{
-        bwt::{Less, Occ, BWT},
-        fmindex::{BiInterval, FMDIndex, FMIndexable},
-        suffix_array::{RawSuffixArray, SuffixArray},
-    },
+    data_structures::suffix_array::{RawSuffixArray, SuffixArray},
 };
 
 use bincode;
@@ -32,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use snap;
 
 use crate::{
+    fmd_index::{RtBiInterval, RtFMDIndex},
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
     utils::{load_index_from_path, AlignmentParameters, Record},
@@ -40,21 +37,10 @@ use crate::{
 pub const CRATE_NAME: &str = "mapAD";
 pub const STACK_LIMIT: usize = 5_000_000;
 
-/// Derive serde Traits for remote Struct
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "BiInterval")]
-struct BiIntervalDef {
-    pub lower: usize,
-    pub lower_rev: usize,
-    pub size: usize,
-    pub match_size: usize,
-}
-
 /// A subset of MismatchSearchStackFrame to store hits
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HitInterval {
-    #[serde(with = "BiIntervalDef")]
-    interval: BiInterval,
+    interval: RtBiInterval,
     alignment_score: f32,
     edit_operations: EditOperationsTrack,
 }
@@ -304,7 +290,7 @@ enum GapState {
 #[derive(Debug)]
 pub struct MismatchSearchStackFrame {
     j: i16,
-    current_interval: BiInterval,
+    current_interval: RtBiInterval,
     backward_index: i16,
     forward_index: i16,
     direction: Direction,
@@ -390,7 +376,7 @@ impl BiDArray {
         base_qualities: &[u8],
         split: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &FMDIndex<BWT, Less, Occ>,
+        fmd_index: &RtFMDIndex,
     ) -> Self {
         Self {
             d_backwards: Self::compute_part(
@@ -421,7 +407,7 @@ impl BiDArray {
         direction: Direction,
         full_pattern_length: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &FMDIndex<BWT, Less, Occ>,
+        fmd_index: &RtFMDIndex,
     ) -> SmallVec<[f32; 64]> {
         let directed_pattern_iterator = || match direction {
             Direction::Forward => Either::Left(pattern_part.iter()),
@@ -437,7 +423,10 @@ impl BiDArray {
             .scan(
                 (0.0, None, fmd_index.init_interval()),
                 |(z, last_mismatch_pos, interval), (index, &base)| {
-                    *interval = Self::fmd_extend_opt(&interval, base, direction, fmd_index);
+                    *interval = match direction {
+                        Direction::Forward => fmd_index.forward_ext(*interval, base),
+                        Direction::Backward => fmd_index.backward_ext(*interval, base),
+                    };
                     if interval.size < 1 {
                         *z += directed_pattern_iterator()
                             .take(index + 1)
@@ -498,62 +487,6 @@ impl BiDArray {
         let out = inner().unwrap_or(0.0);
         debug_assert!(out <= 0.0);
         out
-    }
-
-    /// Extension of FMD derived suffix array intervals on the reduced alphabet {A,C,G,T}
-    fn fmd_extend_opt(
-        interval: &BiInterval,
-        base: u8,
-        direction: Direction,
-        fmd_index: &FMDIndex<BWT, Less, Occ>,
-    ) -> BiInterval {
-        fn backward_ext(
-            interval: &BiInterval,
-            base: u8,
-            fmd_index: &FMDIndex<BWT, Less, Occ>,
-        ) -> BiInterval {
-            let mut s = 0;
-            let mut o = 0;
-            let mut l = interval.lower_rev;
-            for &c in b"$TGCA".iter() {
-                l += s;
-                o = if interval.lower == 0 {
-                    0
-                } else {
-                    fmd_index.occ(interval.lower - 1, c)
-                };
-
-                // Interval size I^s
-                s = fmd_index.occ(interval.lower + interval.size - 1, c) - o;
-
-                // No need to branch for technical characters and zero-sized intervals
-                if c == base {
-                    break;
-                }
-            }
-
-            BiInterval {
-                lower: fmd_index.less(base) + o,
-                lower_rev: l,
-                size: s,
-                match_size: interval.match_size + 1,
-            }
-        }
-
-        match base {
-            b'A' | b'C' | b'G' | b'T' => match direction {
-                Direction::Backward => backward_ext(interval, base, fmd_index),
-                Direction::Forward => {
-                    backward_ext(&interval.swapped(), dna::complement(base), fmd_index).swapped()
-                }
-            },
-            _ => BiInterval {
-                lower: 0,
-                lower_rev: 0,
-                size: 0,
-                match_size: 0,
-            },
-        }
     }
 }
 
@@ -1057,7 +990,7 @@ pub fn k_mismatch_search(
     pattern: &[u8],
     base_qualities: &[u8],
     parameters: &AlignmentParameters,
-    fmd_index: &FMDIndex<BWT, Less, Occ>,
+    fmd_index: &RtFMDIndex,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     edit_tree: &mut Tree<Option<EditOperation>>,
 ) -> BinaryHeap<HitInterval> {
@@ -1177,41 +1110,19 @@ pub fn k_mismatch_search(
         }
 
         // Bidirectional extension of the (hit) interval
-        let mut s = 0;
-        let mut l = fmd_ext_interval.lower_rev;
-        for &c in b"$TGCA".iter() {
-            let mut interval_prime = {
-                l += s;
-                let o = if fmd_ext_interval.lower == 0 {
-                    0
-                } else {
-                    fmd_index.occ(fmd_ext_interval.lower - 1, c)
-                };
-
-                // Interval size I^s
-                s = fmd_index.occ(fmd_ext_interval.lower + fmd_ext_interval.size - 1, c) - o;
-
-                // No need to branch for technical characters and zero-sized intervals
-                if c == b'$' || s < 1 {
-                    continue;
-                }
-
-                BiInterval {
-                    lower: fmd_index.less(c) + o,
-                    lower_rev: l,
-                    size: s,
-                    match_size: fmd_ext_interval.match_size + 1,
-                }
-            };
-
+        for (c, mut interval_prime) in fmd_index.extend_iter(fmd_ext_interval) {
             // Special treatment of forward extension
             let c = match stack_frame.direction {
                 Direction::Forward => {
                     interval_prime = interval_prime.swapped();
-                    dna::complement(c)
+                    dna::complement(fmd_index.get_rev(c))
                 }
-                Direction::Backward => c,
+                Direction::Backward => fmd_index.get_rev(c),
             };
+
+            if c == b'$' || interval_prime.size < 1 {
+                continue;
+            }
 
             //
             // Deletion in read / insertion in reference
@@ -1336,58 +1247,12 @@ pub fn k_mismatch_search(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
-    use crate::{mismatch_bounds::*, sequence_difference_models::*};
+    use crate::{mismatch_bounds::*, sequence_difference_models::*, utils::*};
     use assert_approx_eq::assert_approx_eq;
-    use bio::{
-        alphabets,
-        data_structures::{
-            bwt::{bwt, less},
-            fmindex::FMIndex,
-            suffix_array::suffix_array,
-        },
-    };
+    use bio::alphabets;
     use rust_htslib::bam;
-
-    fn build_auxiliary_structures(
-        reference: &mut Vec<u8>,
-        alphabet: &alphabets::Alphabet,
-    ) -> FMDIndex<BWT, Less, Occ> {
-        let ref_seq_rev_compl = alphabets::dna::revcomp(reference.iter());
-        reference.extend_from_slice(b"$");
-        reference.extend_from_slice(&ref_seq_rev_compl);
-        drop(ref_seq_rev_compl);
-        reference.extend_from_slice(b"$");
-
-        let sa = suffix_array(&reference);
-        let bwt = bwt(&reference, &sa);
-        let less = less(&bwt, &alphabet);
-        let occ = Occ::new(&bwt, 3, &alphabet);
-
-        FMDIndex::from(FMIndex::new(bwt, less, occ))
-    }
-
-    #[test]
-    fn test_exact_search() {
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
-
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let suffix_array = suffix_array(&ref_seq);
-
-        // Test occurring pattern
-        let pattern_1 = b"TA";
-        let sai_1 = fmd_index.backward_search(pattern_1.iter());
-        let positions_1 = sai_1.occ(&suffix_array);
-        assert_eq!(positions_1, vec![10, 3]);
-
-        // Test non-occurring pattern
-        let pattern_2 = b"GG";
-        let sai_2 = fmd_index.backward_search(pattern_2.iter());
-        let positions_2 = sai_2.occ(&suffix_array);
-        assert_eq!(positions_2, Vec::<usize>::new());
-    }
 
     #[test]
     fn test_inexact_search() {
@@ -1405,12 +1270,11 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let suffix_array = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1455,12 +1319,11 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let suffix_array = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1488,11 +1351,11 @@ mod tests {
 
     #[test]
     fn test_d() {
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
@@ -1566,12 +1429,11 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let suffix_array = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1610,12 +1472,11 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let sar = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, sar) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -1676,7 +1537,8 @@ mod tests {
         let mut ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1706,7 +1568,7 @@ mod tests {
             alignment_score: -5.0,
             lookahead_score: -5.0,
             j: 0,
-            current_interval: BiInterval {
+            current_interval: RtBiInterval {
                 lower: 5,
                 lower_rev: 5,
                 match_size: 5,
@@ -1723,7 +1585,7 @@ mod tests {
             alignment_score: -20.0,
             lookahead_score: -20.0,
             j: 0,
-            current_interval: BiInterval {
+            current_interval: RtBiInterval {
                 lower: 5,
                 lower_rev: 5,
                 match_size: 5,
@@ -1755,16 +1617,14 @@ mod tests {
             mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty).into(),
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-
         // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
         let mut ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAGAAAAAAAAAAAAAAAAAAAATTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()
             .to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let sar = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, sar) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()
@@ -1817,7 +1677,6 @@ mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
         };
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
         //
         // Deletion
@@ -1825,7 +1684,8 @@ mod tests {
         let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1861,7 +1721,8 @@ mod tests {
         let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1899,7 +1760,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1936,7 +1798,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1973,7 +1836,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2028,7 +1892,6 @@ mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
         };
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
         //
         // Mutation
@@ -2036,7 +1899,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -2065,7 +1929,8 @@ mod tests {
         let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2102,7 +1967,8 @@ mod tests {
         let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2132,7 +1998,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2161,7 +2028,8 @@ mod tests {
         let mut ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2201,12 +2069,11 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let suffix_array = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "TTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2266,12 +2133,11 @@ mod tests {
             chunk_size: 1,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
         let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
 
         // Reference
-        let fmd_index = build_auxiliary_structures(&mut ref_seq, &alphabet);
-        let suffix_array = suffix_array(&ref_seq);
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         let pattern = "TAGT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2344,21 +2210,8 @@ mod tests {
             chunk_size: 1,
         };
 
-        // Reference
-        let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());
-        ref_seq.extend_from_slice(b"$");
-        ref_seq.extend_from_slice(&ref_seq_rev_compl);
-        drop(ref_seq_rev_compl);
-        ref_seq.extend_from_slice(b"$");
-
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-
-        let sa = suffix_array(&ref_seq);
-        let bwtr = bwt(&ref_seq, &sa);
-        let lessa = less(&bwtr, &alphabet);
-        let occ = Occ::new(&bwtr, 3, &alphabet);
-
-        let fmd_index = FMDIndex::from(FMIndex::new(bwtr, lessa, occ));
+        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
         {
             let pattern = "NNNNNNNNNN".as_bytes().to_owned();

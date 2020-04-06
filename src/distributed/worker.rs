@@ -1,13 +1,10 @@
 use crate::{
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
+    fmd_index::RtFMDIndex,
     map,
     utils::{load_index_from_path, AlignmentParameters},
 };
 use backtrack_tree::Tree;
-use bio::data_structures::{
-    bwt::{Less, Occ, BWT},
-    fmindex::FMDIndex,
-};
 use log::debug;
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
@@ -22,7 +19,7 @@ use std::{
 pub struct Worker {
     network_buffer: TaskRxBuffer,
     connection: TcpStream,
-    fmd_index: Option<FMDIndex<BWT, Less, Occ>>,
+    fmd_index: Option<RtFMDIndex>,
     alignment_parameters: Option<AlignmentParameters>,
 }
 

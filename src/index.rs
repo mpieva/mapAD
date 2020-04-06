@@ -7,7 +7,7 @@ use rand::{
 };
 
 use bio::{
-    alphabets::{dna, Alphabet},
+    alphabets::{dna, Alphabet, RankTransform},
     data_structures::{
         bwt::{bwt, less, Occ},
         suffix_array::suffix_array,
@@ -39,7 +39,7 @@ pub fn run(reference_path: &str, seed: u64) -> Result<(), Box<dyn Error>> {
     let alphabet = Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
 
     // Index the genome
-    index(reference_path, &alphabet, reference_path, &mut rng)?;
+    index(reference_path, alphabet, reference_path, &mut rng)?;
 
     Ok(())
 }
@@ -48,7 +48,7 @@ pub fn run(reference_path: &str, seed: u64) -> Result<(), Box<dyn Error>> {
 /// Ambiguous bases ('N') are converted to random bases.
 fn index<T: Rng>(
     reference_path: &str,
-    alphabet: &Alphabet,
+    mut alphabet: Alphabet,
     name: &str,
     rng: &mut T,
 ) -> Result<(), Box<dyn Error>> {
@@ -109,6 +109,19 @@ fn index<T: Rng>(
     ref_seq.extend_from_slice(&ref_seq_rev_compl);
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
+
+    debug!("Compress reference");
+    alphabet.insert(b'$');
+    let rank_transform = RankTransform::new(&alphabet);
+    let alphabet = Alphabet::new(0..rank_transform.ranks.len() as u8);
+    let ref_seq = rank_transform.transform(ref_seq);
+
+    {
+        debug!("Save compression table to disk");
+        let mut writer_rank_transform =
+            snap::write::FrameEncoder::new(File::create(format!("{}.trt", name))?);
+        bincode::serialize_into(&mut writer_rank_transform, &rank_transform)?;
+    }
 
     debug!("Generate suffix array");
     let suffix_array = suffix_array(&ref_seq);

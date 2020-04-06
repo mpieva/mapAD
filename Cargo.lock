@@ -118,8 +118,9 @@ dependencies = [
 
 [[package]]
 name = "bio"
-version = "0.30.1-alpha.0"
-source = "git+https://vcs.eva.mpg.de/christian_heide/rust-bio?branch=biinterval_pub#dbf343cbd86250f2353ae2add51b8dc3dc0d8f3b"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc0376f0882981c7440386b060ce1c5fdccf789f2e1e58fb3539745d19d449bd"
 dependencies = [
  "approx",
  "bio-types",
