@@ -29,6 +29,7 @@ impl FMIndexable for RtFMDIndex {
     }
 }
 
+/// FMD-Index (Li, 2012) that operates on ranks of symbols instead of their ASCII representations
 impl RtFMDIndex {
     pub fn new(bwt: BWT, less: Less, occ: Occ, rank_transform: RankTransform) -> Self {
         let mut back_transform = rank_transform
@@ -90,12 +91,13 @@ impl RtFMDIndex {
     }
 }
 
+/// Extension of a RtBiInterval, implemented as an Iterator over the alphabet
 pub struct FMDExtIterator<'a> {
     s: usize,
     l: usize,
     c: u8,
     input_interval: RtBiInterval,
-    exhausted: bool,
+    counter: usize,
     fmd_index: &'a RtFMDIndex,
 }
 
@@ -103,7 +105,7 @@ impl<'a> Iterator for FMDExtIterator<'a> {
     type Item = (u8, RtBiInterval);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.exhausted {
+        if self.counter == self.fmd_index.back_transform.len() {
             return None;
         }
 
@@ -112,18 +114,21 @@ impl<'a> Iterator for FMDExtIterator<'a> {
         // Little state machine over ranks
         self.c = match current_c {
             0 => self.fmd_index.back_transform.len() as u8 - 1,
-            1 => {
-                self.exhausted = true;
-                0
-            }
             c => c - 1,
         };
+        self.counter += 1;
 
         Some((current_c, self.extend_once_internal(current_c)))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let hint = self.fmd_index.back_transform.len() - self.counter;
+        (hint, Some(hint))
+    }
 }
 
-/// Iterator over intervals that result from extending a source interval with symbols from the alphabet
+impl<'a> ExactSizeIterator for FMDExtIterator<'a> {}
+
 impl<'a> FMDExtIterator<'a> {
     fn new(interval: RtBiInterval, fmd_index: &'a RtFMDIndex) -> Self {
         Self {
@@ -131,7 +136,7 @@ impl<'a> FMDExtIterator<'a> {
             l: interval.lower_rev,
             c: 0,
             input_interval: interval,
-            exhausted: false,
+            counter: 0,
             fmd_index,
         }
     }
