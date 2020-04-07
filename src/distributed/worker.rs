@@ -25,6 +25,7 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(host: &str, port: &str) -> Result<Self, io::Error> {
+        debug!("Wait for dispatcher to respond");
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
             connection: TcpStream::connect(format!("{}:{}", host, port))?,

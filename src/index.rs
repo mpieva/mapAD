@@ -117,7 +117,7 @@ fn index<T: Rng>(
     let ref_seq = rank_transform.transform(ref_seq);
 
     {
-        debug!("Save compression table to disk");
+        debug!("Save \"RT\" table to disk");
         let mut writer_rank_transform =
             snap::write::FrameEncoder::new(File::create(format!("{}.trt", name))?);
         bincode::serialize_into(&mut writer_rank_transform, &rank_transform)?;
