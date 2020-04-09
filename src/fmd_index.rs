@@ -60,7 +60,7 @@ impl RtFMDIndex {
 
     /// Backward extension of given interval with given character.
     /// Takes plain, non-transformed symbol.
-    pub fn backward_ext(&self, interval: RtBiInterval, a: u8) -> RtBiInterval {
+    pub fn backward_ext(&self, interval: &RtBiInterval, a: u8) -> RtBiInterval {
         // Non-alphabet character
         if !self.rank_transform.ranks.contains_key(a as usize) {
             return RtBiInterval {
@@ -77,12 +77,12 @@ impl RtFMDIndex {
             .unwrap()
     }
 
-    pub fn forward_ext(&self, interval: RtBiInterval, a: u8) -> RtBiInterval {
-        self.backward_ext(interval.swapped(), dna::complement(a))
+    pub fn forward_ext(&self, interval: &RtBiInterval, a: u8) -> RtBiInterval {
+        self.backward_ext(&interval.swapped(), dna::complement(a))
             .swapped()
     }
 
-    pub fn extend_iter(&self, interval: RtBiInterval) -> FMDExtIterator {
+    pub fn extend_iter<'a>(&'a self, interval: &'a RtBiInterval) -> FMDExtIterator<'a> {
         FMDExtIterator::new(interval, self)
     }
 
@@ -96,7 +96,7 @@ pub struct FMDExtIterator<'a> {
     s: usize,
     l: usize,
     c: u8,
-    input_interval: RtBiInterval,
+    input_interval: &'a RtBiInterval,
     counter: usize,
     fmd_index: &'a RtFMDIndex,
 }
@@ -130,7 +130,7 @@ impl<'a> Iterator for FMDExtIterator<'a> {
 impl<'a> ExactSizeIterator for FMDExtIterator<'a> {}
 
 impl<'a> FMDExtIterator<'a> {
-    fn new(interval: RtBiInterval, fmd_index: &'a RtFMDIndex) -> Self {
+    fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFMDIndex) -> Self {
         Self {
             s: 0,
             l: interval.lower_rev,

@@ -424,8 +424,8 @@ impl BiDArray {
                 (0.0, None, fmd_index.init_interval()),
                 |(z, last_mismatch_pos, interval), (index, &base)| {
                     *interval = match direction {
-                        Direction::Forward => fmd_index.forward_ext(*interval, base),
-                        Direction::Backward => fmd_index.backward_ext(*interval, base),
+                        Direction::Forward => fmd_index.forward_ext(interval, base),
+                        Direction::Backward => fmd_index.backward_ext(interval, base),
                     };
                     if interval.size < 1 {
                         *z += directed_pattern_iterator()
@@ -1110,7 +1110,7 @@ pub fn k_mismatch_search(
         }
 
         // Bidirectional extension of the (hit) interval
-        for (c, mut interval_prime) in fmd_index.extend_iter(fmd_ext_interval) {
+        for (c, mut interval_prime) in fmd_index.extend_iter(&fmd_ext_interval) {
             // Special treatment of forward extension
             let c = match stack_frame.direction {
                 Direction::Forward => {
