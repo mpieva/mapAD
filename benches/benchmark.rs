@@ -228,7 +228,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -236,6 +236,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 0);
         })
     });
 
@@ -249,7 +250,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -257,6 +258,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 0);
         })
     });
 
@@ -269,7 +271,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -277,6 +279,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 2);
         })
     });
 
@@ -289,7 +292,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -297,6 +300,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 2);
         })
     });
 
@@ -309,7 +313,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -317,6 +321,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 2);
         })
     });
 
@@ -329,7 +334,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -337,6 +342,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 2);
         })
     });
 
@@ -349,7 +355,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let mut stack = MinMaxHeap::new();
         let mut tree = Tree::new();
         b.iter(|| {
-            k_mismatch_search(
+            let intervals = k_mismatch_search(
                 &pattern,
                 &base_qualities,
                 &parameters,
@@ -357,6 +363,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
+            assert_eq!(intervals.len(), 1);
         })
     });
 }
