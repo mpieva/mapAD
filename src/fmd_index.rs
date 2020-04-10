@@ -82,6 +82,7 @@ impl RtFMDIndex {
             .swapped()
     }
 
+    /// Returns an Iterator over the alphabet to extend the RtBiInterval
     pub fn extend_iter<'a>(&'a self, interval: &'a RtBiInterval) -> FMDExtIterator<'a> {
         FMDExtIterator::new(interval, self)
     }
@@ -97,7 +98,6 @@ pub struct FMDExtIterator<'a> {
     l: usize,
     c: u8,
     input_interval: &'a RtBiInterval,
-    counter: usize,
     fmd_index: &'a RtFMDIndex,
 }
 
@@ -105,24 +105,15 @@ impl<'a> Iterator for FMDExtIterator<'a> {
     type Item = (u8, RtBiInterval);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.counter == self.fmd_index.back_transform.len() {
+        if self.c < 2 {
             return None;
         }
-
-        let current_c = self.c;
-
-        // Little state machine over ranks
-        self.c = match current_c {
-            0 => self.fmd_index.back_transform.len() as u8 - 1,
-            c => c - 1,
-        };
-        self.counter += 1;
-
-        Some((current_c, self.extend_once_internal(current_c)))
+        self.c -= 1;
+        Some((self.c, self.extend_once_internal()))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let hint = self.fmd_index.back_transform.len() - self.counter;
+        let hint = self.c as usize - 1;
         (hint, Some(hint))
     }
 }
@@ -131,32 +122,34 @@ impl<'a> ExactSizeIterator for FMDExtIterator<'a> {}
 
 impl<'a> FMDExtIterator<'a> {
     fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFMDIndex) -> Self {
-        Self {
+        let mut initial_state = Self {
             s: 0,
             l: interval.lower_rev,
             c: 0,
             input_interval: interval,
-            counter: 0,
             fmd_index,
-        }
+        };
+        initial_state.extend_once_internal();
+        initial_state.c = fmd_index.back_transform.len() as u8;
+        initial_state
     }
 
-    fn extend_once_internal(&mut self, c: u8) -> RtBiInterval {
+    fn extend_once_internal(&mut self) -> RtBiInterval {
         self.l += self.s;
         let o = if self.input_interval.lower == 0 {
             0
         } else {
-            self.fmd_index.occ(self.input_interval.lower - 1, c)
+            self.fmd_index.occ(self.input_interval.lower - 1, self.c)
         };
 
         // Interval size I^s
-        self.s = self
-            .fmd_index
-            .occ(self.input_interval.lower + self.input_interval.size - 1, c)
-            - o;
+        self.s = self.fmd_index.occ(
+            self.input_interval.lower + self.input_interval.size - 1,
+            self.c,
+        ) - o;
 
         RtBiInterval {
-            lower: self.fmd_index.less(c) + o,
+            lower: self.fmd_index.less(self.c) + o,
             lower_rev: self.l,
             size: self.s,
             match_size: self.input_interval.match_size + 1,

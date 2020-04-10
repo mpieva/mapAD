@@ -1120,7 +1120,7 @@ pub fn k_mismatch_search(
                 Direction::Backward => fmd_index.get_rev(c),
             };
 
-            if c == b'$' || interval_prime.size < 1 {
+            if interval_prime.size < 1 {
                 continue;
             }
 
