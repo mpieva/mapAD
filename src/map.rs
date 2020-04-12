@@ -1270,11 +1270,11 @@ pub mod tests {
             chunk_size: 1,
         };
 
-        let mut ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
+        let ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1319,11 +1319,11 @@ pub mod tests {
             chunk_size: 1,
         };
 
-        let mut ref_seq = "GAAAAG".as_bytes().to_owned();
+        let ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1351,11 +1351,11 @@ pub mod tests {
 
     #[test]
     fn test_d() {
-        let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
+        let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
@@ -1429,11 +1429,11 @@ pub mod tests {
             chunk_size: 1,
         };
 
-        let mut ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
+        let ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1472,11 +1472,11 @@ pub mod tests {
             chunk_size: 1,
         };
 
-        let mut ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
+        let ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, sar) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -1534,11 +1534,11 @@ pub mod tests {
         // Test "normal" mismatch
         //
 
-        let mut ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
+        let ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1618,13 +1618,13 @@ pub mod tests {
         };
 
         // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
-        let mut ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAGAAAAAAAAAAAAAAAAAAAATTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
+        let ref_seq = "GTTGTATTTTTAGTAGAGACAGGGTTTCATCATGTTGGCCAGAAAAAAAAAAAAAAAAAAAATTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()
             .to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, sar) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
             .as_bytes()
@@ -1681,11 +1681,11 @@ pub mod tests {
         //
         // Deletion
         //
-        let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
+        let ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1718,11 +1718,11 @@ pub mod tests {
         //
         // 2-base deletion
         //
-        let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
+        let ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1757,11 +1757,11 @@ pub mod tests {
         //
         // Insertion
         //
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1795,11 +1795,11 @@ pub mod tests {
         //
         // 2-base insertion
         //
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1833,11 +1833,11 @@ pub mod tests {
         //
         // 3-base insertion
         //
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1896,11 +1896,11 @@ pub mod tests {
         //
         // Mutation
         //
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -1926,11 +1926,11 @@ pub mod tests {
         //
         // Deletion
         //
-        let mut ref_seq = "GATTAGCA".as_bytes().to_owned();
+        let ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1964,11 +1964,11 @@ pub mod tests {
         //
         // 2-base deletion
         //
-        let mut ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
+        let ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1995,11 +1995,11 @@ pub mod tests {
         //
         // Insertion
         //
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2025,11 +2025,11 @@ pub mod tests {
         //
         // 2-base insertion
         //
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2069,11 +2069,11 @@ pub mod tests {
             chunk_size: 1,
         };
 
-        let mut ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
+        let ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2133,11 +2133,11 @@ pub mod tests {
             chunk_size: 1,
         };
 
-        let mut ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
+        let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
 
         // Reference
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, suffix_array) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TAGT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2185,7 +2185,7 @@ pub mod tests {
 
     #[test]
     fn test_n() {
-        let mut ref_seq = "GATTACAGATTACAGATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACAGATTACAGATTACA".as_bytes().to_owned();
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
@@ -2211,7 +2211,7 @@ pub mod tests {
         };
 
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         {
             let pattern = "NNNNNNNNNN".as_bytes().to_owned();

@@ -12,7 +12,7 @@ use mapad::{
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
-        let mut ref_seq = "GATTACA".as_bytes().to_owned();
+        let ref_seq = "GATTACA".as_bytes().to_owned();
 
         let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
@@ -39,7 +39,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         };
 
         let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -60,7 +60,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 }
 
 fn bench_exo_endo(c: &mut Criterion) {
-    let mut ref_seq = "AACATCTTTTTCGGCCGTTTCATAAATACTCTTTATTCACAATTAAGGTCTCTCTGTGCTTCTACGATGGTTGGCTGGCCTGCTACTATGTAGCCCAGTT\
+    let ref_seq = "AACATCTTTTTCGGCCGTTTCATAAATACTCTTTATTCACAATTAAGGTCTCTCTGTGCTTCTACGATGGTTGGCTGGCCTGCTACTATGTAGCCCAGTT\
 TTGTACTTGAAACAGATGAGTCTCTTCACACTCATACGCGTTTCAGCAAGTACCAGTGATAGCGGTGGTGCTCCTCAATATCCGCCGCTCGCAAGCGACC\
 GAGAAAAGCACGCATCGAGAACCTTGTCTTACACAACTTTCAATGCTAGCGCCTAAGTTCAACCGCTAATATAACAGCTGAGTCCCCATCGCCCGAGGGT\
 CGCATAGTTACTCCGTGAGGTGTATCAGAAATCCGCGATTTCGTAACTTCTACATCCCGTCCTCTCAGACCACCATTTTCCGTCATTACCAGCAAATATG\
@@ -186,7 +186,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
     };
 
     let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
-    let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
+    let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
     c.bench_function("bench_exogenous_read", |b| {
         let pattern = "GATATCTCGGCTGACAAACCAACAAAAAGTATCGGAACATCGCGGCGGCGTAGATGAATCTTAACCACACTCGACAGCTGTGCTTCTATACTAGCATTAC"

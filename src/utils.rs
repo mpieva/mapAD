@@ -124,7 +124,7 @@ pub fn load_index_from_path(path: &str) -> Result<RtFMDIndex, bincode::Error> {
 
 /// This is only used in tests and benchmarks
 pub fn build_auxiliary_structures(
-    reference: &mut Vec<u8>,
+    mut reference: Vec<u8>,
     mut src_alphabet: alphabets::Alphabet,
 ) -> (RtFMDIndex, RawSuffixArray) {
     let ref_seq_revcomp = alphabets::dna::revcomp(reference.iter());
@@ -135,7 +135,7 @@ pub fn build_auxiliary_structures(
 
     src_alphabet.insert(b'$');
     let rank_transform = RankTransform::new(&src_alphabet);
-    let reference = rank_transform.transform(reference);
+    reference = rank_transform.transform(reference);
     let rank_alphabet = alphabets::Alphabet::new(rank_transform.ranks.values());
 
     let sar = suffix_array(&reference);
