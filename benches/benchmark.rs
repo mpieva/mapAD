@@ -38,13 +38,6 @@ fn criterion_benchmark(c: &mut Criterion) {
             chunk_size: 1,
         };
 
-        // Reference
-        let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());
-        ref_seq.extend_from_slice(b"$");
-        ref_seq.extend_from_slice(&ref_seq_rev_compl);
-        drop(ref_seq_rev_compl);
-        ref_seq.extend_from_slice(b"$");
-
         let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
 
@@ -191,13 +184,6 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         penalty_gap_extend: representative_mismatch_penalty,
         chunk_size: 1,
     };
-
-    // Reference
-    let ref_seq_rev_compl = alphabets::dna::revcomp(ref_seq.iter());
-    ref_seq.extend_from_slice(b"$");
-    ref_seq.extend_from_slice(&ref_seq_rev_compl);
-    drop(ref_seq_rev_compl);
-    ref_seq.extend_from_slice(b"$");
 
     let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
     let (fmd_index, _) = build_auxiliary_structures(&mut ref_seq, alphabet);
