@@ -130,7 +130,7 @@ impl<'a> FMDExtIterator<'a> {
             fmd_index,
         };
         initial_state.extend_once_internal();
-        initial_state.c = fmd_index.back_transform.len() as u8;
+        initial_state.c = 5;
         initial_state
     }
 
