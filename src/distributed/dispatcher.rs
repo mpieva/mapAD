@@ -5,7 +5,6 @@ use mio::{
     net::{TcpListener, TcpStream},
     *,
 };
-use rand;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
 use std::{

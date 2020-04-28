@@ -22,10 +22,8 @@ use bio::{
     data_structures::suffix_array::{RawSuffixArray, SuffixArray},
 };
 
-use bincode;
 use rust_htslib::{bam, bam::Read};
 use serde::{Deserialize, Serialize};
-use snap;
 
 use crate::{
     fmd_index::{RtBiInterval, RtFMDIndex},

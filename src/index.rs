@@ -15,9 +15,6 @@ use bio::{
     io::fasta,
 };
 
-use bincode;
-use snap;
-
 use crate::map::{FastaIdPosition, FastaIdPositions};
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
