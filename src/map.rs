@@ -35,7 +35,7 @@ use crate::{
 };
 
 pub const CRATE_NAME: &str = "mapAD";
-pub const STACK_LIMIT: usize = 2_000_000;
+pub const STACK_LIMIT: usize = 5_000_000;
 
 /// A subset of MismatchSearchStackFrame to store hits
 #[derive(Serialize, Deserialize, Debug)]
