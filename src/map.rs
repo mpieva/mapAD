@@ -913,14 +913,7 @@ fn check_and_push_stack_frame(
     edit_tree: &mut Tree<Option<EditOperation>>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
-    last_lookahead_score: f32,
-    last_lower_bound: f32,
 ) {
-    // If lower bound is not "used" by penalties, it gets carried forward, because it is now expected to be closer to the reads' end.
-    if (std::f32::EPSILON + last_lookahead_score - stack_frame.lookahead_score).is_sign_negative() {
-        stack_frame.lookahead_score = stack_frame.alignment_score + last_lower_bound;
-    }
-
     // Too many mismatches
     if alignment_parameters
         .mismatch_bound
@@ -1044,8 +1037,6 @@ pub fn k_mismatch_search(
 
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
-        let last_lookahead_score = stack_frame.lookahead_score;
-        let last_lower_bound = stack_frame.lookahead_score - stack_frame.alignment_score;
 
         print_debug(&stack_frame, &hit_intervals, edit_tree); // FIXME
 
@@ -1102,8 +1093,6 @@ pub fn k_mismatch_search(
                 edit_tree,
                 stack,
                 &mut hit_intervals,
-                last_lookahead_score,
-                last_lower_bound,
             );
         }
 
@@ -1160,8 +1149,6 @@ pub fn k_mismatch_search(
                     edit_tree,
                     stack,
                     &mut hit_intervals,
-                    last_lookahead_score,
-                    last_lower_bound,
                 );
             }
 
@@ -1210,8 +1197,6 @@ pub fn k_mismatch_search(
                     edit_tree,
                     stack,
                     &mut hit_intervals,
-                    last_lookahead_score,
-                    last_lower_bound,
                 );
             }
         }
