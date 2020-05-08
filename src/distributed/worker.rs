@@ -64,28 +64,24 @@ impl Worker {
                     if let Some(fmd_index) = &self.fmd_index {
                         if let Some(alignment_parameters) = &self.alignment_parameters {
                             debug!("Map reads");
-                            let num_records = task.records.len();
-                            let results = std::mem::replace(
-                                &mut task.records,
-                                Vec::with_capacity(num_records),
-                            )
-                            .into_par_iter()
-                            .map(|record| {
-                                STACK_BUF.with(|stack_buf| {
-                                    TREE_BUF.with(|tree_buf| {
-                                        let hit_intervals = map::k_mismatch_search(
-                                            &record.sequence,
-                                            &record.base_qualities,
-                                            alignment_parameters,
-                                            fmd_index,
-                                            &mut stack_buf.borrow_mut(),
-                                            &mut tree_buf.borrow_mut(),
-                                        );
-                                        (record, hit_intervals)
+                            let results = std::mem::replace(&mut task.records, Vec::new())
+                                .into_par_iter()
+                                .map(|record| {
+                                    STACK_BUF.with(|stack_buf| {
+                                        TREE_BUF.with(|tree_buf| {
+                                            let hit_intervals = map::k_mismatch_search(
+                                                &record.sequence,
+                                                &record.base_qualities,
+                                                alignment_parameters,
+                                                fmd_index,
+                                                &mut stack_buf.borrow_mut(),
+                                                &mut tree_buf.borrow_mut(),
+                                            );
+                                            (record, hit_intervals)
+                                        })
                                     })
                                 })
-                            })
-                            .collect::<Vec<_>>();
+                                .collect::<Vec<_>>();
 
                             // Return results
                             self.connection
