@@ -160,10 +160,18 @@ impl SimpleAncientDnaModel {
         ds_deamination_rate: f32,
         ss_deamination_rate: f32,
         divergence: f32,
+        ignore_base_qualities: bool,
     ) -> Self {
-        let cache = (0..=40)
-            .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0))
-            .collect::<Vec<_>>();
+        const MAX_ENCODED_BASE_QUALITY: usize = 40;
+        let default_base_quality = 10_f32.powf(-1.0 * u8::MAX as f32 / 10.0);
+
+        let cache = if ignore_base_qualities {
+            vec![default_base_quality; MAX_ENCODED_BASE_QUALITY + 1]
+        } else {
+            (0..MAX_ENCODED_BASE_QUALITY + 1)
+                .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0))
+                .collect::<Vec<_>>()
+        };
         Self {
             library_prep,
             ds_deamination_rate,
@@ -286,6 +294,7 @@ mod tests {
             0.001,
             0.9,
             0.02 / 3.0,
+            false,
         );
 
         // 'C' -> 'T'
@@ -501,8 +510,13 @@ mod tests {
 
     #[test]
     fn test_simple_adna_model_ds() {
-        let adna_model =
-            SimpleAncientDnaModel::new(LibraryPrep::DoubleStranded(0.475), 0.001, 0.9, 0.02 / 3.0);
+        let adna_model = SimpleAncientDnaModel::new(
+            LibraryPrep::DoubleStranded(0.475),
+            0.001,
+            0.9,
+            0.02 / 3.0,
+            false,
+        );
 
         assert_approx_eq!(-0.552156, adna_model.get(0, 25, b'A', b'A', 10));
         assert_approx_eq!(-0.029585, adna_model.get(1, 25, b'A', b'A', 40));
@@ -916,6 +930,7 @@ mod tests {
             0.0,
             0.0,
             0.02 / 3.0,
+            false,
         );
 
         assert_eq!(

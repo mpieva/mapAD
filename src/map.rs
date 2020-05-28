@@ -1348,6 +1348,7 @@ pub mod tests {
             0.001,
             0.8,
             0.02,
+            false,
         ));
 
         let representative_mismatch_penalty =
@@ -2178,6 +2179,7 @@ pub mod tests {
             0.001,
             0.9,
             0.02 / 3.0,
+            false,
         ));
 
         let representative_mismatch_penalty =
@@ -2343,6 +2345,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             0.001,
             0.9,
             0.02 / 3.0,
+            false,
         ));
 
         let representative_mismatch_penalty =

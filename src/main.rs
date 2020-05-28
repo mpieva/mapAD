@@ -200,6 +200,12 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .value_name("INT")
                 )
                 .arg(
+                    Arg::with_name("ignore_base_quality")
+                        .long("ignore_base_quality")
+                        .help("Ignore base qualities in scoring models")
+                        .takes_value(false)
+                )
+                .arg(
                     Arg::with_name("dispatcher")
                         .long("dispatcher")
                         .help("Run in dispatcher mode for distributed computing in a network. Needs workers to be spawned externally to distribute work among them.")
@@ -334,6 +340,7 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         value_t!(arg_matches.value_of("ss_deamination_rate"), f32).unwrap_or_else(|e| e.exit()),
         // Divergence is divided by three because it is used for testing each of the three possible substitutions
         value_t!(arg_matches.value_of("divergence"), f32).unwrap_or_else(|e| e.exit()) / 3.0,
+        arg_matches.is_present("ignore_base_quality"),
     ));
 
     let mismatch_bound = if arg_matches.is_present("poisson_prob") {

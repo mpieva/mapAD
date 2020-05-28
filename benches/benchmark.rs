@@ -22,6 +22,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             0.001,
             0.9,
             0.02 / 3.0,
+            false,
         ));
 
         let representative_mismatch_penalty =
@@ -170,6 +171,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         0.001,
         0.9,
         0.02 / 3.0,
+        false,
     ));
 
     let representative_mismatch_penalty = difference_model.get_representative_mismatch_penalty();
