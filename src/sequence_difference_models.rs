@@ -162,7 +162,7 @@ impl SimpleAncientDnaModel {
         divergence: f32,
         ignore_base_qualities: bool,
     ) -> Self {
-        const MAX_ENCODED_BASE_QUALITY: usize = 40;
+        const MAX_ENCODED_BASE_QUALITY: usize = 60;
         let default_base_quality = 10_f32.powf(-1.0 * u8::MAX as f32 / 10.0);
 
         let cache = if ignore_base_qualities {

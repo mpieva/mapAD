@@ -705,7 +705,7 @@ where
 }
 
 /// Computes optimal per-base alignment scores for a read,
-/// conditioned on base qualitites and scoring model.
+/// conditioned on base qualities and scoring model.
 /// This function panics if `pattern` and `base_qualities` are not of equal length.
 pub fn compute_optimal_scores(
     pattern: &[u8],
