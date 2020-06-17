@@ -1,3 +1,4 @@
+pub mod backtrack_tree;
 pub mod distributed;
 pub mod fmd_index;
 pub mod index;

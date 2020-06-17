@@ -2,8 +2,8 @@ use bio::alphabets;
 use criterion::{criterion_group, criterion_main, Criterion};
 use min_max_heap::MinMaxHeap;
 
-use backtrack_tree::Tree;
 use mapad::{
+    backtrack_tree::Tree,
     map::k_mismatch_search,
     mismatch_bounds::*,
     sequence_difference_models::*,

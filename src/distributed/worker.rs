@@ -1,10 +1,10 @@
 use crate::{
+    backtrack_tree::Tree,
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     fmd_index::RtFMDIndex,
     map,
     utils::{load_index_from_path, AlignmentParameters},
 };
-use backtrack_tree::Tree;
 use log::debug;
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;

@@ -8,7 +8,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use backtrack_tree::{NodeId, Tree};
 use clap::{crate_name, crate_version};
 use either::Either;
 use log::{debug, trace};
@@ -26,6 +25,7 @@ use rust_htslib::{bam, bam::Read};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    backtrack_tree::{NodeId, Tree},
     fmd_index::{RtBiInterval, RtFMDIndex},
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
