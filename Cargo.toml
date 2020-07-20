@@ -9,16 +9,16 @@ publish = false
 
 [dependencies]
 clap = "2.33.1"
-log = "0.4.8"
+log = "0.4.11"
 rust-htslib = { git = "https://vcs.eva.mpg.de/christian_heide/rust-htslib.git", branch = "feature/get_all_bam_tags" }
 simple_logger = "1.6.0"
 bincode = "1.3.1"
 bio = { version = "0.31.0", features = ["runtime-dispatch-simd"] }
 assert_approx_eq = "1.1.0"
-smallvec = "1.4.0"
+smallvec = "1.4.1"
 rand = "0.7.3"
 serde = { version = "1.0.114", features = ["derive"] }
-snap = "1.0.0"
+snap = "1.0.1"
 either = "1.5.3"
 rayon = "1.3.1"
 mio = { version = "0.7.0", features = ["os-poll", "tcp"] }
