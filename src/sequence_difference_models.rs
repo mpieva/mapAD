@@ -122,7 +122,7 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
 
         let sequencing_error = match self.cache.get(base_quality as usize) {
             Some(&v) => v,
-            None => 10_f32.powf(-1.0 * base_quality as f32 / 10.0),
+            None => 10_f32.powf(-1.0 * base_quality as f32 / 10.0) / 3.0,
         };
 
         // Probability of seeing a mutation or sequencing error
@@ -175,13 +175,13 @@ impl SimpleAncientDnaModel {
         divergence: f32,
         ignore_base_qualities: bool,
     ) -> Self {
-        let default_base_quality = 10_f32.powf(-1.0 * MAX_ENCODED_BASE_QUALITY as f32 / 10.0);
+        let default_base_quality = 10_f32.powf(-1.0 * MAX_ENCODED_BASE_QUALITY as f32 / 10.0) / 3.0;
 
         let cache = if ignore_base_qualities {
             vec![default_base_quality; MAX_ENCODED_BASE_QUALITY as usize + 1]
         } else {
             (0..=MAX_ENCODED_BASE_QUALITY)
-                .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0))
+                .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0) / 3.0)
                 .collect::<Vec<_>>()
         };
         Self {
