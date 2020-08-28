@@ -13,11 +13,6 @@ Improved algorithms and error models will be incorporated step by step as needed
 Ancient DNA damage models can be included via the `SequenceDifferenceModel` trait. 
 The default (and only) impl is based on Udo Stenzel's ANFO/r-candy. 
 
-mapAD should be ready to test. Please note that it only reports one (the best) alignment per read so far.  
-The program needs ~ 160GB RAM to align against the human reference genome hg19. The mapping speed is 
-roughly comparable to BWA aln (ancient parameters).  
-To parallelize alignments, it will use all idle CPU cores on the machine it is run on. 
-
 ## Build and Install
 
 Besides Rust, no additional dependencies are needed to compile. 
@@ -63,58 +58,51 @@ The subprograms `mapad index` and `mapad map` will index the reference and map r
 Adding ` --help` will print a list of available and required command line options. 
 
 ### Examples
-#### 1) Vindija-like deamination parameters, BWA-like mismatch bound
+
+#### 1) Vindija-like Deamination Parameters
 The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference.
 ##### Local
 ```bash
-mapad -vvv map \
+./mapad -vvv map \
 --library single_stranded \
--p 0.02 \
+-p 0.03 \
 -f 0.475 \
 -t 0.475 \
--d 0.001 \
+-d 0.01 \
 -s 0.9 \
 -D 0.02 \
--i 0.00001 \
+-i 0.0001 \
 --reads "${input_bam}" \
 --reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
 --output "${output_bam}"
 ```
 
 ##### Distributed
-The following example starts a dispatcher node and then spawns multi-threaded workers on cluster nodes that have more than 64GB of free RAM. 
+The following example starts a dispatcher node and then spawns multi-threaded workers on cluster nodes that have more than 30GB of free RAM. 
 Start the dispatcher:
 ```bash
-mapad -vv map \
+./mapad -vv map \
 --dispatcher \
 # ... (see local example)
 ```
 Spawn workers:
 ```bash
-qsub -N "mapAD_worker" -pe "smp" 1-128 -t 1-65535 -l "h_vmem=64G,s_vmem=64G,virtual_free=64G,mem_free=64G,class=*" -j "y" -R "y" "mapad_worker.sh"
+qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vvv worker --host $(hostname)
 ```
 
-`mapad_worker.sh`:
-```bash
-#!/bin/bash
-mapad -vvv worker --host <HOST>
-```
-
-#### 2) Sima-like deamination model, continuous mismatch bound
+#### 2) Sima-like Deamination Model
 The following example aligns reads that are expected to have a Sima-like deamination pattern to an existing index of the hg19 reference.
-It uses a continuous mismatch bound that seems to maximize sensitivity, specificity, and speed -- especially at short read lengths.
 ##### Local
 ```bash
-mapad -vvv map \
+./mapad -vvv map \
 --library single_stranded \
--c 0.375 \
--e 1.1 \
+-p 0.03 \
 -f 0.6 \
 -t 0.55 \
--d 0.001 \
+-d 0.01 \
 -s 1.0 \
 -D 0.02 \
--i 0.00001 \
+-i 0.0001 \
 --reads "${input_bam}" \
 --reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
 --output "${output_bam}"
@@ -122,12 +110,12 @@ mapad -vvv map \
 
 ## Performance/ Hardware Requirements
 
-In #5 (tracking issue) benchmark results for mapping are shown.
-
-Index generation for the human reference genome (hg19) unfortunately eats about 160GB of RAM (can certainly be improved 
-by sampling the suffix array to k=32). Overall, the performance is comparable to `bwa aln` using ancient parameters. 
-However, as soon as sampled suffix arrays are implemented, the performance will likely decrease a bit in favor of memory 
-consumption.  
+The standalone program needs ~100GB RAM when running on 32 cores to align against the human reference genome `hg19`. 
+The mapping speed is roughly comparable to `bwa aln` using ancient parameters. 
+To parallelize alignments, `mapAD` will use all idle CPU cores on the machine it is run on. 
+When using the distributed mapping feature (dispatcher/workers), each worker "only" needs around 30GB of RAM while 
+the dispatcher node uses around 60GB RAM (?) since it keeps the suffix array in memory. 
+Indexing `hg19`, however, needs around 160GB of RAM. This will be improved in future versions. 
 
 ## To do
 
