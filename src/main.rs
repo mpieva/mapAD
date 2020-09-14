@@ -1,6 +1,7 @@
 use clap::{
     crate_description, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand,
 };
+use simple_logger::SimpleLogger;
 
 use mapad::{
     distributed::{dispatcher, worker},
@@ -245,13 +246,15 @@ fn define_cli<'a>() -> ArgMatches<'a> {
 }
 
 fn handle_arguments(matches: ArgMatches) {
-    simple_logger::init_with_level(match matches.occurrences_of("v") {
-        0 => log::Level::Warn,
-        1 => log::Level::Info,
-        2 => log::Level::Debug,
-        _ => log::Level::Trace,
-    })
-    .unwrap();
+    SimpleLogger::new()
+        .with_level(match matches.occurrences_of("v") {
+            0 => log::LevelFilter::Warn,
+            1 => log::LevelFilter::Info,
+            2 => log::LevelFilter::Debug,
+            _ => log::LevelFilter::Trace,
+        })
+        .init()
+        .unwrap();
 
     match matches.subcommand() {
         ("index", Some(arg_matches)) => {
