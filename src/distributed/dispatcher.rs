@@ -336,7 +336,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .collect();
     }
 
-    fn read_rx_buffer(&mut self, worker: Token) -> TransportState<std::io::Error> {
+    fn read_rx_buffer(&mut self, worker: Token) -> TransportState<io::Error> {
         let connection = self
             .connections
             .get_mut(&worker)
@@ -352,8 +352,8 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             let read_results = connection.read(result_buffer.buf_mut_unfilled());
             match read_results {
                 Ok(0) => {
-                    return TransportState::Error(std::io::Error::new(
-                        std::io::ErrorKind::ConnectionAborted,
+                    return TransportState::Error(io::Error::new(
+                        io::ErrorKind::ConnectionAborted,
                         "Connection aborted",
                     ));
                 }
@@ -362,7 +362,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 }
                 // When errors are returned, it's guaranteed that nothing was read during this iteration,
                 // so we don't need to check here if we're perhaps finished
-                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // Retry...
                 }
                 Err(ref e) if e.kind() == WouldBlock => {
@@ -376,8 +376,8 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
             if result_buffer.is_finished_reading_header() {
                 if result_buffer.decode_header().is_err() {
-                    return TransportState::Error(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
+                    return TransportState::Error(io::Error::new(
+                        io::ErrorKind::InvalidData,
                         "Could not decode header",
                     ));
                 }
@@ -391,7 +391,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         &mut self,
         worker: Token,
         task_queue: &mut Peekable<TaskQueue>,
-    ) -> TransportState<std::io::Error> {
+    ) -> TransportState<io::Error> {
         let connection = self
             .connections
             .get_mut(&worker)
@@ -420,8 +420,8 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             let write_results = connection.write(send_buffer.buf_unsent());
             match write_results {
                 Ok(0) => {
-                    return TransportState::Error(std::io::Error::new(
-                        std::io::ErrorKind::ConnectionAborted,
+                    return TransportState::Error(io::Error::new(
+                        io::ErrorKind::ConnectionAborted,
                         "Connection aborted",
                     ));
                 }
@@ -430,7 +430,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 }
                 // When errors are returned, it's guaranteed that nothing was read during this iteration,
                 // so we don't need to check here if we're perhaps finished
-                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // Retry...
                 }
                 Err(ref e) if e.kind() == WouldBlock => {
