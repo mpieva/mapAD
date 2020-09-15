@@ -2,14 +2,27 @@ use either::Either;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
+const MAX_ENCODED_BASE_QUALITY: u8 = u8::max_value();
+
 /// Sequence difference models are expected to yield only non-positive values (and 0.0), for example log probabilities.
 #[enum_dispatch]
 pub trait SequenceDifferenceModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32;
     fn get_representative_mismatch_penalty(&self) -> f32 {
         let read_length = 80;
-        self.get(read_length / 2, read_length, b'T', b'A', u8::max_value())
-            - self.get(read_length / 2, read_length, b'T', b'T', u8::max_value())
+        self.get(
+            read_length / 2,
+            read_length,
+            b'T',
+            b'A',
+            MAX_ENCODED_BASE_QUALITY,
+        ) - self.get(
+            read_length / 2,
+            read_length,
+            b'T',
+            b'T',
+            MAX_ENCODED_BASE_QUALITY,
+        )
     }
 
     /// Needed for the calculation of D arrays
@@ -162,13 +175,12 @@ impl SimpleAncientDnaModel {
         divergence: f32,
         ignore_base_qualities: bool,
     ) -> Self {
-        const MAX_ENCODED_BASE_QUALITY: usize = 60;
-        let default_base_quality = 10_f32.powf(-1.0 * u8::MAX as f32 / 10.0);
+        let default_base_quality = 10_f32.powf(-1.0 * MAX_ENCODED_BASE_QUALITY as f32 / 10.0);
 
         let cache = if ignore_base_qualities {
-            vec![default_base_quality; MAX_ENCODED_BASE_QUALITY + 1]
+            vec![default_base_quality; MAX_ENCODED_BASE_QUALITY as usize + 1]
         } else {
-            (0..MAX_ENCODED_BASE_QUALITY + 1)
+            (0..=MAX_ENCODED_BASE_QUALITY)
                 .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0))
                 .collect::<Vec<_>>()
         };
