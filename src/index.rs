@@ -18,6 +18,7 @@ use bio::{
 use crate::map::{FastaIdPosition, FastaIdPositions};
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
+// Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
 pub const DNA_UPPERCASE_X_ALPHABET: &[u8; 5] = b"ACGTX";
 const DNA_PURINE: &[u8; 2] = b"AG";
 const DNA_PYRIMIDINE: &[u8; 2] = b"CT";
@@ -43,7 +44,8 @@ pub fn run(reference_path: &str, seed: u64) -> Result<(), Box<dyn Error>> {
 }
 
 /// Index a given reference and write the index to disk.
-/// Ambiguous bases ('N') are converted to random bases.
+/// Ambiguous bases ('N') are converted to random bases unless they occur in stretches.
+/// If they do, they will be converted to 'X'.
 fn index<T: Rng>(
     reference_path: &str,
     mut alphabet: Alphabet,
@@ -78,6 +80,7 @@ fn index<T: Rng>(
         b'N' => *DNA_UPPERCASE_ALPHABET.choose(rng).unwrap(),
         _ => base,
     };
+
     let summarize_ambiguous = |base| {
         if !DNA_UPPERCASE_ALPHABET.contains(&base) {
             b'X'
@@ -85,6 +88,9 @@ fn index<T: Rng>(
             base
         }
     };
+
+    // Start by replacing ambiguous bases that do not occur in stretches exceeding a certain length,
+    // using the closures defined above
     run_apply(
         &mut ref_seq,
         10,
