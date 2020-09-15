@@ -19,8 +19,8 @@ use crate::map::{FastaIdPosition, FastaIdPositions};
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 pub const DNA_UPPERCASE_X_ALPHABET: &[u8; 5] = b"ACGTX";
-const DNA_PURINES: &[u8; 2] = b"AG";
-const DNA_PYRIMIDINES: &[u8; 2] = b"CT";
+const DNA_PURINE: &[u8; 2] = b"AG";
+const DNA_PYRIMIDINE: &[u8; 2] = b"CT";
 const DNA_KETONE: &[u8; 2] = b"GT";
 const DNA_AMINO: &[u8; 2] = b"AC";
 const DNA_STRONG: &[u8; 2] = b"CG";
@@ -65,8 +65,8 @@ fn index<T: Rng>(
     // Replace single occurrences of ambiguous base symbols with random ones, leave runs alone
     let randomly_replace_ambiguous = |base| match base {
         b'U' => b'T',
-        b'R' => *DNA_PURINES.choose(rng).unwrap(),
-        b'Y' => *DNA_PYRIMIDINES.choose(rng).unwrap(),
+        b'R' => *DNA_PURINE.choose(rng).unwrap(),
+        b'Y' => *DNA_PYRIMIDINE.choose(rng).unwrap(),
         b'K' => *DNA_KETONE.choose(rng).unwrap(),
         b'M' => *DNA_AMINO.choose(rng).unwrap(),
         b'S' => *DNA_STRONG.choose(rng).unwrap(),

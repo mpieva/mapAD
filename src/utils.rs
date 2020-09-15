@@ -2,6 +2,7 @@ use crate::{
     fmd_index::RtFMDIndex, mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
 };
+
 use bio::{
     alphabets,
     alphabets::{dna, RankTransform},
@@ -13,6 +14,7 @@ use bio::{
 use log::debug;
 use rust_htslib::bam;
 use serde::{Deserialize, Serialize};
+
 use std::{fmt::Debug, fs::File};
 
 /// Auxiliary record data.
