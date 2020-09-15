@@ -4,7 +4,9 @@ use std::{
     collections::{binary_heap::BinaryHeap, BTreeMap},
     error::Error,
     fs::File,
+    io,
     iter::Peekable,
+    path::Path,
     time::{Duration, Instant},
 };
 
@@ -559,6 +561,13 @@ pub fn run(
     let mut reads_reader = bam::Reader::from_path(reads_path)?;
     let _ = reads_reader.set_threads(4);
     let header = create_bam_header(&reads_reader, &identifier_position_map);
+    let out_file_path = Path::new(out_file_path);
+    if out_file_path.exists() {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "The given output file already exists.",
+        )));
+    }
     let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
     let _ = out_file.set_threads(4);
 

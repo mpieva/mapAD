@@ -7,13 +7,16 @@ use mio::{
 };
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
+
 use std::{
     collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap},
     error::Error,
     fs::File,
+    io,
     io::{ErrorKind::WouldBlock, Read, Write},
     iter::Peekable,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
 };
 
 enum TransportState<E>
@@ -132,7 +135,14 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         let mut task_queue =
             TaskQueue::from_reader(&mut bam_reader, self.alignment_parameters.chunk_size)
                 .peekable();
-        let mut out_file = bam::Writer::from_path(&self.out_file_path, &header, bam::Format::BAM)?;
+        let out_file_path = Path::new(&self.out_file_path);
+        if out_file_path.exists() {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "The given output file already exists.",
+            )));
+        }
+        let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
         let _ = out_file.set_threads(4);
 
         debug!("Load suffix array");
