@@ -28,7 +28,7 @@ Besides Rust, no additional dependencies are needed to compile.
 3. Build:
 
     `cargo build --release`
-    
+
     The resulting binary file `mapad` is now in the subfolder `target/release/`.
 
 4. Run!
@@ -36,7 +36,7 @@ Besides Rust, no additional dependencies are needed to compile.
     `cd target/release/`
 
     `./mapad index --reference /path/to/reference/hg19.fasta`
-    
+
 ###### Optional
 - For increased performance on modern CPUs the compiler can make use of advanced SIMD instructions if you enable AVX2 and FMA like this (recommended). 
 Please note that the resulting binary will not run on CPUs that don't support these features.
