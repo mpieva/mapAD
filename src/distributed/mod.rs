@@ -187,7 +187,7 @@ impl TaskTxBuffer {
         }
     }
 
-    fn reload(&mut self, mut task_sheet: TaskSheet) {
+    fn reload(&mut self, task_sheet: &mut TaskSheet) {
         self.bytes_sent = 0;
         self.buf = task_sheet.encode();
     }

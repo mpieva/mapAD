@@ -1,15 +1,13 @@
 use crate::{distributed::*, map, utils::*};
+
 use bio::data_structures::suffix_array::SuffixArray;
 use log::debug;
-use mio::{
-    net::{TcpListener, TcpStream},
-    *,
-};
+use mio::*;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
 
 use std::{
-    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap},
+    collections::{BinaryHeap, HashMap},
     error::Error,
     fs::File,
     io,
@@ -38,6 +36,7 @@ struct TaskQueue<'a> {
     chunk_id: usize,
     chunk_size: usize,
     records: Peekable<bam::Records<'a, bam::Reader>>,
+    requeried_tasks: Vec<TaskSheet>,
 }
 
 impl<'a> Iterator for TaskQueue<'a> {
@@ -46,20 +45,25 @@ impl<'a> Iterator for TaskQueue<'a> {
     fn next(&mut self) -> Option<TaskSheet> {
         let source_iterator_loan = &mut self.records;
 
-        // If the underlying iterator is exhausted return None, too
-        source_iterator_loan.peek()?;
+        // If the underlying iterator is exhausted, resend chunks that were previously assigned to now disconnected workers
+        if source_iterator_loan.peek().is_some() {
+            self.chunk_id += 1;
+            let chunk = source_iterator_loan
+                .take(self.chunk_size)
+                .map(|record| match record {
+                    Ok(record) => Ok(record.into()),
+                    Err(e) => Err(e),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .expect("Input file is corrupt. Cancelled process");
 
-        self.chunk_id += 1;
-        let chunk = source_iterator_loan
-            .take(self.chunk_size)
-            .map(|record| match record {
-                Ok(record) => Ok(record.into()),
-                Err(e) => Err(e),
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Input file is corrupt. Cancelling process.");
-
-        Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
+            Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
+        } else if let Some(task) = self.requeried_tasks.pop() {
+            debug!("Retrying previously failed task {}", task.chunk_id);
+            Some(task)
+        } else {
+            None
+        }
     }
 }
 
@@ -69,8 +73,21 @@ impl<'a> TaskQueue<'a> {
             chunk_id: 0,
             chunk_size,
             records: reader.records().peekable(),
+            requeried_tasks: Vec::new(),
         }
     }
+
+    fn requery_task(&mut self, task_sheet: TaskSheet) {
+        self.requeried_tasks.push(task_sheet);
+    }
+}
+
+// Central place to store data relevant for one dispatcher <-> worker connection
+struct Connection {
+    pub stream: net::TcpStream,
+    pub assigned_task: Option<TaskSheet>,
+    pub rx_buffer: ResultRxBuffer,
+    pub tx_buffer: TaskTxBuffer,
 }
 
 pub struct Dispatcher<'a, 'b> {
@@ -78,11 +95,8 @@ pub struct Dispatcher<'a, 'b> {
     reference_path: &'b str,
     out_file_path: &'b str,
     alignment_parameters: &'a AlignmentParameters,
-    connections: HashMap<Token, TcpStream>,
-    result_buffers: HashMap<Token, ResultRxBuffer>,
-    send_buffers: HashMap<Token, TaskTxBuffer>,
-    checklist: BTreeMap<usize, Token>,
-    failed_tasks: BTreeSet<usize>,
+    connections: HashMap<Token, Connection>,
+    accept_connections: bool,
 }
 
 impl<'a, 'b> Dispatcher<'a, 'b> {
@@ -101,10 +115,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             out_file_path,
             alignment_parameters,
             connections: HashMap::new(),
-            result_buffers: HashMap::new(),
-            send_buffers: HashMap::new(),
-            checklist: BTreeMap::new(),
-            failed_tasks: BTreeSet::new(),
+            accept_connections: true,
         })
     }
 
@@ -112,7 +123,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         // Set up networking
         let mut max_token = Self::DISPATCHER_TOKEN.0;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let mut listener = TcpListener::bind(addr)?;
+        let mut listener = net::TcpListener::bind(addr)?;
 
         // Create a poll instance
         let mut poll = Poll::new()?;
@@ -133,13 +144,12 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         let _ = bam_reader.set_threads(4);
         let header = map::create_bam_header(&bam_reader, &identifier_position_map);
         let mut task_queue =
-            TaskQueue::from_reader(&mut bam_reader, self.alignment_parameters.chunk_size)
-                .peekable();
+            TaskQueue::from_reader(&mut bam_reader, self.alignment_parameters.chunk_size);
         let out_file_path = Path::new(&self.out_file_path);
         if out_file_path.exists() {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::AlreadyExists,
-                "The given output file already exists.",
+                "The given output file already exists",
             )));
         }
         let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
@@ -162,16 +172,26 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 match event.token() {
                     // Workers of the world, register!
                     Self::DISPATCHER_TOKEN => {
-                        while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
-                            debug!("Connection established ({:?})", remote_addr);
-                            max_token += 1;
-                            let remote_token = Token(max_token);
-                            poll.registry().register(
-                                &mut remote_stream,
-                                remote_token,
-                                Interest::READABLE | Interest::WRITABLE,
-                            )?;
-                            self.connections.insert(remote_token, remote_stream);
+                        if self.accept_connections {
+                            while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
+                                debug!("Connection established ({:?})", remote_addr);
+                                max_token += 1;
+                                let remote_token = Token(max_token);
+                                poll.registry().register(
+                                    &mut remote_stream,
+                                    remote_token,
+                                    Interest::READABLE | Interest::WRITABLE,
+                                )?;
+                                let connection = Connection {
+                                    stream: remote_stream,
+                                    assigned_task: None,
+                                    rx_buffer: ResultRxBuffer::new(),
+                                    tx_buffer: TaskTxBuffer::new(),
+                                };
+                                self.connections.insert(remote_token, connection);
+                            }
+                        } else {
+                            debug!("Task queue is empty: declined connection attempt");
                         }
                     }
 
@@ -185,14 +205,16 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                             match self.read_rx_buffer(event.token()) {
                                 TransportState::Finished => {
                                     if let Ok(results) = self
-                                        .result_buffers
+                                        .connections
                                         .get_mut(&event.token())
                                         .expect("This is not expected to fail")
+                                        .rx_buffer
                                         .decode_and_reset()
                                     {
                                         debug!(
-                                            "Worker has sent data: {:?}, writing it down.",
-                                            event
+                                            "Worker {} sent results of task {}",
+                                            event.token().0,
+                                            results.chunk_id,
                                         );
                                         self.write_results(
                                             results.results,
@@ -201,29 +223,29 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                             &mut out_file,
                                         )?;
 
-                                        self.mark_task_completed(results.chunk_id);
+                                        // Remove completed task from assignments
+                                        self.connections
+                                            .get_mut(&event.token())
+                                            .expect("This is not expected to fail")
+                                            .assigned_task = None;
                                     }
 
                                     poll.registry().reregister(
-                                        self.connections
+                                        &mut self
+                                            .connections
                                             .get_mut(&event.token())
-                                            .expect("This is not expected to fail"),
+                                            .expect("This is not expected to fail")
+                                            .stream,
                                         event.token(),
                                         Interest::READABLE | Interest::WRITABLE,
                                     )?;
                                 }
                                 TransportState::Stalled => {
-                                    poll.registry().reregister(
-                                        self.connections
-                                            .get_mut(&event.token())
-                                            .expect("This is not expected to fail"),
-                                        event.token(),
-                                        Interest::READABLE,
-                                    )?;
+                                    // We're patient!!1!
                                 }
                                 TransportState::Error(_) => {
-                                    debug!("Connection is no longer valid, removing worker from the pool.");
-                                    self.release_worker(event.token());
+                                    debug!("Connection is no longer valid, removed worker {} from pool", event.token().0);
+                                    self.release_worker(event.token(), &mut task_queue);
                                 }
                                 TransportState::Complete => {
                                     // TransportState::Complete means the input file has been processed completely
@@ -238,47 +260,36 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                             match self.write_tx_buffer(event.token(), &mut task_queue) {
                                 TransportState::Finished => {
                                     poll.registry().reregister(
-                                        self.connections
+                                        &mut self
+                                            .connections
                                             .get_mut(&event.token())
-                                            .expect("This is not expected to fail"),
+                                            .expect("This is not expected to fail")
+                                            .stream,
                                         event.token(),
                                         Interest::READABLE,
                                     )?;
                                 }
                                 TransportState::Stalled => {
-                                    poll.registry().reregister(
-                                        self.connections
-                                            .get_mut(&event.token())
-                                            .expect("This is not expected to fail"),
-                                        event.token(),
-                                        Interest::READABLE | Interest::WRITABLE,
-                                    )?;
+                                    // We're patient!!1!
                                 }
                                 TransportState::Error(_) => {
-                                    debug!("Connection is no longer valid, removing worker from the pool.");
-                                    self.release_worker(event.token());
+                                    debug!("Connection is no longer valid, removed worker {} from pool", event.token().0);
+                                    self.release_worker(event.token(), &mut task_queue);
                                 }
                                 TransportState::Complete => {
-                                    self.release_worker(event.token());
+                                    self.accept_connections = false;
+                                    self.release_worker(event.token(), &mut task_queue);
+                                    if self.connections.is_empty() {
+                                        debug!("All tasks have been completed, shutting down gracefully");
+                                        return Ok(());
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            if self.all_tasks_finished(&mut task_queue) {
-                debug!("All tasks have been completed, shutting down gracefully");
-                return Ok(());
-            }
         }
-    }
-
-    fn all_tasks_finished(&mut self, task_queue: &mut Peekable<TaskQueue>) -> bool {
-        task_queue.peek().is_none() && self.checklist.is_empty() && self.failed_tasks.is_empty()
-    }
-
-    fn mark_task_completed(&mut self, chunk_id: usize) {
-        self.checklist.remove(&chunk_id);
     }
 
     fn write_results<S>(
@@ -314,26 +325,21 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     /// Removes worker_to_be_removed from the event queue and terminates the connection.
     /// This causes the worker_to_be_removed process to terminate.
-    fn release_worker(&mut self, worker_to_be_removed: Token) {
-        // `None` variant is non-fatal here
-        let _ = self.connections.remove(&worker_to_be_removed);
-
-        // Try to restart pending tasks that are assigned to this worker
-        let mut additional_failed_tasks = self
-            .checklist
-            .iter()
-            .filter(|(_, &worker)| worker == worker_to_be_removed)
-            .map(|(&chunk_id, _)| chunk_id)
-            .collect::<BTreeSet<_>>();
-
-        self.failed_tasks.append(&mut additional_failed_tasks);
-
-        self.checklist = self
-            .checklist
-            .iter()
-            .filter(|(k, _)| !additional_failed_tasks.contains(k))
-            .map(|(&k, &v)| (k, v))
-            .collect();
+    /// Also, this worker's task will be requeried.
+    fn release_worker(&mut self, worker_to_be_removed: Token, task_queue: &mut TaskQueue) {
+        if let Some(assigned_task) = self
+            .connections
+            .get_mut(&worker_to_be_removed)
+            .expect("This is not expected to fail")
+            .assigned_task
+            .take()
+        {
+            debug!("Requeried task {} of failed worker", assigned_task.chunk_id);
+            task_queue.requery_task(assigned_task);
+        }
+        self.connections
+            .remove(&worker_to_be_removed)
+            .expect("This is not expected to fail");
     }
 
     fn read_rx_buffer(&mut self, worker: Token) -> TransportState<io::Error> {
@@ -341,15 +347,13 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .connections
             .get_mut(&worker)
             .expect("This is not expected to fail");
-        let result_buffer = self
-            .result_buffers
-            .entry(worker)
-            .or_insert_with(ResultRxBuffer::new);
+        let stream = &mut connection.stream;
+        let result_buffer = &mut connection.rx_buffer;
 
         // After we have finished reading the header, the buffer gets enlarged and remaining
         // bytes from the message body will be read to the buffer in subsequent iterations
         loop {
-            let read_results = connection.read(result_buffer.buf_mut_unfilled());
+            let read_results = stream.read(result_buffer.buf_mut_unfilled());
             match read_results {
                 Ok(0) => {
                     return TransportState::Error(io::Error::new(
@@ -390,34 +394,30 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     fn write_tx_buffer(
         &mut self,
         worker: Token,
-        task_queue: &mut Peekable<TaskQueue>,
+        task_queue: &mut TaskQueue,
     ) -> TransportState<io::Error> {
         let connection = self
             .connections
             .get_mut(&worker)
             .expect("This is not expected to fail");
-        let send_buffer = self
-            .send_buffers
-            .entry(worker)
-            .or_insert_with(TaskTxBuffer::new);
+        let stream = &mut connection.stream;
+        let send_buffer = &mut connection.tx_buffer;
 
         if send_buffer.is_ready() {
             if let Some(mut task) = task_queue.next() {
-                // TODO (optimization): Don't send parameters every time
                 task.reference_path = Some(self.reference_path.to_string());
                 task.alignment_parameters = Some(self.alignment_parameters.to_owned());
 
-                // Mark task pending
-                self.checklist.insert(task.chunk_id, worker);
-
-                send_buffer.reload(task);
+                // The task gets stored in the assignment record and send buffer
+                connection.assigned_task = Some(task);
+                send_buffer.reload(connection.assigned_task.as_mut().unwrap());
             } else {
                 return TransportState::Complete;
             }
         }
 
         loop {
-            let write_results = connection.write(send_buffer.buf_unsent());
+            let write_results = stream.write(send_buffer.buf_unsent());
             match write_results {
                 Ok(0) => {
                     return TransportState::Error(io::Error::new(
