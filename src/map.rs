@@ -1384,10 +1384,10 @@ pub mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -2.136519, -2.136519]);
+        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -3.6297126, -3.6297126]);
         assert_eq!(
             &*bi_d_array.d_forwards,
-            &[0.0, -2.363441, -2.363441, -7.87557]
+            &[0.0, -3.8959491, -3.8959491, -9.413074]
         );
 
         assert_eq!(

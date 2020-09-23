@@ -18,6 +18,9 @@ pub trait MismatchBound {
     fn reject_iterative(&self, value: f32, reference: f32) -> bool;
 }
 
+/// Used to allow static dispatch. No trait objects needed! Method call speed is not negatively
+/// affected by vtable lookups. Every type implementing `MismatchBound` also has to be
+/// added as variant to this enum.
 #[enum_dispatch(MismatchBound)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MismatchBoundDispatch {
@@ -124,7 +127,7 @@ impl Display for Discrete {
 }
 
 impl Discrete {
-    // 16 is the theoretical minimum for mapping uniquely to a random genome of human-genome-like size
+    // ~17 is the theoretical minimum for mapping uniquely to a random genome of human-genome-like size
     const MIN_READ_LENGTH: usize = 17;
 
     pub fn new(
