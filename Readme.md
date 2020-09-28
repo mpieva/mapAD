@@ -171,6 +171,25 @@ The following example aligns reads that are expected to have a Vindija-like deam
 --output "${output_bam}"
 ```
 
+## Mapping Quality
+
+Mapping qualities are comparable with those produced by `BWA`. However, an alignment that maps equally well to two 
+positions in the genome would be assigned a MAPQ of 3 by `mapAD`, whereas `BWA` would assign a MAPQ of 0. To filter out 
+reads mapping to multiple positions a MAPQ threshold of > 5-10 roughly corresponds to a `BWA`-specific threshold of > 0. 
+
+Here, <img src="https://render.githubusercontent.com/render/math?math=AS_\text{best}"> and 
+<img src="https://render.githubusercontent.com/render/math?math=AS_\text{subopt}"> refer to the non-log-transformed 
+alignment scores (<img src="https://render.githubusercontent.com/render/math?math=2^\text{AS}">) of the best and a 
+suboptimal alignment, respectively. <img src="https://render.githubusercontent.com/render/math?math=|\text{alignment}|"> 
+refers to the number of position an alignment maps to.
+- Unique (best alignment maps to one position): <img src="https://render.githubusercontent.com/render/math?math=1">
+- Pseudo-unique (best alignment maps to one position, but, with worse score, also to others): <img src="https://render.githubusercontent.com/render/math?math=\frac{\text{AS}_\text{best}}{\text{AS}_\text{best} %2B \sum{\text{AS}_\text{subopt} |\text{subopt_alignment}|}}">
+- Non-unique (best alignment maps to multiple positions): <img src="https://render.githubusercontent.com/render/math?math=\frac{1}{|\text{best_alignment}|}">
+
+Mapping quality is defined as the PHRED-scaled probability that an alignment is incorrect. Hence the above probabilities
+are PHRED-scaled, and, for better compatibility with `BWA`, confined to the interval 
+<img src="https://render.githubusercontent.com/render/math?math=[0..37]">.
+
 ## Hardware Requirements
 
 - The standalone program needs ~100GB RAM when running on 32 cores to align against the human reference genome `hg19`. 
