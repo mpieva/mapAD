@@ -4,10 +4,11 @@
 # mapAD <img src="https://vcs.eva.mpg.de/uploads/-/system/project/avatar/1089/480px-Uracil-3D-balls.png" alt="drawing" width="25"/>
 
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. 
-This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate. 
+This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate 
+([Köster, 2016](https://doi.org/10.1093/bioinformatics/btv573)). 
 
-mapAD is based on the bidirectional FMD-index ([Li, 2012](https://academic.oup.com/bioinformatics/article/28/14/1838/218887)) 
-with backtracking and lower-bound pruning of the search space. 
+mapAD uses pure backtracking on top of the bidirectional FMD-index ([Li, 2012](https://doi.org/10.1093/bioinformatics/bts280)).
+Central algorithmic ideas are inspired by BWA-backtrack ([Li & Durbin, 2009](https://doi.org/10.1093/bioinformatics/btp324)).
 Improved algorithms and error models will be incorporated step by step as needed. 
 
 Ancient DNA damage models can be included via the `SequenceDifferenceModel` trait. 
@@ -38,12 +39,13 @@ Besides Rust, no additional dependencies are needed to compile.
     `./mapad index --reference /path/to/reference/hg19.fasta`
 
 ###### Optional
+
 - For increased performance on modern CPUs the compiler can make use of advanced SIMD instructions if you enable AVX2 and FMA like this (recommended). 
 Please note that the resulting binary will not run on CPUs that don't support these features.
 
 `RUSTFLAGS="-C target-feature=+avx2,+fma" cargo build --release`
 
-or this (not recommended)
+or this (not recommended; reduced portability)
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release`
 
@@ -54,14 +56,106 @@ Please note that the resulting binary is not portable.
 `mapad -vvv index ...` or `mapad -vvv map ...`
 
 ## Usage
+
 The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively. 
-Adding ` --help` will print a list of available and required command line options. 
+Adding ` --help` will print a list of available and required command line options.
 
-### Examples
+### Indexing Reference Genomes
 
-#### 1) Vindija-like Deamination Parameters
+ `./mapad index --reference /path/to/reference/hg19.fasta` will store six index files in the directory of the input 
+ FASTA (`/path/to/reference/hg19.fasta{.tbw, .tle, .toc, .tpi, .trt, .tsa}`).
+ 
+### Mapping
+
+#### Damage Parameters
+
+Tests have shown that over-specification of damage parameters does not have a strong negative impact on 
+mapping accuracy.
+
+##### Scoring Model
+
+The scoring model is derived from Udo Stenzel's [ANFO/r-candy](https://bitbucket.org/ustenzel/r-candy) ([Green et al., 2010](https://doi.org/10.1126/science.1188021); SOM3).
+The symbols <img src="https://render.githubusercontent.com/render/math?math=f"> (5'-overhang parameter), 
+<img src="https://render.githubusercontent.com/render/math?math=t"> (3'-overhang parameter), 
+<img src="https://render.githubusercontent.com/render/math?math=d"> (double-stranded deamination rate), 
+<img src="https://render.githubusercontent.com/render/math?math=s"> (single-stranded deamination rate), 
+<img src="https://render.githubusercontent.com/render/math?math=D"> (divergence / base error rate), and 
+<img src="https://render.githubusercontent.com/render/math?math=i"> (indel rate) correspond to command line options.
+
+Double-stranded library preparation: The probability of a position <img src="https://render.githubusercontent.com/render/math?math=i \in [0 .. l - 1]"> 
+being inside an overhang is
+<img src="https://render.githubusercontent.com/render/math?math=p_{\text{fwd}} = f^{i %2B 1}"> and 
+<img src="https://render.githubusercontent.com/render/math?math=p_{\text{rev}} = t^{l - i}">, respectively.
+Single-stranded library preparation: <img src="https://render.githubusercontent.com/render/math?math=p_{\text{fwd}} = f^{i %2B 1} %2B t^{l - 1} - f^{i %2B 1} t^{l - 1}">, 
+<img src="https://render.githubusercontent.com/render/math?math=p_{\text{rev}} = 0">. 
+
+Effective deamination probabilities: <img src="https://render.githubusercontent.com/render/math?math=p_C = s p_{\text{fwd}} %2B d(1 - p_{\text{fwd}})">, 
+<img src="https://render.githubusercontent.com/render/math?math=p_G = s p_{\text{rev}} %2B d(1 - p_{\text{rev}})">
+ 
+Sequencing errors and evolution (<img src="https://render.githubusercontent.com/render/math?math=q"> denotes the 
+PHRED-scaled base quality):
+<img src="https://render.githubusercontent.com/render/math?math=\epsilon = \frac{10^{-q / 10}}{3} %2B \frac{D}{3} - \frac{10^{-q / 10}}{3} \frac{D}{3}">
+
+|     |  A  |  C  |  G  |  T  |
+|:---:|:---:|:---:|:---:|:---:|
+|  A  | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon %2B p_G - 4 \epsilon p_G"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
+|  C  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon - p_C %2B 4 \epsilon p_C"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
+|  G  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon - p_G %2B 4 \epsilon p_G"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
+|  T  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon %2B p_C - 4 \epsilon p_C"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon"> |
+
+These probabilites are <img src="https://render.githubusercontent.com/render/math?math=\log_2"> transformed and summed 
+up over all bases of a read during alignment (alignment scores). We use affine gap-costs with a gap opening penalty of 
+<img src="https://render.githubusercontent.com/render/math?math=\log_2(i)"> (InDel rate). The gap extension penalty is 
+currently fixed to a "representative mismatch" penalty (the score of a virtual "ordinary" mismatch not caused by 
+deamination or poor base quality). 
+
+#### Examples
+
+Tests have shown that we can achieve good sensitivity and specificity allowing `-p 0.03` mismatches and relatively high
+deamination parameters (see "50% Deamination Parameters" below). 
+We currently run tests to determine optimal parameters for different damage levels and read lengths.  
+
+##### 1) 50% Deamination Parameters
+
+The following example aligns reads to an existing index of the hg19 reference. These damage settings cause C -> T 
+mismatches on both 5'- and 3'-ends to be free (no penalty). The penalties for those substitutions of course increase as 
+the center of a read is approached.  
+
+###### Local Mapping (One Computer)
+
+```bash
+./mapad -vvv map \
+--library single_stranded \
+-p 0.03                                                    `# Allowed mismatches under `-D` base error rate (similar to BWA backtrack)` \
+-f 0.5                                                     `# Five-prime overhang parameter` \
+-t 0.5                                                     `# Three-prime overhang parameter` \
+-d 0.01                                                    `# Deamination rate in double-stranded parts` \
+-s 1.0                                                     `# Deamination rate in single-stranded overhangs` \
+-D 0.02                                                    `# Base error rate / divergence` \
+-i 0.0001                                                  `# InDel rate (corresponds to gap open penalty)` \
+--reads "${input_bam}" \
+--reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" `# Prefix of index files` \
+--output "${output_bam}"
+```
+
+###### Distributed Mapping (Many Computers Over Network)
+
+   The following example starts a dispatcher node and then spawns multi-threaded workers on SGE cluster nodes that have 
+   more than 30GB of free RAM. 
+   Start the dispatcher:
+   ```bash
+   ./mapad -vv map \
+   --dispatcher \
+   # ... (see local example)
+   ```
+   Spawn workers:
+   ```bash
+   qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vvv worker --host $(hostname)
+   ```
+
+##### 2) Vindija-like Deamination Parameters
+
 The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference.
-##### Local
 ```bash
 ./mapad -vvv map \
 --library single_stranded \
@@ -77,77 +171,21 @@ The following example aligns reads that are expected to have a Vindija-like deam
 --output "${output_bam}"
 ```
 
-##### Distributed
-The following example starts a dispatcher node and then spawns multi-threaded workers on cluster nodes that have more than 30GB of free RAM. 
-Start the dispatcher:
-```bash
-./mapad -vv map \
---dispatcher \
-# ... (see local example)
-```
-Spawn workers:
-```bash
-qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vvv worker --host $(hostname)
-```
+## Hardware Requirements
 
-#### 2) Sima-like Deamination Model
-The following example aligns reads that are expected to have a Sima-like deamination pattern to an existing index of the hg19 reference.
-##### Local
-```bash
-./mapad -vvv map \
---library single_stranded \
--p 0.03 \
--f 0.6 \
--t 0.55 \
--d 0.01 \
--s 1.0 \
--D 0.02 \
--i 0.0001 \
---reads "${input_bam}" \
---reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
---output "${output_bam}"
-```
+- The standalone program needs ~100GB RAM when running on 32 cores to align against the human reference genome `hg19`. 
+  The mapping speed is roughly comparable to `bwa aln` using ancient parameters. 
+  To parallelize alignments, `mapAD` will use all idle CPU cores on the machine it is run on (this behaviour can be 
+  controlled via the `RAYON_NUM_THREADS` environment variable).
+  
+- When using the distributed mapping feature (dispatcher/workers), each worker "only" needs around 30GB of RAM while 
+  the dispatcher node uses around 60GB RAM (?) since it keeps the suffix array in memory.
+ 
+- Indexing `hg19`, however, needs around 160GB of RAM. This will be improved in future versions.
 
-## Performance/ Hardware Requirements
-
-The standalone program needs ~100GB RAM when running on 32 cores to align against the human reference genome `hg19`. 
-The mapping speed is roughly comparable to `bwa aln` using ancient parameters. 
-To parallelize alignments, `mapAD` will use all idle CPU cores on the machine it is run on. 
-When using the distributed mapping feature (dispatcher/workers), each worker "only" needs around 30GB of RAM while 
-the dispatcher node uses around 60GB RAM (?) since it keeps the suffix array in memory. 
-Indexing `hg19`, however, needs around 160GB of RAM. This will be improved in future versions. 
-
-## To do
-
-- [x] Use FM**D**-index
-- [x] Search both strands
-- [x] Introduce subcommands {index, map}
-- [x] Save reference index to disk
-- [x] Refactor crate/mod structure
-- [x] Make SIMD vectorization easily configurable at compile time (as "feature")
-- [x] Compress index files for ~~hopefully~~ faster IO (snappy)
-- [x] Don't rank-transform during early development. Go back to upstream rust-bio
-- [x] Inexact matching
-- [x] It's time to start testing!
-- [x] Incorporation of one or more of the ancient DNA damage models
-  - [x] Add framework to specify PSSMs in the code
-  - [x] simply penalize C-T changes according to Vindija pattern
-  - [x] Model inspired by Udo Stenzel's ANFO/r-candy
-  - [ ] Peyrégne (unpublished)
-- [x] Recursive -> iterative k-mismatch-search
-- [x] Extend match starting from the presumably lowest deaminated region (center) of a read
-- [x] Calculate alignment score (with respect to damage/difference pattern, see above)
-- [x] Move away from a stack-like data structure to a priority-queue (ordered by alignment scores) for partial matches
-- [x] Revisit mapping quality estimation
-- [x] BAM-IO
-  - [x] BAM output
-  - [x] BAM input
-- [x] Generate CIGAR string
-- [x] Evaluate precision, FPR, FNR
-- [x] Only push to heap if necessary (perhaps check conditions in (inlined) function)
-- [x] Problem: BFS does not work well with negative scores which we get with log-probs (-> slow). Perhaps add +1?
-- [ ] Implement handy BWT construction algorithm on top of SA-IS (Okanohara & Sadakane, 2009)
-- [ ] Derive sampled Suffix Arrays from BWT
-- [x] Multithreading
-- [x] Cluster-enabled version
-- [ ] _Paired-end sequencing_
+## Known Issues
+- Memory consumption of both mapping and indexing (see [Hardware Requirements](#hardware-requirements))
+- No awareness of paired-end sequencing (pairs need to be merged before mapping)
+- No seeding (it's not very effective for short reads, but could easily be implemented for longer ones, probably 
+  _without_ much negative impact on sensitivity)
+- Only (unaligned) `bam` input (`fastq` files need to be converted before mapping)
