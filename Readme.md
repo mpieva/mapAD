@@ -69,9 +69,6 @@ Adding ` --help` will print a list of available and required command line option
 
 #### Damage Parameters
 
-Tests have shown that over-specification of damage parameters does not have a strong negative impact on 
-mapping accuracy.
-
 ##### Scoring Model
 
 The scoring model is derived from Udo Stenzel's [ANFO/r-candy](https://bitbucket.org/ustenzel/r-candy) ([Green et al., 2010](https://doi.org/10.1126/science.1188021); SOM3).
@@ -113,7 +110,8 @@ deamination or poor base quality).
 
 Tests have shown that we can achieve good sensitivity and specificity allowing `-p 0.03` mismatches and relatively high
 deamination parameters (see "50% Deamination Parameters" below). 
-We currently run tests to determine optimal parameters for different damage levels and read lengths.  
+
+**Over-specification of damage parameters does not seem to have a significant negative impact on alignment accuracy.** 
 
 ##### 1) 50% Deamination Parameters
 
@@ -155,7 +153,8 @@ the center of a read is approached.
 
 ##### 2) Vindija-like Deamination Parameters
 
-The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of the hg19 reference.
+The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of 
+the hg19 reference.
 ```bash
 ./mapad -vvv map \
 --library single_stranded \
@@ -193,7 +192,7 @@ are PHRED-scaled, and, for better compatibility with `BWA`, confined to the inte
 ## Hardware Requirements
 
 - The standalone program needs ~100GB RAM when running on 32 cores to align against the human reference genome `hg19`. 
-  The mapping speed is roughly comparable to `bwa aln` using ancient parameters. 
+  The mapping speed is roughly comparable to `bwa aln` using "ancient parameters" (`-l 16500 -o 2 -n 0.01`). 
   To parallelize alignments, `mapAD` will use all idle CPU cores on the machine it is run on (this behaviour can be 
   controlled via the `RAYON_NUM_THREADS` environment variable).
   
