@@ -134,7 +134,7 @@ the center of a read is approached.
 -D 0.02                                                    `# Base error rate / divergence` \
 -i 0.0001                                                  `# InDel rate (corresponds to gap open penalty)` \
 --reads "${input_bam}" \
---reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" `# Prefix of index files` \
+--reference "/path/to/reference/hg19.fasta"                `# Prefix of index files` \
 --output "${output_bam}"
 ```
 
@@ -167,7 +167,7 @@ The following example aligns reads that are expected to have a Vindija-like deam
 -D 0.02 \
 -i 0.0001 \
 --reads "${input_bam}" \
---reference "/mnt/scratch/chris/hg19_evan/whole_genome.fa" \
+--reference "/path/to/reference/hg19.fasta" \
 --output "${output_bam}"
 ```
 
