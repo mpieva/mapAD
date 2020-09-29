@@ -204,6 +204,6 @@ are PHRED-scaled, and, for better compatibility with `BWA`, confined to the inte
 ## Known Issues
 - Memory consumption of both mapping and indexing (see [Hardware Requirements](#hardware-requirements))
 - No awareness of paired-end sequencing (pairs need to be merged before mapping)
-- No seeding (it's not very effective for short reads, but could easily be implemented for longer ones, probably 
-  _without_ much negative impact on sensitivity)
+- No seeding (it's not very effective for short reads, but could easily be implemented for longer ones. Probably 
+  with less negative impact on (aDNA-)sensitivity than seeding in `BWA`).
 - Only (unaligned) `bam` input (`fastq` files need to be converted before mapping)
