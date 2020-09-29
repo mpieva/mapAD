@@ -1,7 +1,4 @@
-[![pipeline status](https://vcs.eva.mpg.de/christian_heide/mapAD/badges/master/pipeline.svg)](https://vcs.eva.mpg.de/christian_heide/mapAD/commits/master) 
-[![coverage report](https://vcs.eva.mpg.de/christian_heide/mapAD/badges/master/coverage.svg)](https://vcs.eva.mpg.de/christian_heide/mapAD/commits/master)
-
-# mapAD <img src="https://vcs.eva.mpg.de/uploads/-/system/project/avatar/1089/480px-Uracil-3D-balls.png" alt="drawing" width="25"/>
+# mapAD
 
 This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. 
 This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate 
