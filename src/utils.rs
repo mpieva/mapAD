@@ -10,6 +10,7 @@ use bio::{
         bwt::{bwt, less, Less, Occ, BWT},
         suffix_array::{suffix_array, RawSuffixArray},
     },
+    io::fastq,
 };
 use log::debug;
 use rust_htslib::bam;
@@ -82,6 +83,21 @@ impl From<bam::Record> for Record {
             base_qualities,
             name: input.qname().to_owned(),
             bam_tags: input_tags,
+        }
+    }
+}
+
+impl From<fastq::Record> for Record {
+    fn from(fq_record: fastq::Record) -> Self {
+        let sequence = fq_record.seq().to_ascii_uppercase();
+        let base_qualities = fq_record.qual().to_owned();
+        let name = fq_record.id().as_bytes().to_owned();
+
+        Self {
+            sequence,
+            base_qualities,
+            name,
+            bam_tags: Vec::new(),
         }
     }
 }

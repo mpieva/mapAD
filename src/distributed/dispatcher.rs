@@ -142,7 +142,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         // Set up input and output files
         let mut bam_reader = bam::Reader::from_path(self.reads_path)?;
         let _ = bam_reader.set_threads(4);
-        let header = map::create_bam_header(&bam_reader, &identifier_position_map);
+        let header = map::create_bam_header(Some(&bam_reader), &identifier_position_map);
         let mut task_queue =
             TaskQueue::from_reader(&mut bam_reader, self.alignment_parameters.chunk_size);
         let out_file_path = Path::new(&self.out_file_path);

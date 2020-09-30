@@ -21,6 +21,7 @@ use smallvec::SmallVec;
 use bio::{
     alphabets::dna,
     data_structures::suffix_array::{RawSuffixArray, SuffixArray},
+    io::fastq,
 };
 
 use rust_htslib::{bam, bam::Read};
@@ -490,17 +491,22 @@ impl BiDArray {
     }
 }
 
-struct ChunkIterator<'a, R>
+/// Reads chunks of configurable size from source Iterator
+struct ChunkIterator<E, I, T>
 where
-    R: Read,
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
 {
     chunk_size: usize,
-    records: Peekable<bam::Records<'a, R>>,
+    records: Peekable<T>,
 }
 
-impl<'a, R> Iterator for ChunkIterator<'a, R>
+impl<E, I, T> Iterator for ChunkIterator<E, I, T>
 where
-    R: Read,
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
 {
     type Item = Vec<Record>;
 
@@ -523,14 +529,29 @@ where
     }
 }
 
-impl<'a, R> ChunkIterator<'a, R>
+/// Convertible to ChunkIterator
+trait IntoChunkIterator<E, I, T>
 where
-    R: Read,
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
 {
-    fn from_reader(records: bam::Records<'a, R>, chunk_size: usize) -> Self {
-        Self {
+    fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T>;
+}
+
+/// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
+/// are implemented, it is sufficient to impl `Into<Record>` or `From<T> for Record` for the
+/// additional item.
+impl<E, I, T> IntoChunkIterator<E, I, T> for T
+where
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
+{
+    fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T> {
+        ChunkIterator {
             chunk_size,
-            records: records.peekable(),
+            records: self.peekable(),
         }
     }
 }
@@ -558,9 +579,6 @@ pub fn run(
         bincode::deserialize_from(d_pi)?
     };
 
-    let mut reads_reader = bam::Reader::from_path(reads_path)?;
-    let _ = reads_reader.set_threads(4);
-    let header = create_bam_header(&reads_reader, &identifier_position_map);
     let out_file_path = Path::new(out_file_path);
     if out_file_path.exists() {
         return Err(Box::new(io::Error::new(
@@ -568,16 +586,80 @@ pub fn run(
             "The given output file already exists.",
         )));
     }
-    let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
-    let _ = out_file.set_threads(4);
 
+    debug!("Map reads");
+    // Static dispatch of the Record type based on the filename extension
+    let reads_path = Path::new(reads_path);
+    let error_message = "Please specify a path to an input file that ends either with \
+    \".bam\", \".fq\", or \".fastq\".";
+    match reads_path
+        .extension()
+        .expect(error_message)
+        .to_str()
+        .expect(error_message)
+    {
+        "bam" => {
+            let mut reader = bam::Reader::from_path(reads_path)?;
+            let _ = reader.set_threads(4);
+            let header = create_bam_header(Some(&reader), &identifier_position_map);
+            let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+            let _ = out_file.set_threads(4);
+            run_inner(
+                reader
+                    .records()
+                    .into_chunks(alignment_parameters.chunk_size),
+                &fmd_index,
+                &suffix_array,
+                alignment_parameters,
+                &identifier_position_map,
+                &mut out_file,
+            )?
+        }
+        "fastq" | "fq" => {
+            let reader = fastq::Reader::from_file(reads_path)?;
+            let header = create_bam_header(None, &identifier_position_map);
+            let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+            let _ = out_file.set_threads(4);
+            run_inner(
+                reader
+                    .records()
+                    .into_chunks(alignment_parameters.chunk_size),
+                &fmd_index,
+                &suffix_array,
+                alignment_parameters,
+                &identifier_position_map,
+                &mut out_file,
+            )?
+        }
+        _ => panic!(error_message),
+    }
+
+    debug!("Done");
+    Ok(())
+}
+
+/// This part has been extracted from the main run() function to allow static dispatch based on the
+/// input file type
+fn run_inner<E, I, T, S>(
+    records: ChunkIterator<E, I, T>,
+    fmd_index: &RtFMDIndex,
+    suffix_array: &S,
+    alignment_parameters: &AlignmentParameters,
+    identifier_position_map: &FastaIdPositions,
+    out_file: &mut bam::Writer,
+) -> Result<(), Box<dyn Error>>
+where
+    I: Into<Record>,
+    E: Error,
+    S: SuffixArray + Send + Sync,
+    T: Iterator<Item = Result<I, E>>,
+{
     thread_local! {
         static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
         static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
     }
 
-    debug!("Map reads");
-    ChunkIterator::from_reader(reads_reader.records(), alignment_parameters.chunk_size)
+    records
         .map(|chunk| {
             trace!("Map chunk of reads in parallel");
             let results = chunk
@@ -590,7 +672,7 @@ pub fn run(
                                 &record.sequence,
                                 &record.base_qualities,
                                 alignment_parameters,
-                                &fmd_index,
+                                fmd_index,
                                 &mut stack_buf.borrow_mut(),
                                 &mut tree_buf.borrow_mut(),
                             );
@@ -606,8 +688,8 @@ pub fn run(
                         intervals_to_bam(
                             record,
                             &mut hit_interval,
-                            &suffix_array,
-                            &identifier_position_map,
+                            suffix_array,
+                            identifier_position_map,
                             Some(&duration),
                             &mut rng,
                         )
@@ -624,15 +706,18 @@ pub fn run(
         })
         .collect::<Result<(), _>>()?;
 
-    debug!("Done");
     Ok(())
 }
 
 pub fn create_bam_header(
-    reads_reader: &bam::Reader,
+    reads_reader: Option<&bam::Reader>,
     identifier_position_map: &FastaIdPositions,
 ) -> bam::Header {
-    let mut header = bam::Header::from_template(reads_reader.header());
+    let mut header = match reads_reader {
+        Some(bam_reader) => bam::Header::from_template(bam_reader.header()),
+        None => bam::Header::new(),
+    };
+
     for identifier_position in identifier_position_map.iter() {
         let mut header_record = bam::header::HeaderRecord::new(b"SQ");
         header_record.push_tag(b"SN", &identifier_position.identifier);
