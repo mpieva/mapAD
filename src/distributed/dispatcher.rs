@@ -1,6 +1,6 @@
 use crate::{distributed::*, map, utils::*};
 
-use bio::data_structures::suffix_array::SuffixArray;
+use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::debug;
 use mio::*;
 use rayon::prelude::*;
@@ -32,14 +32,24 @@ where
 }
 
 /// Keeps track of the processing state of chunks of reads
-struct TaskQueue<'a> {
+struct TaskQueue<E, I, T>
+where
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
+{
     chunk_id: usize,
     chunk_size: usize,
-    records: Peekable<bam::Records<'a, bam::Reader>>,
+    records: Peekable<T>,
     requeried_tasks: Vec<TaskSheet>,
 }
 
-impl<'a> Iterator for TaskQueue<'a> {
+impl<E, I, T> Iterator for TaskQueue<E, I, T>
+where
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
+{
     type Item = TaskSheet;
 
     fn next(&mut self) -> Option<TaskSheet> {
@@ -67,18 +77,43 @@ impl<'a> Iterator for TaskQueue<'a> {
     }
 }
 
-impl<'a> TaskQueue<'a> {
-    fn from_reader(reader: &'a mut bam::Reader, chunk_size: usize) -> Self {
-        Self {
-            chunk_id: 0,
-            chunk_size,
-            records: reader.records().peekable(),
-            requeried_tasks: Vec::new(),
-        }
-    }
-
+impl<E, I, T> TaskQueue<E, I, T>
+where
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
+{
     fn requery_task(&mut self, task_sheet: TaskSheet) {
         self.requeried_tasks.push(task_sheet);
+    }
+}
+
+/// Convertible to ChunkIterator
+trait IntoTaskQueue<E, I, T>
+where
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
+{
+    fn into_tasks(self, chunk_size: usize) -> TaskQueue<E, I, T>;
+}
+
+/// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
+/// are implemented, it is sufficient to impl `Into<Record>` or `From<T> for Record` for the
+/// additional item.
+impl<E, I, T> IntoTaskQueue<E, I, T> for T
+where
+    E: Error,
+    I: Into<Record>,
+    T: Iterator<Item = Result<I, E>>,
+{
+    fn into_tasks(self, chunk_size: usize) -> TaskQueue<E, I, T> {
+        TaskQueue {
+            chunk_id: 0,
+            chunk_size,
+            records: self.peekable(),
+            requeried_tasks: Vec::new(),
+        }
     }
 }
 
@@ -91,9 +126,9 @@ struct Connection {
 }
 
 pub struct Dispatcher<'a, 'b> {
-    reads_path: &'b str,
-    reference_path: &'b str,
-    out_file_path: &'b str,
+    reads_path: &'b Path,
+    reference_path: &'b Path,
+    out_file_path: &'b Path,
     alignment_parameters: &'a AlignmentParameters,
     connections: HashMap<Token, Connection>,
     accept_connections: bool,
@@ -108,18 +143,103 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         reference_path: &'b str,
         out_file_path: &'b str,
         alignment_parameters: &'a AlignmentParameters,
-    ) -> Result<Self, bam::Error> {
-        Ok(Self {
-            reads_path,
-            reference_path,
-            out_file_path,
+    ) -> Self {
+        Self {
+            reads_path: Path::new(reads_path),
+            reference_path: Path::new(reference_path),
+            out_file_path: Path::new(out_file_path),
             alignment_parameters,
             connections: HashMap::new(),
             accept_connections: true,
-        })
+        }
     }
 
     pub fn run(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
+        // Things that determine the concrete values of the generics used in `run_inner(...)`
+        // are set up here to allow static dispatch
+        debug!("Load position map");
+        let identifier_position_map: map::FastaIdPositions = {
+            let d_pi = snap::read::FrameDecoder::new(File::open(format!(
+                "{}.tpi",
+                &self.reference_path.display()
+            ))?);
+            bincode::deserialize_from(d_pi)?
+        };
+
+        debug!("Load suffix array");
+        let suffix_array: Vec<usize> = {
+            let d_suffix_array = snap::read::FrameDecoder::new(File::open(format!(
+                "{}.tsa",
+                &self.reference_path.display()
+            ))?);
+            bincode::deserialize_from(d_suffix_array)?
+        };
+
+        // Static dispatch of the Record type based on the filename extension
+        let error_message = "Please specify a path to an input file that ends either with \
+                                  \".bam\", \".fq\", or \".fastq\".";
+        match self
+            .reads_path
+            .extension()
+            .expect(error_message)
+            .to_str()
+            .expect(error_message)
+        {
+            "bam" => {
+                let mut reader = bam::Reader::from_path(self.reads_path)?;
+                let _ = reader.set_threads(4);
+                let header = map::create_bam_header(Some(&reader), &identifier_position_map);
+                let mut out_file =
+                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::BAM)?;
+                let _ = out_file.set_threads(4);
+                let mut task_queue = reader
+                    .records()
+                    .into_tasks(self.alignment_parameters.chunk_size);
+                self.run_inner(
+                    &mut task_queue,
+                    &suffix_array,
+                    &identifier_position_map,
+                    port,
+                    &mut out_file,
+                )
+            }
+            "fastq" | "fq" => {
+                let reader = fastq::Reader::from_file(self.reads_path)?;
+                let header = map::create_bam_header(None, &identifier_position_map);
+                let mut out_file =
+                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::BAM)?;
+                let _ = out_file.set_threads(4);
+                let mut task_queue = reader
+                    .records()
+                    .into_tasks(self.alignment_parameters.chunk_size);
+                self.run_inner(
+                    &mut task_queue,
+                    &suffix_array,
+                    &identifier_position_map,
+                    port,
+                    &mut out_file,
+                )
+            }
+            _ => panic!(error_message),
+        }
+    }
+
+    /// This part has been extracted from the main run() function to allow static dispatch based on the
+    /// input file type
+    fn run_inner<E, I, S, T>(
+        &mut self,
+        task_queue: &mut TaskQueue<E, I, T>,
+        suffix_array: &S,
+        identifier_position_map: &map::FastaIdPositions,
+        port: u16,
+        out_file: &mut bam::Writer,
+    ) -> Result<(), Box<dyn Error>>
+    where
+        E: Error,
+        I: Into<Record>,
+        S: SuffixArray + Send + Sync,
+        T: Iterator<Item = Result<I, E>>,
+    {
         // Set up networking
         let mut max_token = Self::DISPATCHER_TOKEN.0;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
@@ -132,39 +252,8 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         poll.registry()
             .register(&mut listener, Self::DISPATCHER_TOKEN, Interest::READABLE)?;
 
-        debug!("Load position map");
-        let identifier_position_map: map::FastaIdPositions = {
-            let d_pi =
-                snap::read::FrameDecoder::new(File::open(format!("{}.tpi", &self.reference_path))?);
-            bincode::deserialize_from(d_pi)?
-        };
-
-        // Set up input and output files
-        let mut bam_reader = bam::Reader::from_path(self.reads_path)?;
-        let _ = bam_reader.set_threads(4);
-        let header = map::create_bam_header(Some(&bam_reader), &identifier_position_map);
-        let mut task_queue =
-            TaskQueue::from_reader(&mut bam_reader, self.alignment_parameters.chunk_size);
-        let out_file_path = Path::new(&self.out_file_path);
-        if out_file_path.exists() {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "The given output file already exists",
-            )));
-        }
-        let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
-        let _ = out_file.set_threads(4);
-
-        debug!("Load suffix array");
-        let suffix_array: Vec<usize> = {
-            let d_suffix_array =
-                snap::read::FrameDecoder::new(File::open(format!("{}.tsa", &self.reference_path))?);
-            bincode::deserialize_from(d_suffix_array)?
-        };
-
         // Create storage for events
         let mut events = Events::with_capacity(1024);
-
         debug!("Ready to distribute work");
         loop {
             poll.poll(&mut events, None)?;
@@ -218,9 +307,9 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                         );
                                         self.write_results(
                                             results.results,
-                                            &suffix_array,
-                                            &identifier_position_map,
-                                            &mut out_file,
+                                            suffix_array,
+                                            identifier_position_map,
+                                            out_file,
                                         )?;
 
                                         // Remove completed task from assignments
@@ -245,7 +334,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                 }
                                 TransportState::Error(_) => {
                                     debug!("Connection is no longer valid, removed worker {} from pool", event.token().0);
-                                    self.release_worker(event.token(), &mut task_queue);
+                                    self.release_worker(event.token(), task_queue);
                                 }
                                 TransportState::Complete => {
                                     // TransportState::Complete means the input file has been processed completely
@@ -257,7 +346,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
                         // Distribution of work
                         if event.is_writable() {
-                            match self.write_tx_buffer(event.token(), &mut task_queue) {
+                            match self.write_tx_buffer(event.token(), task_queue) {
                                 TransportState::Finished => {
                                     poll.registry().reregister(
                                         &mut self
@@ -274,11 +363,11 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                 }
                                 TransportState::Error(_) => {
                                     debug!("Connection is no longer valid, removed worker {} from pool", event.token().0);
-                                    self.release_worker(event.token(), &mut task_queue);
+                                    self.release_worker(event.token(), task_queue);
                                 }
                                 TransportState::Complete => {
                                     self.accept_connections = false;
-                                    self.release_worker(event.token(), &mut task_queue);
+                                    self.release_worker(event.token(), task_queue);
                                     if self.connections.is_empty() {
                                         debug!("All tasks have been completed, shutting down gracefully");
                                         return Ok(());
@@ -326,7 +415,15 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     /// Removes worker_to_be_removed from the event queue and terminates the connection.
     /// This causes the worker_to_be_removed process to terminate.
     /// Also, this worker's task will be requeried.
-    fn release_worker(&mut self, worker_to_be_removed: Token, task_queue: &mut TaskQueue) {
+    fn release_worker<E, I, T>(
+        &mut self,
+        worker_to_be_removed: Token,
+        task_queue: &mut TaskQueue<E, I, T>,
+    ) where
+        E: Error,
+        I: Into<Record>,
+        T: Iterator<Item = Result<I, E>>,
+    {
         if let Some(assigned_task) = self
             .connections
             .get_mut(&worker_to_be_removed)
@@ -391,11 +488,16 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         }
     }
 
-    fn write_tx_buffer(
+    fn write_tx_buffer<E, I, T>(
         &mut self,
         worker: Token,
-        task_queue: &mut TaskQueue,
-    ) -> TransportState<io::Error> {
+        task_queue: &mut TaskQueue<E, I, T>,
+    ) -> TransportState<io::Error>
+    where
+        E: Error,
+        I: Into<Record>,
+        T: Iterator<Item = Result<I, E>>,
+    {
         let connection = self
             .connections
             .get_mut(&worker)
@@ -405,7 +507,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         if send_buffer.is_ready() {
             if let Some(mut task) = task_queue.next() {
-                task.reference_path = Some(self.reference_path.to_string());
+                task.reference_path = Some(self.reference_path.to_string_lossy().into_owned());
                 task.alignment_parameters = Some(self.alignment_parameters.to_owned());
 
                 // The task gets stored in the assignment record and send buffer

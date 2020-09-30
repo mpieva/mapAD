@@ -288,13 +288,13 @@ fn start_mapper(map_matches: &ArgMatches) {
 
     if map_matches.is_present("dispatcher") {
         println!("Dispatcher mode");
+        // Do the (static) dispatch based on input file types here
         let mut dispatcher = dispatcher::Dispatcher::new(
             reads_path,
             reference_path,
             out_file_path,
             &alignment_parameters,
-        )
-        .expect("Application error");
+        );
 
         let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
         if let Err(e) = dispatcher.run(port) {
