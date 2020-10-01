@@ -190,15 +190,19 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         };
 
         // Static dispatch of the Record type based on the filename extension
-        let error_message = "Please specify a path to an input file that ends either with \
+        let wrong_ext_err_msg = "Please specify a path to an input file that ends either with \
                                   \".bam\", \".fq\", or \".fastq\".";
         match self
             .reads_path
             .extension()
-            .expect(error_message)
+            .ok_or_else(|| Box::new(io::Error::new(io::ErrorKind::Other, wrong_ext_err_msg)))?
             .to_str()
-            .expect(error_message)
-        {
+            .ok_or_else(|| {
+                Box::new(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "The provided file name contains invalid unicode.",
+                ))
+            })? {
             "bam" => {
                 let mut reader = bam::Reader::from_path(self.reads_path)?;
                 let _ = reader.set_threads(4);
@@ -234,7 +238,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut out_file,
                 )
             }
-            _ => panic!(error_message),
+            _ => Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                wrong_ext_err_msg,
+            ))),
         }
     }
 

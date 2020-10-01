@@ -596,14 +596,18 @@ pub fn run(
 
     info!("Map reads");
     // Static dispatch of the Record type based on the filename extension
-    let error_message = "Please specify a path to an input file that ends either with \
+    let wrong_ext_err_msg = "Please specify a path to an input file that ends either with \
     \".bam\", \".fq\", or \".fastq\".";
     match reads_path
         .extension()
-        .expect(error_message)
+        .ok_or_else(|| Box::new(io::Error::new(io::ErrorKind::Other, wrong_ext_err_msg)))?
         .to_str()
-        .expect(error_message)
-    {
+        .ok_or_else(|| {
+            Box::new(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "The provided file name contains invalid unicode.",
+            ))
+        })? {
         "bam" => {
             let mut reader = bam::Reader::from_path(reads_path)?;
             let _ = reader.set_threads(4);
@@ -637,7 +641,12 @@ pub fn run(
                 &mut out_file,
             )?
         }
-        _ => panic!(error_message),
+        _ => {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                wrong_ext_err_msg,
+            )));
+        }
     }
 
     info!("Done");
