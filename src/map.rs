@@ -563,6 +563,21 @@ pub fn run(
     out_file_path: &str,
     alignment_parameters: &AlignmentParameters,
 ) -> Result<(), Box<dyn Error>> {
+    let reads_path = Path::new(reads_path);
+    let out_file_path = Path::new(out_file_path);
+    if !reads_path.exists() {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::NotFound,
+            "The given input file could not be found.",
+        )));
+    }
+    if out_file_path.exists() {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "The given output file already exists.",
+        )));
+    }
+
     debug!("Load FMD-index");
     let fmd_index = load_index_from_path(reference_path)?;
 
@@ -579,17 +594,8 @@ pub fn run(
         bincode::deserialize_from(d_pi)?
     };
 
-    let out_file_path = Path::new(out_file_path);
-    if out_file_path.exists() {
-        return Err(Box::new(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "The given output file already exists.",
-        )));
-    }
-
     debug!("Map reads");
     // Static dispatch of the Record type based on the filename extension
-    let reads_path = Path::new(reads_path);
     let error_message = "Please specify a path to an input file that ends either with \
     \".bam\", \".fq\", or \".fastq\".";
     match reads_path

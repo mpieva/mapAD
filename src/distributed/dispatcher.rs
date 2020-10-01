@@ -143,15 +143,29 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         reference_path: &'b str,
         out_file_path: &'b str,
         alignment_parameters: &'a AlignmentParameters,
-    ) -> Self {
-        Self {
-            reads_path: Path::new(reads_path),
+    ) -> Result<Self, io::Error> {
+        let reads_path = Path::new(reads_path);
+        let out_file_path = Path::new(out_file_path);
+        if !reads_path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "The given input file could not be found.",
+            ));
+        }
+        if out_file_path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "The given output file already exists.",
+            ));
+        }
+        Ok(Self {
+            reads_path,
             reference_path: Path::new(reference_path),
-            out_file_path: Path::new(out_file_path),
+            out_file_path,
             alignment_parameters,
             connections: HashMap::new(),
             accept_connections: true,
-        }
+        })
     }
 
     pub fn run(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
