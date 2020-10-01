@@ -12,7 +12,7 @@ use std::{
 
 use clap::{crate_name, crate_version};
 use either::Either;
-use log::{debug, trace};
+use log::{debug, info, trace};
 use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
@@ -578,23 +578,23 @@ pub fn run(
         )));
     }
 
-    debug!("Load FMD-index");
+    info!("Load FMD-index");
     let fmd_index = load_index_from_path(reference_path)?;
 
-    debug!("Load suffix array");
+    info!("Load suffix array");
     let suffix_array: RawSuffixArray = {
         let d_suffix_array =
             snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
         bincode::deserialize_from(d_suffix_array)?
     };
 
-    debug!("Load position map");
+    info!("Load position map");
     let identifier_position_map: FastaIdPositions = {
         let d_pi = snap::read::FrameDecoder::new(File::open(format!("{}.tpi", reference_path))?);
         bincode::deserialize_from(d_pi)?
     };
 
-    debug!("Map reads");
+    info!("Map reads");
     // Static dispatch of the Record type based on the filename extension
     let error_message = "Please specify a path to an input file that ends either with \
     \".bam\", \".fq\", or \".fastq\".";
@@ -640,7 +640,7 @@ pub fn run(
         _ => panic!(error_message),
     }
 
-    debug!("Done");
+    info!("Done");
     Ok(())
 }
 
@@ -667,7 +667,7 @@ where
 
     records
         .map(|chunk| {
-            trace!("Map chunk of reads in parallel");
+            debug!("Map chunk of reads in parallel");
             let results = chunk
                 .par_iter()
                 .map(|record| {
@@ -704,7 +704,7 @@ where
                 .flatten()
                 .collect::<Vec<_>>();
 
-            trace!("Write BAM records to output file serially");
+            debug!("Write BAM records to output file serially");
             results
                 .iter()
                 .map(|record| out_file.write(record))

@@ -1,6 +1,6 @@
 use std::{error::Error, fs::File};
 
-use log::debug;
+use log::{debug, info};
 use rand::{
     prelude::{Rng, SeedableRng, StdRng},
     seq::SliceRandom,
@@ -52,7 +52,7 @@ fn index<T: Rng>(
     name: &str,
     rng: &mut T,
 ) -> Result<(), Box<dyn Error>> {
-    debug!("Read input reference sequence");
+    info!("Read input reference sequence");
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
         // Convert all bases to uppercase
@@ -99,7 +99,7 @@ fn index<T: Rng>(
     );
 
     {
-        debug!("Map identifiers to positions");
+        info!("Map identifiers to positions");
         let mut end = 0;
         let identifier_position_map = FastaIdPositions::new(
             fasta::Reader::from_file(reference_path)?
@@ -116,39 +116,39 @@ fn index<T: Rng>(
                 .collect::<Vec<_>>(),
         );
 
-        debug!("Save position map to disk");
+        info!("Save position map to disk");
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tpi", name))?);
         bincode::serialize_into(&mut writer, &identifier_position_map)?;
     }
 
-    debug!("Add reverse complement and sentinels to reference");
+    info!("Add reverse complement and sentinels to reference");
     ref_seq.extend_from_slice(b"$");
     let ref_seq_rev_compl = dna::revcomp(&ref_seq);
     ref_seq.extend_from_slice(&ref_seq_rev_compl);
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
 
-    debug!("Compress reference");
+    info!("Compress reference");
     alphabet.insert(b'$');
     let rank_transform = RankTransform::new(&alphabet);
     let alphabet = Alphabet::new(0..rank_transform.ranks.len() as u8);
     let ref_seq = rank_transform.transform(ref_seq);
 
     {
-        debug!("Save \"RT\" table to disk");
+        info!("Save \"RT\" table to disk");
         let mut writer_rank_transform =
             snap::write::FrameEncoder::new(File::create(format!("{}.trt", name))?);
         bincode::serialize_into(&mut writer_rank_transform, &rank_transform)?;
     }
 
-    debug!("Generate suffix array");
+    info!("Generate suffix array");
     let suffix_array = suffix_array(&ref_seq);
 
-    debug!("Generate BWT");
+    info!("Generate BWT");
     let bwt = bwt(&ref_seq, &suffix_array);
 
     {
-        debug!("Save suffix array to disk");
+        info!("Save suffix array to disk");
         let mut writer_suffix_array =
             snap::write::FrameEncoder::new(File::create(format!("{}.tsa", name))?);
         bincode::serialize_into(&mut writer_suffix_array, &suffix_array)?;
@@ -157,26 +157,26 @@ fn index<T: Rng>(
     debug!("Drop suffix array");
     drop(suffix_array);
 
-    debug!("Generate \"C\" table");
+    info!("Generate \"C\" table");
     let less = less(&bwt, &alphabet);
 
-    debug!("Generate \"Occ\" table");
+    info!("Generate \"Occ\" table");
     let occ = Occ::new(&bwt, 128, &alphabet);
 
     {
-        debug!("Save BWT to disk");
+        info!("Save BWT to disk");
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tbw", name))?);
         bincode::serialize_into(&mut writer, &bwt)?;
     }
 
     {
-        debug!("Save \"C\" table to disk");
+        info!("Save \"C\" table to disk");
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tle", name))?);
         bincode::serialize_into(&mut writer, &less)?;
     }
 
     {
-        debug!("Save \"Occ\" table to disk");
+        info!("Save \"Occ\" table to disk");
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.toc", name))?);
         bincode::serialize_into(&mut writer, &occ)?;
     }

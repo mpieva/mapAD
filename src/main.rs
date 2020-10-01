@@ -1,6 +1,7 @@
 use clap::{
     crate_description, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand,
 };
+use log::{error, info};
 use simple_logger::SimpleLogger;
 
 use mapad::{
@@ -248,9 +249,8 @@ fn define_cli<'a>() -> ArgMatches<'a> {
 fn handle_arguments(matches: ArgMatches) {
     SimpleLogger::new()
         .with_level(match matches.occurrences_of("v") {
-            0 => log::LevelFilter::Warn,
-            1 => log::LevelFilter::Info,
-            2 => log::LevelFilter::Debug,
+            0 => log::LevelFilter::Info,
+            1 => log::LevelFilter::Debug,
             _ => log::LevelFilter::Trace,
         })
         .init()
@@ -275,7 +275,7 @@ fn start_indexer(arg_matches: &ArgMatches) {
         arg_matches.value_of("reference").unwrap(),
         value_t!(arg_matches.value_of("seed"), u64).unwrap(),
     ) {
-        eprintln!("Application error: {}", e);
+        error!("Application error: {}", e);
     }
 }
 
@@ -287,7 +287,7 @@ fn start_mapper(map_matches: &ArgMatches) {
     let alignment_parameters = build_alignment_parameters(map_matches);
 
     if map_matches.is_present("dispatcher") {
-        println!("Dispatcher mode");
+        info!("Dispatcher mode");
         match dispatcher::Dispatcher::new(
             reads_path,
             reference_path,
@@ -297,11 +297,11 @@ fn start_mapper(map_matches: &ArgMatches) {
             Ok(mut dispatcher) => {
                 let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
                 if let Err(e) = dispatcher.run(port) {
-                    eprintln!("Application error: {}", e);
+                    error!("Application error: {}", e);
                 }
             }
             Err(e) => {
-                eprintln!("Application error: {}", e);
+                error!("Application error: {}", e);
             }
         }
     } else if let Err(e) = map::run(
@@ -310,7 +310,7 @@ fn start_mapper(map_matches: &ArgMatches) {
         out_file_path,
         &alignment_parameters,
     ) {
-        eprintln!("Application error: {}", e);
+        error!("Application error: {}", e);
     }
 }
 
@@ -322,9 +322,12 @@ fn start_worker(arg_matches: &ArgMatches) {
         port,
     ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
 
-    worker.run().expect(
-        "Could not successfully complete the tasks given. Please double-check the results.",
-    );
+    if let Err(e) = worker.run() {
+        error!(
+            "Could not successfully complete the tasks given. Please double-check the results. {}",
+            e
+        );
+    }
 }
 
 fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {

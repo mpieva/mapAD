@@ -1,7 +1,7 @@
 use crate::{distributed::*, map, utils::*};
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
-use log::debug;
+use log::{debug, info, warn};
 use mio::*;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
@@ -69,7 +69,7 @@ where
 
             Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
         } else if let Some(task) = self.requeried_tasks.pop() {
-            debug!("Retrying previously failed task {}", task.chunk_id);
+            warn!("Retrying previously failed task {}", task.chunk_id);
             Some(task)
         } else {
             None
@@ -171,7 +171,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     pub fn run(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
         // Things that determine the concrete values of the generics used in `run_inner(...)`
         // are set up here to allow static dispatch
-        debug!("Load position map");
+        info!("Load position map");
         let identifier_position_map: map::FastaIdPositions = {
             let d_pi = snap::read::FrameDecoder::new(File::open(format!(
                 "{}.tpi",
@@ -180,7 +180,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             bincode::deserialize_from(d_pi)?
         };
 
-        debug!("Load suffix array");
+        info!("Load suffix array");
         let suffix_array: Vec<usize> = {
             let d_suffix_array = snap::read::FrameDecoder::new(File::open(format!(
                 "{}.tsa",
@@ -268,7 +268,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         // Create storage for events
         let mut events = Events::with_capacity(1024);
-        debug!("Ready to distribute work");
+        info!("Ready to distribute work");
         loop {
             poll.poll(&mut events, None)?;
             for event in events.iter() {
@@ -277,7 +277,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     Self::DISPATCHER_TOKEN => {
                         if self.accept_connections {
                             while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
-                                debug!("Connection established ({:?})", remote_addr);
+                                info!("Connection established ({:?})", remote_addr);
                                 max_token += 1;
                                 let remote_token = Token(max_token);
                                 poll.registry().register(
@@ -347,7 +347,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                     // We're patient!!1!
                                 }
                                 TransportState::Error(_) => {
-                                    debug!("Connection is no longer valid, removed worker {} from pool", event.token().0);
+                                    warn!("Connection is no longer valid, removed worker {} from pool", event.token().0);
                                     self.release_worker(event.token(), task_queue);
                                 }
                                 TransportState::Complete => {
@@ -376,14 +376,14 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                     // We're patient!!1!
                                 }
                                 TransportState::Error(_) => {
-                                    debug!("Connection is no longer valid, removed worker {} from pool", event.token().0);
+                                    warn!("Connection is no longer valid, removed worker {} from pool", event.token().0);
                                     self.release_worker(event.token(), task_queue);
                                 }
                                 TransportState::Complete => {
                                     self.accept_connections = false;
                                     self.release_worker(event.token(), task_queue);
                                     if self.connections.is_empty() {
-                                        debug!("All tasks have been completed, shutting down gracefully");
+                                        info!("All tasks have been completed, shutting down gracefully");
                                         return Ok(());
                                     }
                                 }
@@ -445,7 +445,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .assigned_task
             .take()
         {
-            debug!("Requeried task {} of failed worker", assigned_task.chunk_id);
+            warn!("Requeried task {} of failed worker", assigned_task.chunk_id);
             task_queue.requery_task(assigned_task);
         }
         self.connections

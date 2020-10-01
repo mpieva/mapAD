@@ -5,7 +5,7 @@ use crate::{
     map,
     utils::{load_index_from_path, AlignmentParameters},
 };
-use log::debug;
+use log::info;
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use std::{
@@ -25,7 +25,7 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(host: &str, port: &str) -> Result<Self, io::Error> {
-        debug!("Wait for dispatcher to respond");
+        info!("Wait for dispatcher to respond");
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
             connection: TcpStream::connect(format!("{}:{}", host, port))?,
@@ -47,14 +47,14 @@ impl Worker {
                     // Load FMD index if necessary
                     if self.fmd_index.is_none() {
                         if let Some(reference_path) = task.reference_path {
-                            debug!("Load FMD-index");
+                            info!("Load FMD-index");
                             self.fmd_index = Some(load_index_from_path(&reference_path)?);
                         }
                     }
 
                     // Extract alignment parameters if necessary
                     if self.alignment_parameters.is_none() {
-                        debug!("Extract alignment parameters");
+                        info!("Extract alignment parameters");
                         if let Some(alignment_parameters) = task.alignment_parameters {
                             self.alignment_parameters = Some(alignment_parameters);
                         }
@@ -63,7 +63,7 @@ impl Worker {
                     // If requirements are met, run task
                     if let Some(fmd_index) = &self.fmd_index {
                         if let Some(alignment_parameters) = &self.alignment_parameters {
-                            debug!("Map reads");
+                            info!("Map reads");
                             let results = std::mem::replace(&mut task.records, Vec::new())
                                 .into_par_iter()
                                 .map(|record| {
@@ -90,7 +90,7 @@ impl Worker {
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::ConnectionAborted => {
-                    debug!("The dispatcher has dropped the connection, shutting down gracefully");
+                    info!("The dispatcher has dropped the connection, shutting down gracefully");
                     return Ok(());
                 }
                 Err(e) => {
