@@ -61,6 +61,7 @@ impl From<bam::Record> for Record {
     fn from(input: bam::Record) -> Self {
         let (sequence, base_qualities) = {
             let sequence = input.seq().as_bytes().to_ascii_uppercase();
+            // No need to subtract offsets here
             let base_qualities = input.qual().to_owned();
             if input.is_reverse() {
                 (
@@ -90,7 +91,8 @@ impl From<bam::Record> for Record {
 impl From<fastq::Record> for Record {
     fn from(fq_record: fastq::Record) -> Self {
         let sequence = fq_record.seq().to_ascii_uppercase();
-        let base_qualities = fq_record.qual().to_owned();
+        // Subtract offset
+        let base_qualities = fq_record.qual().iter().map(|qual| qual - 33).collect();
         let name = fq_record.id().as_bytes().to_owned();
 
         Self {
