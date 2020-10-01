@@ -50,7 +50,7 @@ Please note that the resulting binary is not portable.
 
 - The number of `v`s passed to the program determines the level of verbosity:
 
-`mapad -vvv index ...` or `mapad -vvv map ...`
+`mapad -vv index ...` or `mapad -vv map ...`
 
 ## Usage
 
@@ -119,7 +119,7 @@ the center of a read is approached.
 ###### Local Mapping (One Computer)
 
 ```bash
-./mapad -vvv map \
+./mapad -vv map \
 --library single_stranded \
 -p 0.03                                                    `# Allowed mismatches under `-D` base error rate (similar to BWA backtrack)` \
 -f 0.5                                                     `# Five-prime overhang parameter` \
@@ -139,13 +139,13 @@ the center of a read is approached.
    more than 30GB of free RAM. 
    Start the dispatcher:
    ```bash
-   ./mapad -vv map \
+   ./mapad -v map \
    --dispatcher \
    # ... (see local example)
    ```
    Spawn workers:
    ```bash
-   qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vvv worker --host $(hostname)
+   qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vv worker --host $(hostname)
    ```
 
 ##### 2) Vindija-like Deamination Parameters
@@ -153,7 +153,7 @@ the center of a read is approached.
 The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of 
 the hg19 reference.
 ```bash
-./mapad -vvv map \
+./mapad -vv map \
 --library single_stranded \
 -p 0.03 \
 -f 0.475 \

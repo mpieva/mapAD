@@ -75,9 +75,9 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .required(true)
                         .short("r")
                         .long("reads")
-                        .help("BAM file containing adapter-trimmed and quality-controlled reads")
+                        .help("BAM or FASTQ file that contains the reads to be aligned")
                         .takes_value(true)
-                        .value_name("BAM FILE"),
+                        .value_name("STRING"),
                 )
                 .arg(
                     Arg::with_name("reference")
@@ -86,7 +86,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .long("reference")
                         .help("Prefix of the file names of the index files. The reference FASTA file itself does not need to be present.")
                         .takes_value(true)
-                        .value_name("FASTA FILE"),
+                        .value_name("STRING"),
                 )
                 .arg(
                     Arg::with_name("output")
@@ -95,7 +95,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .long("output")
                         .help("Path to output BAM file")
                         .takes_value(true)
-                        .value_name("BAM FILE"),
+                        .value_name("STRING"),
                 )
                 .arg(
                     Arg::with_name("poisson_prob")
@@ -103,22 +103,21 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under 0.02 base error rate")
                         .takes_value(true)
-                        // .default_value("0.04")
-                        .value_name("PROBABILITY")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
                     Arg::with_name("as_cutoff")
                         .short("c")
                         .group("allowed_mm")
-                        .help("Per-base average log-likelihood cutoff")
+                        .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
                         .takes_value(true)
                         .value_name("FLOAT"),
                 )
                 .arg(
                     Arg::with_name("as_cutoff_exponent")
                         .short("e")
-                        .help("Exponent for read length dependency")
+                        .help("Exponent to be applied to the read length (ignored if `-c` is not used)")
                         .takes_value(true)
                         .default_value("1.0")
                         .value_name("FLOAT"),
@@ -130,26 +129,25 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .long("library")
                         .help("Library preparation method")
                         .takes_value(true)
-                        // .default_value("single_stranded")
                         .possible_values(&["single_stranded", "double_stranded"])
-                        .value_name("METHOD")
+                        .value_name("STRING")
                 )
                 .arg(
                     Arg::with_name("five_prime_overhang")
                         .required(true)
                         .short("f")
-                        .help("5' overhang length parameter")
+                        .help("5'-overhang length parameter")
                         .takes_value(true)
-                        .value_name("PROBABILITY")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
                     Arg::with_name("three_prime_overhang")
                         .required_if("library", "single_stranded")
                         .short("t")
-                        .help("3' overhang length parameter")
+                        .help("3'-overhang length parameter")
                         .takes_value(true)
-                        .value_name("PROBABILITY")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
@@ -158,8 +156,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .short("d")
                         .help("Deamination rate in double-stranded stem of a read")
                         .takes_value(true)
-                        // .default_value("0.02")
-                        .value_name("RATE")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
@@ -168,18 +165,16 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .short("s")
                         .help("Deamination rate in single-stranded ends of a read")
                         .takes_value(true)
-                        // .default_value("0.45")
-                        .value_name("RATE")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
                     Arg::with_name("divergence")
                         .required(true)
                         .short("D")
-                        .help("Divergence rate of the reference and target organisms")
+                        .help("Divergence / base error rate")
                         .takes_value(true)
-                        // .default_value("0.005")
-                        .value_name("RATE")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
@@ -188,8 +183,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .short("i")
                         .help("Expected rate of indels between reads and reference")
                         .takes_value(true)
-                        .default_value("0.00001")
-                        .value_name("RATE")
+                        .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
@@ -219,7 +213,8 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .long("port")
                         .help("Port to listen on in dispatcher mode")
                         .takes_value(true)
-                        .default_value("3130"),
+                        .default_value("3130")
+                        .value_name("INT")
                 ),
 
         )
@@ -233,6 +228,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .long("host")
                         .help("Hostname or IP address of the running dispatcher node")
                         .takes_value(true)
+                        .value_name("HOST")
                 )
                 .arg(
                     Arg::with_name("port")
@@ -241,6 +237,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .help("Port number of running dispatcher")
                         .takes_value(true)
                         .default_value("3130")
+                        .value_name("INT")
                 ),
         )
         .get_matches()
