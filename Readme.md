@@ -203,4 +203,3 @@ are PHRED-scaled, and, for better compatibility with `BWA`, confined to the inte
 - No awareness of paired-end sequencing (pairs need to be merged before mapping)
 - No seeding (it's not very effective for short reads, but could easily be implemented for longer ones. Probably 
   with less negative impact on (aDNA-)sensitivity than seeding in `BWA`).
-- Only (unaligned) `bam` input (`fastq` files need to be converted before mapping)
