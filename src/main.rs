@@ -275,7 +275,7 @@ fn start_indexer(arg_matches: &ArgMatches) {
         arg_matches.value_of("reference").unwrap(),
         value_t!(arg_matches.value_of("seed"), u64).unwrap(),
     ) {
-        println!("Application error: {}", e);
+        eprintln!("Application error: {}", e);
     }
 }
 
@@ -310,7 +310,7 @@ fn start_mapper(map_matches: &ArgMatches) {
         out_file_path,
         &alignment_parameters,
     ) {
-        println!("Application error: {}", e);
+        eprintln!("Application error: {}", e);
     }
 }
 
