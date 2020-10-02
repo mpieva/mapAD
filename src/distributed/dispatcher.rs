@@ -2,7 +2,7 @@ use crate::{distributed::*, map, utils::*};
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, info, warn};
-use mio::*;
+use mio::{net::TcpListener, *};
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead, errors::Error as HtsError};
 
@@ -169,6 +169,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     }
 
     pub fn run(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
+        // Set up networking
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+        let mut listener = net::TcpListener::bind(addr)?;
+
         // Things that determine the concrete values of the generics used in `run_inner(...)`
         // are set up here to allow static dispatch
         info!("Load position map");
@@ -217,7 +221,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut task_queue,
                     &suffix_array,
                     &identifier_position_map,
-                    port,
+                    &mut listener,
                     &mut out_file,
                 )
             }
@@ -234,7 +238,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut task_queue,
                     &suffix_array,
                     &identifier_position_map,
-                    port,
+                    &mut listener,
                     &mut out_file,
                 )
             }
@@ -252,7 +256,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         task_queue: &mut TaskQueue<E, I, T>,
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
-        port: u16,
+        listener: &mut TcpListener,
         out_file: &mut bam::Writer,
     ) -> Result<(), Box<dyn Error>>
     where
@@ -261,17 +265,14 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         S: SuffixArray + Send + Sync,
         T: Iterator<Item = Result<I, E>>,
     {
-        // Set up networking
         let mut max_token = Self::DISPATCHER_TOKEN.0;
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let mut listener = net::TcpListener::bind(addr)?;
 
         // Create a poll instance
         let mut poll = Poll::new()?;
 
         // Start listening for incoming connection attempts and store connections
         poll.registry()
-            .register(&mut listener, Self::DISPATCHER_TOKEN, Interest::READABLE)?;
+            .register(listener, Self::DISPATCHER_TOKEN, Interest::READABLE)?;
 
         // Create storage for events
         let mut events = Events::with_capacity(1024);
