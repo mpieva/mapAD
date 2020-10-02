@@ -97,8 +97,9 @@ PHRED-scaled base quality):
 |  G  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon - p_G %2B 4 \epsilon p_G"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
 |  T  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon %2B p_C - 4 \epsilon p_C"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon"> |
 
-These probabilites are <img src="https://render.githubusercontent.com/render/math?math=\log_2"> transformed and summed 
-up over all bases of a read during alignment (alignment scores). We use affine gap-costs with a gap opening penalty of 
+All of the above probabilities are <img src="https://render.githubusercontent.com/render/math?math=\log_2"> transformed.
+The optimal penalty given the base in the read, its quality, and its position is subtracted from the penalty. During 
+alignment the resulting per-base scores are summed up to form alignment scores. We use affine gap-costs with a gap opening penalty of 
 <img src="https://render.githubusercontent.com/render/math?math=\log_2(i)"> (InDel rate). The gap extension penalty is 
 currently fixed to a "representative mismatch" penalty (the score of a virtual "ordinary" mismatch not caused by 
 deamination or poor base quality). 
