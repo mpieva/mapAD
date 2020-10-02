@@ -4,7 +4,7 @@ use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, info, warn};
 use mio::*;
 use rayon::prelude::*;
-use rust_htslib::{bam, bam::Read as BamRead};
+use rust_htslib::{bam, bam::Read as BamRead, errors::Error as HtsError};
 
 use std::{
     collections::{BinaryHeap, HashMap},
@@ -408,7 +408,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
         out_file: &mut bam::Writer,
-    ) -> Result<(), bam::Error>
+    ) -> Result<(), HtsError>
     where
         S: SuffixArray + Sync,
     {
