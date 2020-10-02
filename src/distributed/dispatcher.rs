@@ -60,10 +60,7 @@ where
             self.chunk_id += 1;
             let chunk = source_iterator_loan
                 .take(self.chunk_size)
-                .map(|record| match record {
-                    Ok(record) => Ok(record.into()),
-                    Err(e) => Err(e),
-                })
+                .map(|maybe_record| maybe_record.map(|record| record.into()))
                 .collect::<Result<Vec<_>, _>>()
                 .expect("Input file is corrupt. Cancelled process");
 
