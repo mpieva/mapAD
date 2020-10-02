@@ -120,7 +120,7 @@ the center of a read is approached.
 
 ```bash
 ./mapad -vv map \
---library single_stranded \
+--library single_stranded                                  `# Library preparation protocol (single- or double-stranded)` \
 -p 0.03                                                    `# Allowed mismatches under `-D` base error rate (similar to BWA backtrack)` \
 -f 0.5                                                     `# Five-prime overhang parameter` \
 -t 0.5                                                     `# Three-prime overhang parameter` \
