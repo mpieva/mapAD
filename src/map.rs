@@ -538,7 +538,7 @@ where
 
 /// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
 /// are implemented, it is sufficient to impl `Into<Record>` or `From<T> for Record` for the
-/// additional item.
+/// additional item `T`.
 impl<E, I, T> IntoChunkIterator<E, I, T> for T
 where
     E: Error,
