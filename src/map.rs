@@ -12,7 +12,7 @@ use std::{
 
 use clap::{crate_name, crate_version};
 use either::Either;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
@@ -726,7 +726,19 @@ pub fn create_bam_header(
     identifier_position_map: &FastaIdPositions,
 ) -> bam::Header {
     let mut header = match reads_reader {
-        Some(bam_reader) => bam::Header::from_template(bam_reader.header()),
+        Some(bam_reader) => {
+            if let Ok(input_header) = std::str::from_utf8(bam_reader.header().as_bytes()) {
+                let template = input_header
+                    .lines()
+                    .filter(|&line| !line.starts_with("@SQ"))
+                    .map(|line| format!("{}\n", line))
+                    .collect::<String>();
+                bam::Header::from_template(&bam::HeaderView::from_bytes(&template.as_bytes()))
+            } else {
+                warn!("Input BAM header contains invalid data");
+                bam::Header::new()
+            }
+        }
         None => bam::Header::new(),
     };
 
