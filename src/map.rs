@@ -5,7 +5,6 @@ use std::{
     error::Error,
     fs::File,
     io,
-    iter::Peekable,
     path::Path,
     time::{Duration, Instant},
 };
@@ -499,7 +498,7 @@ where
     T: Iterator<Item = Result<I, E>>,
 {
     chunk_size: usize,
-    records: Peekable<T>,
+    records: T,
 }
 
 impl<E, I, T> Iterator for ChunkIterator<E, I, T>
@@ -513,16 +512,18 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let source_iterator_loan = &mut self.records;
 
-        // If the underlying iterator is exhausted return None, too
-        source_iterator_loan.peek()?;
+        let chunk = source_iterator_loan
+            .take(self.chunk_size)
+            .map(|maybe_record| maybe_record.map(|record| record.into()))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Input file is corrupt. Cancelling process.");
 
-        Some(
-            source_iterator_loan
-                .take(self.chunk_size)
-                .map(|maybe_record| maybe_record.map(|record| record.into()))
-                .collect::<Result<Vec<_>, _>>()
-                .expect("Input file is corrupt. Cancelling process."),
-        )
+        // If the underlying iterator is exhausted return None, too
+        if !chunk.is_empty() {
+            Some(chunk)
+        } else {
+            None
+        }
     }
 }
 
@@ -548,7 +549,7 @@ where
     fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T> {
         ChunkIterator {
             chunk_size,
-            records: self.peekable(),
+            records: self,
         }
     }
 }

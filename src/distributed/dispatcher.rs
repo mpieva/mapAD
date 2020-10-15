@@ -12,7 +12,6 @@ use std::{
     fs::File,
     io,
     io::{ErrorKind::WouldBlock, Read, Write},
-    iter::Peekable,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
 };
@@ -40,7 +39,7 @@ where
 {
     chunk_id: usize,
     chunk_size: usize,
-    records: Peekable<T>,
+    records: T,
     requeried_tasks: Vec<TaskSheet>,
 }
 
@@ -55,18 +54,18 @@ where
     fn next(&mut self) -> Option<TaskSheet> {
         let source_iterator_loan = &mut self.records;
 
-        // If the underlying iterator is exhausted, resend chunks that were previously assigned to now disconnected workers
-        if source_iterator_loan.peek().is_some() {
-            self.chunk_id += 1;
-            let chunk = source_iterator_loan
-                .take(self.chunk_size)
-                .map(|maybe_record| maybe_record.map(|record| record.into()))
-                .collect::<Result<Vec<_>, _>>()
-                .expect("Input file is corrupt. Cancelled process");
+        let chunk = source_iterator_loan
+            .take(self.chunk_size)
+            .map(|maybe_record| maybe_record.map(|record| record.into()))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Input file is corrupt. Cancelled process");
 
+        // If the underlying iterator is exhausted, resend chunks that were previously assigned to now disconnected workers
+        if !chunk.is_empty() {
+            self.chunk_id += 1;
             Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
         } else if let Some(task) = self.requeried_tasks.pop() {
-            warn!("Retrying previously failed task {}", task.chunk_id);
+            info!("Retrying previously failed task {}", task.chunk_id);
             Some(task)
         } else {
             None
@@ -108,7 +107,7 @@ where
         TaskQueue {
             chunk_id: 0,
             chunk_size,
-            records: self.peekable(),
+            records: self,
             requeried_tasks: Vec::new(),
         }
     }
