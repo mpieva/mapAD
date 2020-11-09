@@ -11,18 +11,18 @@ publish = false
 clap = "2.33.3"
 log = "0.4.11"
 rust-htslib = { git = "https://github.com/jch-13/rust-htslib.git", branch = "feature/get_all_bam_tags", default-features = false}
-simple_logger = "1.10.0"
+simple_logger = "1.11.0"
 bincode = "1.3.1"
 bio = { version = "0.32.0", features = ["runtime-dispatch-simd"] }
 assert_approx_eq = "1.1.0"
 smallvec = "1.4.2"
 rand = "0.7.3"
-serde = { version = "1.0.116", features = ["derive"] }
+serde = { version = "1.0.117", features = ["derive"] }
 snap = "1.0.1"
 either = "1.6.1"
-rayon = "1.4.1"
-mio = { version = "0.7.2", features = ["os-poll", "tcp"] }
-enum_dispatch = "0.3.3"
+rayon = "1.5.0"
+mio = { version = "0.7.5", features = ["os-poll", "tcp"] }
+enum_dispatch = "0.3.4"
 min-max-heap = "1.3.0"
 slab = "0.4.2"
 
