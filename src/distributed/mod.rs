@@ -6,7 +6,7 @@ use crate::{
     utils::{AlignmentParameters, Record},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BinaryHeap, error::Error};
+use std::collections::BinaryHeap;
 
 trait Message {
     const PROTO_LEN: usize = 8;
@@ -101,13 +101,13 @@ impl TaskRxBuffer {
         }
     }
 
-    fn decode_and_reset(&mut self) -> Result<TaskSheet, Box<dyn Error>> {
+    fn decode_and_reset(&mut self) -> Result<TaskSheet, bincode::Error> {
         let out = bincode::deserialize(&self.buf)?;
         self.reset();
         Ok(out)
     }
 
-    fn decode_header(&mut self) -> Result<(), Box<dyn Error>> {
+    fn decode_header(&mut self) -> Result<(), bincode::Error> {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf
@@ -149,13 +149,13 @@ impl ResultRxBuffer {
         &mut self.buf[self.already_read..]
     }
 
-    fn decode_and_reset(&mut self) -> Result<ResultSheet, Box<dyn Error>> {
+    fn decode_and_reset(&mut self) -> Result<ResultSheet, bincode::Error> {
         let out = bincode::deserialize(&self.buf)?;
         self.reset();
         Ok(out)
     }
 
-    fn decode_header(&mut self) -> Result<(), Box<dyn Error>> {
+    fn decode_header(&mut self) -> Result<(), bincode::Error> {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf

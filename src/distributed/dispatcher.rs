@@ -308,7 +308,6 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     _ => {
                         // Receive results from workers
                         if event.is_readable() {
-                            // After finishing previous tasks, the worker is ready to receive fresh jobs
                             match self.read_rx_buffer(event.token()) {
                                 TransportState::Finished => {
                                     if let Ok(results) = self
@@ -319,7 +318,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                         .decode_and_reset()
                                     {
                                         debug!(
-                                            "Worker {} sent results of task {}",
+                                            "Worker {} sent results of task {}, writing it down",
                                             event.token().0,
                                             results.chunk_id,
                                         );
@@ -329,6 +328,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                             identifier_position_map,
                                             out_file,
                                         )?;
+                                        debug!("Done writing results of task {}", results.chunk_id,);
 
                                         // Remove completed task from assignments
                                         self.connections
@@ -366,6 +366,17 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                         if event.is_writable() {
                             match self.write_tx_buffer(event.token(), task_queue) {
                                 TransportState::Finished => {
+                                    debug!(
+                                        "Assigned and sent task {} to worker {}",
+                                        self.connections
+                                            .get(&event.token())
+                                            .expect("This is not expected to fail")
+                                            .assigned_task
+                                            .as_ref()
+                                            .expect("This is not expected to fail")
+                                            .chunk_id,
+                                        event.token().0,
+                                    );
                                     poll.registry().reregister(
                                         &mut self
                                             .connections

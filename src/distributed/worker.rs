@@ -5,7 +5,7 @@ use crate::{
     map,
     utils::{load_index_from_path, AlignmentParameters},
 };
-use log::info;
+use log::{debug, info};
 use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use std::{
@@ -44,6 +44,7 @@ impl Worker {
             // Receive task
             match self.read_message() {
                 Ok(mut task) => {
+                    debug!("Received task");
                     // Load FMD index if necessary
                     if self.fmd_index.is_none() {
                         if let Some(reference_path) = task.reference_path {
@@ -83,7 +84,7 @@ impl Worker {
                                 })
                                 .collect::<Vec<_>>();
 
-                            // Return results
+                            info!("Return results");
                             self.connection
                                 .write_all(&ResultSheet::new(task.chunk_id, results).encode())?;
                         }
