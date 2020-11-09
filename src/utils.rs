@@ -55,6 +55,7 @@ pub struct Record {
     pub base_qualities: Vec<u8>,
     pub name: Vec<u8>,
     pub bam_tags: Vec<([u8; 2], BamTag)>,
+    pub bam_flags: u16,
 }
 
 impl From<bam::Record> for Record {
@@ -84,6 +85,7 @@ impl From<bam::Record> for Record {
             base_qualities,
             name: input.qname().to_owned(),
             bam_tags: input_tags,
+            bam_flags: input.flags(),
         }
     }
 }
@@ -100,6 +102,7 @@ impl From<fastq::Record> for Record {
             base_qualities,
             name,
             bam_tags: Vec::new(),
+            bam_flags: 0,
         }
     }
 }

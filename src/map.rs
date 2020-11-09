@@ -891,6 +891,7 @@ fn bam_record_helper(
     duration: Option<&Duration>,
 ) -> bam::Record {
     let mut bam_record = bam::record::Record::new();
+    bam_record.set_flags(input_record.bam_flags);
 
     let (cigar, md_tag, edit_distance) = if let Some(hit_interval) = hit_interval {
         let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields(strand);
