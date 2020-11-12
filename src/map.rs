@@ -934,11 +934,15 @@ fn bam_record_helper(
     // Flag read that maps to reverse strand
     if let Some(Direction::Backward) = strand {
         bam_record.set_reverse();
+    } else {
+        bam_record.unset_reverse();
     }
 
     // Flag unmapped read
     if position == -1 {
         bam_record.set_unmapped();
+    } else {
+        bam_record.unset_unmapped();
     }
 
     // Position of mate (-1 = *)
