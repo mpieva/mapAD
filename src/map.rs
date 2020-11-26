@@ -941,6 +941,7 @@ fn bam_record_helper(
     // Flag unmapped read
     if position == -1 {
         bam_record.set_unmapped();
+        bam_record.unset_reverse();
     } else {
         bam_record.unset_unmapped();
     }
