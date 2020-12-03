@@ -11,7 +11,7 @@ use std::{
     error::Error,
     fs::File,
     io,
-    io::{ErrorKind::WouldBlock, Read, Write},
+    io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
 };
@@ -287,7 +287,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                 poll.registry().register(
                                     &mut remote_stream,
                                     remote_token,
-                                    Interest::READABLE | Interest::WRITABLE,
+                                    Interest::WRITABLE,
                                 )?;
                                 let connection = Connection {
                                     stream: remote_stream,
@@ -298,7 +298,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                 self.connections.insert(remote_token, connection);
                             }
                         } else {
-                            debug!("Task queue is empty: declined connection attempt");
+                            debug!("Task queue is empty: decline connection attempt");
                         }
                     }
 
@@ -310,32 +310,31 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                         if event.is_readable() {
                             match self.read_rx_buffer(event.token()) {
                                 TransportState::Finished => {
-                                    if let Ok(results) = self
+                                    let results = self
                                         .connections
                                         .get_mut(&event.token())
                                         .expect("This is not expected to fail")
                                         .rx_buffer
-                                        .decode_and_reset()
-                                    {
-                                        debug!(
-                                            "Worker {} sent results of task {}, writing it down",
-                                            event.token().0,
-                                            results.chunk_id,
-                                        );
-                                        self.write_results(
-                                            results.results,
-                                            suffix_array,
-                                            identifier_position_map,
-                                            out_file,
-                                        )?;
-                                        debug!("Done writing results of task {}", results.chunk_id,);
+                                        .decode_and_reset()?;
 
-                                        // Remove completed task from assignments
-                                        self.connections
-                                            .get_mut(&event.token())
-                                            .expect("This is not expected to fail")
-                                            .assigned_task = None;
-                                    }
+                                    debug!(
+                                        "Worker {} sent results of task {}",
+                                        event.token().0,
+                                        results.chunk_id,
+                                    );
+                                    self.write_results(
+                                        results.results,
+                                        suffix_array,
+                                        identifier_position_map,
+                                        out_file,
+                                    )?;
+                                    debug!("Finished task {}", results.chunk_id,);
+
+                                    // Remove completed task from assignments
+                                    self.connections
+                                        .get_mut(&event.token())
+                                        .expect("This is not expected to fail")
+                                        .assigned_task = None;
 
                                     poll.registry().reregister(
                                         &mut self
@@ -344,14 +343,17 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                             .expect("This is not expected to fail")
                                             .stream,
                                         event.token(),
-                                        Interest::READABLE | Interest::WRITABLE,
+                                        Interest::WRITABLE,
                                     )?;
                                 }
                                 TransportState::Stalled => {
                                     // We're patient!!1!
                                 }
                                 TransportState::Error(_) => {
-                                    warn!("Connection is no longer valid, removed worker {} from pool", event.token().0);
+                                    warn!(
+                                        "Connection is no longer valid, remove worker {} from pool",
+                                        event.token().0
+                                    );
                                     self.release_worker(event.token(), task_queue);
                                 }
                                 TransportState::Complete => {
@@ -391,7 +393,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                     // We're patient!!1!
                                 }
                                 TransportState::Error(_) => {
-                                    warn!("Connection is no longer valid, removed worker {} from pool", event.token().0);
+                                    warn!(
+                                        "Connection is no longer valid, remove worker {} from pool",
+                                        event.token().0
+                                    );
                                     self.release_worker(event.token(), task_queue);
                                 }
                                 TransportState::Complete => {
@@ -420,6 +425,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     where
         S: SuffixArray + Sync,
     {
+        debug!("Translate suffix array intervals to genomic positions");
         let bam_records = hits
             .par_iter_mut()
             .map_init(rand::thread_rng, |mut rng, (record, hit_interval)| {
@@ -435,6 +441,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .flatten()
             .collect::<Vec<_>>();
 
+        debug!("Write to output file");
         bam_records
             .into_iter()
             .map(|record| out_file.write(&record))
@@ -495,7 +502,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // Retry...
                 }
-                Err(ref e) if e.kind() == WouldBlock => {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // The underlying OS socket is empty, wait for another event to occur
                     return TransportState::Stalled;
                 }
@@ -548,8 +555,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         }
 
         loop {
-            let write_results = stream.write(send_buffer.buf_unsent());
-            match write_results {
+            match stream.write(send_buffer.buf_unsent()) {
                 Ok(0) => {
                     return TransportState::Error(io::Error::new(
                         io::ErrorKind::ConnectionAborted,
@@ -564,7 +570,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
                     // Retry...
                 }
-                Err(ref e) if e.kind() == WouldBlock => {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // The underlying OS socket is empty, wait for another event to occur
                     return TransportState::Stalled;
                 }
