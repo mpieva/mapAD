@@ -438,7 +438,6 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut rng,
                 )
             })
-            .flatten()
             .collect::<Vec<_>>();
 
         debug!("Write to output file");

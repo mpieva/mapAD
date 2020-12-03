@@ -708,7 +708,6 @@ where
                         )
                     },
                 )
-                .flatten()
                 .collect::<Vec<_>>();
 
             debug!("Write BAM records to output file serially");
@@ -774,7 +773,7 @@ pub fn intervals_to_bam<R, S>(
     identifier_position_map: &FastaIdPositions,
     duration: Option<&Duration>,
     rng: &mut R,
-) -> Vec<bam::Record>
+) -> bam::Record
 where
     R: RngCore,
     S: SuffixArray,
@@ -818,7 +817,7 @@ where
         // No match found, report unmapped read
         bam_record_helper(input_record, -1, None, None, -1, None, duration)
     };
-    vec![record]
+    record
 }
 
 /// Computes optimal per-base alignment scores for a read,
