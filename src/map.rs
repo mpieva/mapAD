@@ -660,7 +660,7 @@ fn run_inner<E, I, T, S>(
     alignment_parameters: &AlignmentParameters,
     identifier_position_map: &FastaIdPositions,
     out_file: &mut bam::Writer,
-) -> Result<(), Box<dyn Error>>
+) -> Result<(), rust_htslib::errors::Error>
 where
     I: Into<Record>,
     E: Error,
@@ -717,9 +717,7 @@ where
                 .map(|record| out_file.write(record))
                 .collect()
         })
-        .collect::<Result<(), _>>()?;
-
-    Ok(())
+        .collect()
 }
 
 pub fn create_bam_header(

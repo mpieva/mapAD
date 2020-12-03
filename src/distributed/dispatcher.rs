@@ -443,8 +443,8 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         debug!("Write to output file");
         bam_records
-            .into_iter()
-            .map(|record| out_file.write(&record))
+            .iter()
+            .map(|record| out_file.write(record))
             .collect()
     }
 
