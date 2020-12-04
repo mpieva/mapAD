@@ -91,7 +91,7 @@ impl Worker {
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::ConnectionAborted => {
-                    info!("The dispatcher has dropped the connection, shutting down gracefully");
+                    info!("The dispatcher has dropped the connection, shutting down");
                     return Ok(());
                 }
                 Err(e) => {

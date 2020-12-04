@@ -780,21 +780,20 @@ where
 {
     let record = if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
+
         best_alignment
             .interval
-            .forward()
-            .occ(suffix_array)
-            .iter()
-            .filter(|&&position| position < (suffix_array.len() - 2) / 2)
-            .map(|&position| (position, Direction::Forward))
+            .occ_fwd(suffix_array)
+            .take(10)
+            .filter(|&position| position < (suffix_array.len() - 2) / 2)
+            .map(|position| (position, Direction::Forward))
             .chain(
                 best_alignment
                     .interval
-                    .revcomp()
-                    .occ(suffix_array)
-                    .iter()
-                    .filter(|&&position| position < (suffix_array.len() - 2) / 2)
-                    .map(|&position| (position, Direction::Backward)),
+                    .occ_revcomp(suffix_array)
+                    .take(10)
+                    .filter(|&position| position < (suffix_array.len() - 2) / 2)
+                    .map(|position| (position, Direction::Backward)),
             )
             .choose(rng)
             .map(|(position, strand)| {
