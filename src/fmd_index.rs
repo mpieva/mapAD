@@ -6,6 +6,7 @@ use bio::{
         suffix_array::SuffixArray,
     },
 };
+use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -174,39 +175,11 @@ impl RtBiInterval {
         }
     }
 
-    fn interval_to_pos<'a, S>(
-        interval: Interval,
-        suffix_array: &'a S,
-    ) -> impl Iterator<Item = usize> + 'a
-    where
-        S: SuffixArray,
-    {
-        (interval.lower..interval.upper).map(move |pos| {
-            suffix_array
-                .get(pos)
-                .expect("Interval out of range of suffix array")
-        })
-    }
-
     pub fn revcomp(&self) -> Interval {
         Interval {
             upper: self.lower_rev + self.size,
             lower: self.lower_rev,
         }
-    }
-
-    pub fn occ_fwd<'a, S>(&self, suffix_array: &'a S) -> impl Iterator<Item = usize> + 'a
-    where
-        S: SuffixArray,
-    {
-        Self::interval_to_pos(self.forward(), suffix_array)
-    }
-
-    pub fn occ_revcomp<'a, S>(&self, suffix_array: &'a S) -> impl Iterator<Item = usize> + 'a
-    where
-        S: SuffixArray,
-    {
-        Self::interval_to_pos(self.revcomp(), suffix_array)
     }
 
     pub fn swapped(&self) -> Self {
@@ -216,5 +189,21 @@ impl RtBiInterval {
             size: self.size,
             match_size: self.match_size,
         }
+    }
+
+    pub fn get_random_positions<R, S>(&self, rng: &mut R, suffix_array: &S) -> (usize, usize)
+    where
+        R: RngCore,
+        S: SuffixArray,
+    {
+        let rand_suffix_array_pos = rng.gen_range(0, self.size);
+        (
+            suffix_array
+                .get(self.lower + rand_suffix_array_pos)
+                .expect("This is not expected to fail"),
+            suffix_array
+                .get(self.lower_rev + rand_suffix_array_pos)
+                .expect("This is not expected to fail"),
+        )
     }
 }

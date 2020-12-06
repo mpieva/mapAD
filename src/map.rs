@@ -13,7 +13,7 @@ use clap::{crate_name, crate_version};
 use either::Either;
 use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
-use rand::{seq::IteratorRandom, RngCore};
+use rand::RngCore;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
@@ -778,45 +778,33 @@ where
     R: RngCore,
     S: SuffixArray,
 {
-    let record = if let Some(best_alignment) = intervals.pop() {
+    if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
 
-        best_alignment
+        let (fwd_position, revcomp_position) = best_alignment
             .interval
-            .occ_fwd(suffix_array)
-            .take(10)
-            .filter(|&position| position < (suffix_array.len() - 2) / 2)
-            .map(|position| (position, Direction::Forward))
-            .chain(
-                best_alignment
-                    .interval
-                    .occ_revcomp(suffix_array)
-                    .take(10)
-                    .filter(|&position| position < (suffix_array.len() - 2) / 2)
-                    .map(|position| (position, Direction::Backward)),
-            )
-            .choose(rng)
-            .map(|(position, strand)| {
-                let (tid, position) = identifier_position_map.get_reference_identifier(
-                    position,
-                    best_alignment.edit_operations.effective_len(),
-                );
-                bam_record_helper(
-                    input_record,
-                    position,
-                    Some(&best_alignment),
-                    Some(mapping_quality),
-                    tid,
-                    Some(strand),
-                    duration,
-                )
-            })
-            .unwrap()
+            .get_random_positions(rng, suffix_array);
+
+        let (position, strand) = if fwd_position < revcomp_position {
+            (fwd_position, Direction::Forward)
+        } else {
+            (revcomp_position, Direction::Backward)
+        };
+        let (tid, position) = identifier_position_map
+            .get_reference_identifier(position, best_alignment.edit_operations.effective_len());
+        bam_record_helper(
+            input_record,
+            position,
+            Some(&best_alignment),
+            Some(mapping_quality),
+            tid,
+            Some(strand),
+            duration,
+        )
     } else {
         // No match found, report unmapped read
         bam_record_helper(input_record, -1, None, None, -1, None, duration)
-    };
-    record
+    }
 }
 
 /// Computes optimal per-base alignment scores for a read,
