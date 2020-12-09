@@ -251,7 +251,7 @@ fn handle_arguments(matches: ArgMatches) {
             _ => log::LevelFilter::Trace,
         })
         .init()
-        .unwrap();
+        .expect("This is not expected to fail");
 
     match matches.subcommand() {
         ("index", Some(arg_matches)) => {
@@ -268,67 +268,67 @@ fn handle_arguments(matches: ArgMatches) {
 }
 
 fn start_indexer(arg_matches: &ArgMatches) {
-    if let Err(e) = index::run(
-        arg_matches.value_of("reference").unwrap(),
-        value_t!(arg_matches.value_of("seed"), u64).unwrap(),
-    ) {
-        error!("Application error: {}", e);
+    let seed = value_t!(arg_matches.value_of("seed"), u64).unwrap_or_else(|e| e.exit());
+    let reference_path = arg_matches
+        .value_of("reference")
+        .expect("Presence is ensured by CLI definition");
+
+    if let Err(e) = index::run(reference_path, seed) {
+        error!("{}", e);
     }
 }
 
 fn start_mapper(map_matches: &ArgMatches) {
-    let reads_path = map_matches.value_of("reads").unwrap();
-    let reference_path = map_matches.value_of("reference").unwrap();
-    let out_file_path = map_matches.value_of("output").unwrap();
+    let reads_path = map_matches
+        .value_of("reads")
+        .expect("Presence is ensured by CLI definition");
+    let reference_path = map_matches
+        .value_of("reference")
+        .expect("Presence is ensured by CLI definition");
+    let out_file_path = map_matches
+        .value_of("output")
+        .expect("Presence is ensured by CLI definition");
 
     let alignment_parameters = build_alignment_parameters(map_matches);
 
-    if map_matches.is_present("dispatcher") {
+    if let Err(e) = if map_matches.is_present("dispatcher") {
         info!("Dispatcher mode");
-        match dispatcher::Dispatcher::new(
+        let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+        dispatcher::Dispatcher::new(
             reads_path,
             reference_path,
             out_file_path,
             &alignment_parameters,
-        ) {
-            Ok(mut dispatcher) => {
-                let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
-                if let Err(e) = dispatcher.run(port) {
-                    error!("Application error: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Application error: {}", e);
-            }
-        }
-    } else if let Err(e) = map::run(
-        reads_path,
-        reference_path,
-        out_file_path,
-        &alignment_parameters,
-    ) {
-        error!("Application error: {}", e);
+        )
+        .and_then(|mut dispatcher| dispatcher.run(port))
+    } else {
+        map::run(
+            reads_path,
+            reference_path,
+            out_file_path,
+            &alignment_parameters,
+        )
+    } {
+        error!("{}", e);
     }
 }
 
 fn start_worker(arg_matches: &ArgMatches) {
-    let host = arg_matches.value_of("host").unwrap();
-    let port = arg_matches.value_of("port").unwrap();
-    let mut worker = worker::Worker::new(
-        host,
-        port,
-    ).expect("Could not connect to dispatcher. Please check that it is running at the specified address.");
+    let host = arg_matches
+        .value_of("host")
+        .expect("Presence is ensured by CLI definition");
+    let port = value_t!(arg_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
 
-    if let Err(e) = worker.run() {
-        error!(
-            "Could not successfully complete the tasks given. Please double-check the results. {}",
-            e
-        );
+    if let Err(e) = worker::Worker::new(host, port).and_then(|mut worker| worker.run()) {
+        error!("{}", e);
     }
 }
 
 fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
-    let library_prep = match arg_matches.value_of("library").unwrap() {
+    let library_prep = match arg_matches
+        .value_of("library")
+        .expect("Presence is ensured by CLI definition")
+    {
         "single_stranded" => LibraryPrep::SingleStranded {
             five_prime_overhang: value_t!(arg_matches.value_of("five_prime_overhang"), f32)
                 .unwrap_or_else(|e| e.exit()),
@@ -362,7 +362,7 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
     } else {
         Continuous::new(
             value_t!(arg_matches.value_of("as_cutoff"), f32).unwrap_or_else(|e| e.exit()) * -1.0,
-            value_t!(arg_matches.value_of("as_cutoff_exponent"), f32).unwrap(),
+            value_t!(arg_matches.value_of("as_cutoff_exponent"), f32).unwrap_or_else(|e| e.exit()),
             difference_model.get_representative_mismatch_penalty(),
         )
         .into()

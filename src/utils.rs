@@ -1,5 +1,5 @@
 use crate::{
-    fmd_index::RtFMDIndex, mismatch_bounds::MismatchBoundDispatch,
+    errors::Result, fmd_index::RtFMDIndex, mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
 };
 
@@ -116,7 +116,7 @@ pub struct AlignmentParameters {
     pub chunk_size: usize,
 }
 
-pub fn load_index_from_path(path: &str) -> Result<RtFMDIndex, bincode::Error> {
+pub fn load_index_from_path(path: &str) -> Result<RtFMDIndex> {
     debug!("Load BWT");
     let bwt: BWT = {
         let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);

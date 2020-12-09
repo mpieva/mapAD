@@ -1,6 +1,7 @@
 use crate::{
     backtrack_tree::Tree,
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
+    errors::{Error, Result},
     fmd_index::RtFMDIndex,
     map,
     utils::{load_index_from_path, AlignmentParameters},
@@ -10,7 +11,6 @@ use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use std::{
     cell::RefCell,
-    error::Error,
     io,
     io::{Read, Write},
     net::TcpStream,
@@ -24,17 +24,17 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new(host: &str, port: &str) -> Result<Self, io::Error> {
+    pub fn new(host: &str, port: u16) -> Result<Self> {
         info!("Wait for dispatcher to respond");
         Ok(Self {
             network_buffer: TaskRxBuffer::new(),
-            connection: TcpStream::connect(format!("{}:{}", host, port))?,
+            connection: TcpStream::connect((host, port))?,
             fmd_index: None,
             alignment_parameters: None,
         })
     }
 
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn run(&mut self) -> Result<()> {
         thread_local! {
             static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT + 9));
             static TREE_BUF: RefCell<Tree<Option<map::EditOperation>>> = RefCell::new(Tree::with_capacity(map::STACK_LIMIT + 9));
@@ -90,12 +90,12 @@ impl Worker {
                         }
                     }
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::ConnectionAborted => {
+                Err(Error::Io(e)) if e.kind() == io::ErrorKind::ConnectionAborted => {
                     info!("The dispatcher has dropped the connection, shutting down");
                     return Ok(());
                 }
                 Err(e) => {
-                    return Err(Box::new(e));
+                    return Err(e);
                 }
             }
         }
@@ -103,37 +103,22 @@ impl Worker {
 
     /// Reads task sheet completely from connection in a blocking way
     /// and decodes it eventually
-    fn read_message(&mut self) -> Result<TaskSheet, io::Error> {
+    fn read_message(&mut self) -> Result<TaskSheet> {
         // Read and decode first bytes in which the message size is stored
-        if self
-            .connection
+        self.connection
             .read_exact(self.network_buffer.buf_mut_unfilled())
-            .is_err()
-        {
-            // Apparently, the dispatcher has dropped the connection
-            return Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "Connection aborted",
-            ));
-        }
+            .map_err(|_e| io::Error::new(io::ErrorKind::ConnectionAborted, "Connection aborted"))?;
 
         // Enlarge buffer to fit the entire message
-        if self.network_buffer.decode_header().is_err() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Could not decode task header",
-            ));
-        }
+        self.network_buffer.decode_header().map_err(|_e| {
+            io::Error::new(io::ErrorKind::InvalidData, "Could not decode task header")
+        })?;
 
         // Read (blocking) and decode message
         self.connection
             .read_exact(&mut self.network_buffer.buf_mut_unfilled())?;
-        match self.network_buffer.decode_and_reset() {
-            Ok(task) => Ok(task),
-            Err(_) => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Could not decode task message",
-            )),
-        }
+        self.network_buffer.decode_and_reset().map_err(|_e| {
+            io::Error::new(io::ErrorKind::InvalidData, "Could not decode task message").into()
+        })
     }
 }

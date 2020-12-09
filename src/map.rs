@@ -2,7 +2,6 @@ use std::{
     cell::RefCell,
     cmp::Ordering,
     collections::{binary_heap::BinaryHeap, BTreeMap},
-    error::Error,
     fs::File,
     io,
     path::Path,
@@ -13,7 +12,7 @@ use clap::{crate_name, crate_version};
 use either::Either;
 use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
-use rand::RngCore;
+use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
@@ -28,6 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     backtrack_tree::{NodeId, Tree},
+    errors::{Error, Result},
     fmd_index::{RtBiInterval, RtFMDIndex},
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
@@ -348,15 +348,19 @@ impl FastaIdPositions {
 
     /// Find the corresponding reference identifier by position. The function
     /// returns a tuple: ("target ID", "relative position")
-    fn get_reference_identifier(&self, position: usize, pattern_length: usize) -> (i32, i64) {
+    fn get_reference_identifier(
+        &self,
+        position: usize,
+        pattern_length: usize,
+    ) -> Result<(i32, i64)> {
         self.id_position
             .iter()
             .enumerate()
             .find(|(_, identifier)| {
                 (identifier.start <= position) && (position + pattern_length - 1 <= identifier.end)
             })
+            .ok_or_else(|| Error::InvalidIndex("Index contains invalid data".to_string()))
             .map(|(index, identifier)| (index as i32, (position - identifier.start) as i64))
-            .unwrap_or((-1, -1))
     }
 }
 
@@ -493,9 +497,9 @@ impl BiDArray {
 /// Reads chunks of configurable size from source Iterator
 struct ChunkIterator<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     chunk_size: usize,
     records: T,
@@ -503,36 +507,41 @@ where
 
 impl<E, I, T> Iterator for ChunkIterator<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
-    type Item = Vec<Record>;
+    type Item = Result<Vec<Record>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let source_iterator_loan = &mut self.records;
 
         let chunk = source_iterator_loan
             .take(self.chunk_size)
-            .map(|maybe_record| maybe_record.map(|record| record.into()))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Input file is corrupt. Cancelling process.");
+            .map(|maybe_record| {
+                maybe_record
+                    .map(|record| record.into())
+                    .map_err(|e| e.into())
+            })
+            .collect::<Result<Vec<_>>>();
 
         // If the underlying iterator is exhausted return None, too
-        if !chunk.is_empty() {
-            Some(chunk)
-        } else {
-            None
+        if let Ok(ref inner) = chunk {
+            if inner.is_empty() {
+                return None;
+            }
         }
+
+        Some(chunk)
     }
 }
 
 /// Convertible to ChunkIterator
 trait IntoChunkIterator<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T>;
 }
@@ -542,9 +551,9 @@ where
 /// additional item `T`.
 impl<E, I, T> IntoChunkIterator<E, I, T> for T
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T> {
         ChunkIterator {
@@ -560,20 +569,22 @@ pub fn run(
     reference_path: &str,
     out_file_path: &str,
     alignment_parameters: &AlignmentParameters,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let reads_path = Path::new(reads_path);
     let out_file_path = Path::new(out_file_path);
     if !reads_path.exists() {
-        return Err(Box::new(io::Error::new(
+        return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            "The given input file could not be found.",
-        )));
+            "The given input file could not be found",
+        )
+        .into());
     }
     if out_file_path.exists() {
-        return Err(Box::new(io::Error::new(
+        return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
-            "The given output file already exists.",
-        )));
+            "The given output file already exists",
+        )
+        .into());
     }
 
     info!("Load FMD-index");
@@ -594,17 +605,15 @@ pub fn run(
 
     info!("Map reads");
     // Static dispatch of the Record type based on the filename extension
-    let wrong_ext_err_msg = "Please specify a path to an input file that ends either with \
-    \".bam\", \".fq\", or \".fastq\".";
     match reads_path
         .extension()
-        .ok_or_else(|| Box::new(io::Error::new(io::ErrorKind::Other, wrong_ext_err_msg)))?
+        .ok_or(Error::InvalidInputType)?
         .to_str()
         .ok_or_else(|| {
-            Box::new(io::Error::new(
+            io::Error::new(
                 io::ErrorKind::InvalidData,
-                "The provided file name contains invalid unicode.",
-            ))
+                "The provided file name contains invalid unicode",
+            )
         })? {
         "bam" => {
             let mut reader = bam::Reader::from_path(reads_path)?;
@@ -639,12 +648,7 @@ pub fn run(
                 &mut out_file,
             )?
         }
-        _ => {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                wrong_ext_err_msg,
-            )));
-        }
+        _ => return Err(Error::InvalidInputType),
     }
 
     info!("Done");
@@ -660,63 +664,61 @@ fn run_inner<E, I, T, S>(
     alignment_parameters: &AlignmentParameters,
     identifier_position_map: &FastaIdPositions,
     out_file: &mut bam::Writer,
-) -> Result<(), rust_htslib::errors::Error>
+) -> Result<()>
 where
+    E: Into<Error>,
     I: Into<Record>,
-    E: Error,
     S: SuffixArray + Send + Sync,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     thread_local! {
         static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
         static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
     }
 
-    records
-        .map(|chunk| {
-            debug!("Map chunk of reads in parallel");
-            let results = chunk
-                .par_iter()
-                .map(|record| {
-                    STACK_BUF.with(|stack_buf| {
-                        TREE_BUF.with(|tree_buf| {
-                            let start = Instant::now();
-                            let hit_intervals = k_mismatch_search(
-                                &record.sequence,
-                                &record.base_qualities,
-                                alignment_parameters,
-                                fmd_index,
-                                &mut stack_buf.borrow_mut(),
-                                &mut tree_buf.borrow_mut(),
-                            );
-                            let duration = start.elapsed();
+    for chunk in records {
+        debug!("Map chunk of reads");
+        let results = chunk?
+            .par_iter()
+            .map(|record| {
+                STACK_BUF.with(|stack_buf| {
+                    TREE_BUF.with(|tree_buf| {
+                        let start = Instant::now();
+                        let hit_intervals = k_mismatch_search(
+                            &record.sequence,
+                            &record.base_qualities,
+                            alignment_parameters,
+                            fmd_index,
+                            &mut stack_buf.borrow_mut(),
+                            &mut tree_buf.borrow_mut(),
+                        );
+                        let duration = start.elapsed();
 
-                            (record, hit_intervals, duration)
-                        })
+                        (record, hit_intervals, duration)
                     })
                 })
-                .map_init(
-                    rand::thread_rng,
-                    |mut rng, (record, mut hit_interval, duration)| {
-                        intervals_to_bam(
-                            record,
-                            &mut hit_interval,
-                            suffix_array,
-                            identifier_position_map,
-                            Some(&duration),
-                            &mut rng,
-                        )
-                    },
-                )
-                .collect::<Vec<_>>();
+            })
+            .map_init(
+                rand::thread_rng,
+                |mut rng, (record, mut hit_interval, duration)| -> Result<bam::Record> {
+                    intervals_to_bam(
+                        record,
+                        &mut hit_interval,
+                        suffix_array,
+                        identifier_position_map,
+                        Some(&duration),
+                        &mut rng,
+                    )
+                },
+            )
+            .collect::<Result<Vec<_>>>()?;
 
-            debug!("Write BAM records to output file serially");
-            results
-                .iter()
-                .map(|record| out_file.write(record))
-                .collect()
-        })
-        .collect()
+        debug!("Write BAM records to output file serially");
+        for record in results.iter() {
+            out_file.write(record)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn create_bam_header(
@@ -773,7 +775,7 @@ pub fn intervals_to_bam<R, S>(
     identifier_position_map: &FastaIdPositions,
     duration: Option<&Duration>,
     rng: &mut R,
-) -> bam::Record
+) -> Result<bam::Record>
 where
     R: RngCore,
     S: SuffixArray,
@@ -781,30 +783,71 @@ where
     if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
 
-        let (fwd_position, revcomp_position) = best_alignment
-            .interval
-            .get_random_positions(rng, suffix_array);
+        let reference_len = (suffix_array.len() - 2) / 2;
+        let pattern_len = best_alignment.edit_operations.effective_len();
 
-        let (position, strand) = if fwd_position < revcomp_position {
-            (fwd_position, Direction::Forward)
+        // Draw randomly from the suffix array interval until a valid position is found
+        // or a maximal number of attempts is reached.
+        const MAX_ITER_ATTEMPTS: usize = 20;
+        const MAX_RANDOM_ATTEMPTS: usize = 100;
+        let random_position = if best_alignment.interval.size <= MAX_ITER_ATTEMPTS {
+            best_alignment
+                .interval
+                .occ_fwd(suffix_array)
+                .filter(|&pos| pos <= reference_len)
+                .map(|pos| (pos, Direction::Forward))
+                .chain(
+                    best_alignment
+                        .interval
+                        .occ_revcomp(suffix_array)
+                        .filter(|&pos| pos <= reference_len)
+                        .map(|pos| (pos, Direction::Backward)),
+                )
+                .choose(rng)
         } else {
-            (revcomp_position, Direction::Backward)
+            let mut i = 0;
+            loop {
+                if (i > best_alignment.interval.size * 2) || (i > MAX_RANDOM_ATTEMPTS) {
+                    break (None);
+                }
+                i += 1;
+
+                let (fwd_position, revcomp_position) = best_alignment
+                    .interval
+                    .get_random_positions(rng, suffix_array);
+                if fwd_position + pattern_len < reference_len {
+                    break (Some((fwd_position, Direction::Forward)));
+                } else if revcomp_position + pattern_len < reference_len {
+                    break (Some((revcomp_position, Direction::Backward)));
+                }
+            }
         };
-        let (tid, position) = identifier_position_map
-            .get_reference_identifier(position, best_alignment.edit_operations.effective_len());
-        bam_record_helper(
-            input_record,
-            position,
-            Some(&best_alignment),
-            Some(mapping_quality),
-            tid,
-            Some(strand),
-            duration,
-        )
-    } else {
-        // No match found, report unmapped read
-        bam_record_helper(input_record, -1, None, None, -1, None, duration)
+
+        if let Some((position, strand)) = random_position {
+            let (tid, position) =
+                identifier_position_map.get_reference_identifier(position, pattern_len)?;
+
+            return Ok(bam_record_helper(
+                input_record,
+                position,
+                Some(&best_alignment),
+                Some(mapping_quality),
+                tid,
+                Some(strand),
+                duration,
+            ));
+        }
     }
+    // No match found, report unmapped read
+    Ok(bam_record_helper(
+        input_record,
+        -1,
+        None,
+        None,
+        -1,
+        None,
+        duration,
+    ))
 }
 
 /// Computes optimal per-base alignment scores for a read,

@@ -1,5 +1,6 @@
 pub mod backtrack_tree;
 pub mod distributed;
+pub mod errors;
 pub mod fmd_index;
 pub mod index;
 pub mod map;

@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File};
+use std::fs::File;
 
 use log::{debug, info};
 use rand::{
@@ -15,7 +15,10 @@ use bio::{
     io::fasta,
 };
 
-use crate::map::{FastaIdPosition, FastaIdPositions};
+use crate::{
+    errors::Result,
+    map::{FastaIdPosition, FastaIdPositions},
+};
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 // Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
@@ -32,7 +35,7 @@ const DNA_NOT_G: &[u8; 3] = b"ACT";
 const DNA_NOT_T: &[u8; 3] = b"ACG";
 
 /// Entry point function to launch the indexing process
-pub fn run(reference_path: &str, seed: u64) -> Result<(), Box<dyn Error>> {
+pub fn run(reference_path: &str, seed: u64) -> Result<()> {
     let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
 
     let alphabet = Alphabet::new(crate::index::DNA_UPPERCASE_X_ALPHABET);
@@ -51,7 +54,7 @@ fn index<T: Rng>(
     mut alphabet: Alphabet,
     name: &str,
     rng: &mut T,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     info!("Read input reference sequence");
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()

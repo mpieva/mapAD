@@ -206,4 +206,32 @@ impl RtBiInterval {
                 .expect("This is not expected to fail"),
         )
     }
+
+    fn interval_to_pos<'a, S>(
+        interval: Interval,
+        suffix_array: &'a S,
+    ) -> impl Iterator<Item = usize> + 'a
+    where
+        S: SuffixArray,
+    {
+        (interval.lower..interval.upper).map(move |pos| {
+            suffix_array
+                .get(pos)
+                .expect("Interval out of range of suffix array")
+        })
+    }
+
+    pub fn occ_fwd<'a, S>(&self, suffix_array: &'a S) -> impl Iterator<Item = usize> + 'a
+    where
+        S: SuffixArray,
+    {
+        Self::interval_to_pos(self.forward(), suffix_array)
+    }
+
+    pub fn occ_revcomp<'a, S>(&self, suffix_array: &'a S) -> impl Iterator<Item = usize> + 'a
+    where
+        S: SuffixArray,
+    {
+        Self::interval_to_pos(self.revcomp(), suffix_array)
+    }
 }

@@ -1,14 +1,18 @@
-use crate::{distributed::*, map, utils::*};
+use crate::{
+    distributed::*,
+    errors::{Error, Result},
+    map,
+    utils::*,
+};
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, info, warn};
 use mio::{net::TcpListener, *};
 use rayon::prelude::*;
-use rust_htslib::{bam, bam::Read as BamRead, errors::Error as HtsError};
+use rust_htslib::{bam, bam::Read as BamRead};
 
 use std::{
     collections::{BinaryHeap, HashMap},
-    error::Error,
     fs::File,
     io,
     io::{Read, Write},
@@ -16,16 +20,13 @@ use std::{
     path::Path,
 };
 
-enum TransportState<E>
-where
-    E: Error,
-{
+enum TransportState {
     // The message has been successfully transferred
     Finished,
     // This operation would block
     Stalled,
     // An error has occurred
-    Error(E),
+    Error(std::io::Error),
     // There are no tasks left in the queue
     Complete,
 }
@@ -33,9 +34,9 @@ where
 /// Keeps track of the processing state of chunks of reads
 struct TaskQueue<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     chunk_id: usize,
     chunk_size: usize,
@@ -45,39 +46,48 @@ where
 
 impl<E, I, T> Iterator for TaskQueue<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
-    type Item = TaskSheet;
+    type Item = Result<TaskSheet>;
 
-    fn next(&mut self) -> Option<TaskSheet> {
+    fn next(&mut self) -> Option<Self::Item> {
         let source_iterator_loan = &mut self.records;
 
         let chunk = source_iterator_loan
             .take(self.chunk_size)
-            .map(|maybe_record| maybe_record.map(|record| record.into()))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Input file is corrupt. Cancelled process");
+            .map(|maybe_record| {
+                maybe_record
+                    .map(|record| record.into())
+                    .map_err(|e| e.into())
+            })
+            .collect::<Result<Vec<_>>>();
 
-        // If the underlying iterator is exhausted, resend chunks that were previously assigned to now disconnected workers
-        if !chunk.is_empty() {
-            self.chunk_id += 1;
-            Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
-        } else if let Some(task) = self.requeried_tasks.pop() {
-            info!("Retrying previously failed task {}", task.chunk_id);
-            Some(task)
-        } else {
-            None
+        if let Ok(ref inner) = chunk {
+            if inner.is_empty() {
+                return if let Some(task) = self.requeried_tasks.pop() {
+                    info!("Retrying previously failed task {}", task.chunk_id);
+                    Some(Ok(task))
+                } else {
+                    None
+                };
+            }
+        }
+
+        self.chunk_id += 1;
+        match chunk {
+            Ok(inner) => Some(Ok(TaskSheet::from_records(self.chunk_id - 1, inner, None))),
+            Err(e) => Some(Err(e)),
         }
     }
 }
 
 impl<E, I, T> TaskQueue<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     fn requery_task(&mut self, task_sheet: TaskSheet) {
         self.requeried_tasks.push(task_sheet);
@@ -87,9 +97,9 @@ where
 /// Convertible to ChunkIterator
 trait IntoTaskQueue<E, I, T>
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     fn into_tasks(self, chunk_size: usize) -> TaskQueue<E, I, T>;
 }
@@ -99,9 +109,9 @@ where
 /// additional item.
 impl<E, I, T> IntoTaskQueue<E, I, T> for T
 where
-    E: Error,
+    E: Into<Error>,
     I: Into<Record>,
-    T: Iterator<Item = Result<I, E>>,
+    T: Iterator<Item = std::result::Result<I, E>>,
 {
     fn into_tasks(self, chunk_size: usize) -> TaskQueue<E, I, T> {
         TaskQueue {
@@ -139,20 +149,22 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         reference_path: &'b str,
         out_file_path: &'b str,
         alignment_parameters: &'a AlignmentParameters,
-    ) -> Result<Self, io::Error> {
+    ) -> Result<Self> {
         let reads_path = Path::new(reads_path);
         let out_file_path = Path::new(out_file_path);
         if !reads_path.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                "The given input file could not be found.",
-            ));
+                "The given input file could not be found",
+            )
+            .into());
         }
         if out_file_path.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
-                "The given output file already exists.",
-            ));
+                "The given output file already exists",
+            )
+            .into());
         }
         Ok(Self {
             reads_path,
@@ -164,7 +176,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         })
     }
 
-    pub fn run(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
+    pub fn run(&mut self, port: u16) -> Result<()> {
         // Set up networking
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let mut listener = net::TcpListener::bind(addr)?;
@@ -190,18 +202,16 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         };
 
         // Static dispatch of the Record type based on the filename extension
-        let wrong_ext_err_msg = "Please specify a path to an input file that ends either with \
-                                  \".bam\", \".fq\", or \".fastq\".";
         match self
             .reads_path
             .extension()
-            .ok_or_else(|| Box::new(io::Error::new(io::ErrorKind::Other, wrong_ext_err_msg)))?
+            .ok_or(Error::InvalidInputType)?
             .to_str()
             .ok_or_else(|| {
-                Box::new(io::Error::new(
+                io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "The provided file name contains invalid unicode.",
-                ))
+                    "The provided input file name contains invalid unicode",
+                )
             })? {
             "bam" => {
                 let mut reader = bam::Reader::from_path(self.reads_path)?;
@@ -238,10 +248,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut out_file,
                 )
             }
-            _ => Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                wrong_ext_err_msg,
-            ))),
+            _ => Err(Error::InvalidInputType),
         }
     }
 
@@ -254,12 +261,12 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         identifier_position_map: &map::FastaIdPositions,
         listener: &mut TcpListener,
         out_file: &mut bam::Writer,
-    ) -> Result<(), Box<dyn Error>>
+    ) -> Result<()>
     where
-        E: Error,
+        E: Into<Error>,
         I: Into<Record>,
         S: SuffixArray + Send + Sync,
-        T: Iterator<Item = Result<I, E>>,
+        T: Iterator<Item = std::result::Result<I, E>>,
     {
         let mut max_token = Self::DISPATCHER_TOKEN.0;
 
@@ -366,7 +373,12 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
                         // Distribution of work
                         if event.is_writable() {
-                            match self.write_tx_buffer(event.token(), task_queue) {
+                            // `TransportState` is wrapped in a `Result` to indicate whether or
+                            // not there was an error reading the input file so we bubble it up.
+                            // `TransportState::Err(e)`, however, means that there was a communication
+                            // error with one of the workers which we can recover from by dropping
+                            // the connection and requerying its tasks.
+                            match self.write_tx_buffer(event.token(), task_queue)? {
                                 TransportState::Finished => {
                                     debug!(
                                         "Assigned and sent task {} to worker {}",
@@ -421,7 +433,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
         out_file: &mut bam::Writer,
-    ) -> Result<(), HtsError>
+    ) -> Result<()>
     where
         S: SuffixArray + Sync,
     {
@@ -438,13 +450,14 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut rng,
                 )
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         debug!("Write to output file");
-        bam_records
-            .iter()
-            .map(|record| out_file.write(record))
-            .collect()
+        for record in bam_records.iter() {
+            out_file.write(record)?;
+        }
+
+        Ok(())
     }
 
     /// Removes worker_to_be_removed from the event queue and terminates the connection.
@@ -455,9 +468,9 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         worker_to_be_removed: Token,
         task_queue: &mut TaskQueue<E, I, T>,
     ) where
-        E: Error,
+        E: Into<Error>,
         I: Into<Record>,
-        T: Iterator<Item = Result<I, E>>,
+        T: Iterator<Item = std::result::Result<I, E>>,
     {
         if let Some(assigned_task) = self
             .connections
@@ -474,7 +487,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .expect("This is not expected to fail");
     }
 
-    fn read_rx_buffer(&mut self, worker: Token) -> TransportState<io::Error> {
+    fn read_rx_buffer(&mut self, worker: Token) -> TransportState {
         let connection = self
             .connections
             .get_mut(&worker)
@@ -498,10 +511,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 }
                 // When errors are returned, it's guaranteed that nothing was read during this iteration,
                 // so we don't need to check here if we're perhaps finished
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {
                     // Retry...
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // The underlying OS socket is empty, wait for another event to occur
                     return TransportState::Stalled;
                 }
@@ -523,15 +536,20 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         }
     }
 
+    /// The resulting `TransportState` is wrapped in a `Result` to indicate
+    /// whether or not there was an error reading the input file so we bubble
+    /// it up. `TransportState::Err(e)`, however, means that there was a
+    /// communication problem with one of the workers, so we can react and
+    /// recover accordingly.
     fn write_tx_buffer<E, I, T>(
         &mut self,
         worker: Token,
         task_queue: &mut TaskQueue<E, I, T>,
-    ) -> TransportState<io::Error>
+    ) -> Result<TransportState>
     where
-        E: Error,
+        E: Into<Error>,
         I: Into<Record>,
-        T: Iterator<Item = Result<I, E>>,
+        T: Iterator<Item = std::result::Result<I, E>>,
     {
         let connection = self
             .connections
@@ -541,25 +559,31 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         let send_buffer = &mut connection.tx_buffer;
 
         if send_buffer.is_ready() {
-            if let Some(mut task) = task_queue.next() {
+            if let Some(task) = task_queue.next() {
+                let mut task = task?;
                 task.reference_path = Some(self.reference_path.to_string_lossy().into_owned());
                 task.alignment_parameters = Some(self.alignment_parameters.to_owned());
 
                 // The task gets stored in the assignment record and send buffer
                 connection.assigned_task = Some(task);
-                send_buffer.reload(connection.assigned_task.as_mut().unwrap());
+                send_buffer.reload(
+                    connection
+                        .assigned_task
+                        .as_mut()
+                        .expect("This is not expected to fail"),
+                );
             } else {
-                return TransportState::Complete;
+                return Ok(TransportState::Complete);
             }
         }
 
         loop {
             match stream.write(send_buffer.buf_unsent()) {
                 Ok(0) => {
-                    return TransportState::Error(io::Error::new(
+                    return Ok(TransportState::Error(io::Error::new(
                         io::ErrorKind::ConnectionAborted,
                         "Connection aborted",
-                    ));
+                    )));
                 }
                 Ok(bytes_sent) => {
                     send_buffer.update_bytes_sent(bytes_sent);
@@ -571,16 +595,16 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // The underlying OS socket is empty, wait for another event to occur
-                    return TransportState::Stalled;
+                    return Ok(TransportState::Stalled);
                 }
                 Err(e) => {
-                    return TransportState::Error(e);
+                    return Ok(TransportState::Error(e));
                 }
             }
 
             if send_buffer.is_ready() {
                 // The contents of the buffer have been sent successfully
-                return TransportState::Finished;
+                return Ok(TransportState::Finished);
             }
         }
     }
