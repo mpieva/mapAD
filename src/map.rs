@@ -4,6 +4,7 @@ use std::{
     collections::{binary_heap::BinaryHeap, BTreeMap},
     fs::File,
     io,
+    iter::Map,
     path::Path,
     time::{Duration, Instant},
 };
@@ -495,21 +496,14 @@ impl BiDArray {
 }
 
 /// Reads chunks of configurable size from source Iterator
-struct ChunkIterator<E, I, T>
-where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-{
+struct ChunkIterator<T> {
     chunk_size: usize,
     records: T,
 }
 
-impl<E, I, T> Iterator for ChunkIterator<E, I, T>
+impl<T> Iterator for ChunkIterator<T>
 where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
+    T: Iterator<Item = Result<Record>>,
 {
     type Item = Result<Vec<Record>>;
 
@@ -518,11 +512,6 @@ where
 
         let chunk = source_iterator_loan
             .take(self.chunk_size)
-            .map(|maybe_record| {
-                maybe_record
-                    .map(|record| record.into())
-                    .map_err(|e| e.into())
-            })
             .collect::<Result<Vec<_>>>();
 
         // If the underlying iterator is exhausted return None, too
@@ -537,28 +526,33 @@ where
 }
 
 /// Convertible to ChunkIterator
-trait IntoChunkIterator<E, I, T>
+trait IntoChunkIterator<E, I, O, T>
 where
     E: Into<Error>,
     I: Into<Record>,
     T: Iterator<Item = std::result::Result<I, E>>,
+    O: Iterator<Item = Result<Record>>,
 {
-    fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T>;
+    fn into_chunks(self, chunk_size: usize) -> ChunkIterator<O>;
 }
 
 /// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
-/// are implemented, it is sufficient to impl `Into<Record>` or `From<T> for Record` for the
-/// additional item `T`.
-impl<E, I, T> IntoChunkIterator<E, I, T> for T
+/// are implemented, it is sufficient to impl `From<T> for Record` for the additional item `T`.
+#[allow(clippy::type_complexity)]
+impl<E, I, T> IntoChunkIterator<E, I, Map<T, fn(std::result::Result<I, E>) -> Result<Record>>, T>
+    for T
 where
     E: Into<Error>,
     I: Into<Record>,
     T: Iterator<Item = std::result::Result<I, E>>,
 {
-    fn into_chunks(self, chunk_size: usize) -> ChunkIterator<E, I, T> {
+    fn into_chunks(
+        self,
+        chunk_size: usize,
+    ) -> ChunkIterator<Map<T, fn(std::result::Result<I, E>) -> Result<Record>>> {
         ChunkIterator {
             chunk_size,
-            records: self,
+            records: self.map(|inner| inner.map(|v| v.into()).map_err(|e| e.into())),
         }
     }
 }
@@ -657,8 +651,8 @@ pub fn run(
 
 /// This part has been extracted from the main run() function to allow static dispatch based on the
 /// input file type
-fn run_inner<E, I, T, S>(
-    records: ChunkIterator<E, I, T>,
+fn run_inner<S, T>(
+    records: ChunkIterator<T>,
     fmd_index: &RtFMDIndex,
     suffix_array: &S,
     alignment_parameters: &AlignmentParameters,
@@ -666,10 +660,8 @@ fn run_inner<E, I, T, S>(
     out_file: &mut bam::Writer,
 ) -> Result<()>
 where
-    E: Into<Error>,
-    I: Into<Record>,
     S: SuffixArray + Send + Sync,
-    T: Iterator<Item = std::result::Result<I, E>>,
+    T: Iterator<Item = Result<Record>>,
 {
     thread_local! {
         static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));

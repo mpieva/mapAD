@@ -16,6 +16,7 @@ use std::{
     fs::File,
     io,
     io::{Read, Write},
+    iter::Map,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
 };
@@ -32,23 +33,16 @@ enum TransportState {
 }
 
 /// Keeps track of the processing state of chunks of reads
-struct TaskQueue<E, I, T>
-where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-{
+struct TaskQueue<T> {
     chunk_id: usize,
     chunk_size: usize,
     records: T,
     requeried_tasks: Vec<TaskSheet>,
 }
 
-impl<E, I, T> Iterator for TaskQueue<E, I, T>
+impl<T> Iterator for TaskQueue<T>
 where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
+    T: Iterator<Item = Result<Record>>,
 {
     type Item = Result<TaskSheet>;
 
@@ -57,11 +51,6 @@ where
 
         let chunk = source_iterator_loan
             .take(self.chunk_size)
-            .map(|maybe_record| {
-                maybe_record
-                    .map(|record| record.into())
-                    .map_err(|e| e.into())
-            })
             .collect::<Result<Vec<_>>>();
 
         if let Ok(ref inner) = chunk {
@@ -83,11 +72,9 @@ where
     }
 }
 
-impl<E, I, T> TaskQueue<E, I, T>
+impl<T> TaskQueue<T>
 where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
+    T: Iterator<Item = Result<Record>>,
 {
     fn requery_task(&mut self, task_sheet: TaskSheet) {
         self.requeried_tasks.push(task_sheet);
@@ -95,29 +82,33 @@ where
 }
 
 /// Convertible to TaskQueue
-trait IntoTaskQueue<E, I, T>
+trait IntoTaskQueue<E, I, O, T>
 where
     E: Into<Error>,
     I: Into<Record>,
     T: Iterator<Item = std::result::Result<I, E>>,
+    O: Iterator<Item = Result<Record>>,
 {
-    fn into_tasks(self, chunk_size: usize) -> TaskQueue<E, I, T>;
+    fn into_tasks(self, chunk_size: usize) -> TaskQueue<O>;
 }
 
 /// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
-/// are implemented, it is sufficient to impl `Into<Record>` or `From<T> for Record` for the
-/// additional item.
-impl<E, I, T> IntoTaskQueue<E, I, T> for T
+/// are implemented, it is sufficient to impl `From<T> for Record` for the additional item.
+#[allow(clippy::type_complexity)]
+impl<E, I, T> IntoTaskQueue<E, I, Map<T, fn(std::result::Result<I, E>) -> Result<Record>>, T> for T
 where
-    E: Into<Error>,
     I: Into<Record>,
+    E: Into<Error>,
     T: Iterator<Item = std::result::Result<I, E>>,
 {
-    fn into_tasks(self, chunk_size: usize) -> TaskQueue<E, I, T> {
+    fn into_tasks(
+        self,
+        chunk_size: usize,
+    ) -> TaskQueue<Map<T, fn(std::result::Result<I, E>) -> Result<Record>>> {
         TaskQueue {
             chunk_id: 0,
             chunk_size,
-            records: self,
+            records: self.map(|inner| inner.map(|v| v.into()).map_err(|e| e.into())),
             requeried_tasks: Vec::new(),
         }
     }
@@ -254,19 +245,17 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     /// This part has been extracted from the main run() function to allow static dispatch based on the
     /// input file type
-    fn run_inner<E, I, S, T>(
+    fn run_inner<S, T>(
         &mut self,
-        task_queue: &mut TaskQueue<E, I, T>,
+        task_queue: &mut TaskQueue<T>,
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
         listener: &mut TcpListener,
         out_file: &mut bam::Writer,
     ) -> Result<()>
     where
-        E: Into<Error>,
-        I: Into<Record>,
         S: SuffixArray + Send + Sync,
-        T: Iterator<Item = std::result::Result<I, E>>,
+        T: Iterator<Item = Result<Record>>,
     {
         let mut max_token = Self::DISPATCHER_TOKEN.0;
 
@@ -463,14 +452,9 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     /// Removes worker_to_be_removed from the event queue and terminates the connection.
     /// This causes the worker_to_be_removed process to terminate.
     /// Also, this worker's task will be requeried.
-    fn release_worker<E, I, T>(
-        &mut self,
-        worker_to_be_removed: Token,
-        task_queue: &mut TaskQueue<E, I, T>,
-    ) where
-        E: Into<Error>,
-        I: Into<Record>,
-        T: Iterator<Item = std::result::Result<I, E>>,
+    fn release_worker<T>(&mut self, worker_to_be_removed: Token, task_queue: &mut TaskQueue<T>)
+    where
+        T: Iterator<Item = Result<Record>>,
     {
         if let Some(assigned_task) = self
             .connections
@@ -541,15 +525,13 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     /// it up. `TransportState::Err(e)`, however, means that there was a
     /// communication problem with one of the workers, so we can react and
     /// recover accordingly.
-    fn write_tx_buffer<E, I, T>(
+    fn write_tx_buffer<T>(
         &mut self,
         worker: Token,
-        task_queue: &mut TaskQueue<E, I, T>,
+        task_queue: &mut TaskQueue<T>,
     ) -> Result<TransportState>
     where
-        E: Into<Error>,
-        I: Into<Record>,
-        T: Iterator<Item = std::result::Result<I, E>>,
+        T: Iterator<Item = Result<Record>>,
     {
         let connection = self
             .connections
