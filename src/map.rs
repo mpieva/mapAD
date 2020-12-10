@@ -508,9 +508,9 @@ where
     type Item = Result<Vec<Record>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let source_iterator_loan = &mut self.records;
-
-        let chunk = source_iterator_loan
+        let chunk = self
+            .records
+            .by_ref()
             .take(self.chunk_size)
             .collect::<Result<Vec<_>>>();
 
