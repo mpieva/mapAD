@@ -94,7 +94,7 @@ where
     }
 }
 
-/// Convertible to ChunkIterator
+/// Convertible to TaskQueue
 trait IntoTaskQueue<E, I, T>
 where
     E: Into<Error>,
