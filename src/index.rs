@@ -1,5 +1,6 @@
 use std::fs::File;
 
+use either::Either;
 use log::{debug, info};
 use rand::{
     prelude::{Rng, SeedableRng, StdRng},
@@ -59,13 +60,11 @@ fn index<T: Rng>(
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
         // Convert all bases to uppercase
-        .flat_map(|record| {
-            record
-                .expect("Failed reading input file")
-                .seq()
-                .to_ascii_uppercase()
+        .flat_map(|record| match record {
+            Ok(record) => Either::Left(record.seq().to_ascii_uppercase().into_iter().map(Ok)),
+            Err(e) => Either::Right(std::iter::once(e).map(|e| Err(e.into()))),
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>>>()?;
 
     // Replace single occurrences of ambiguous base symbols with random ones, leave runs alone
     let randomly_replace_ambiguous = |base| match base {
@@ -421,5 +420,10 @@ mod tests {
             );
             assert_eq!(&ref_seq, b"CAATXXXXT");
         }
+    }
+
+    #[test]
+    fn char_x() {
+        assert_eq!(dna::revcomp(b"GATTXACA"), "TGTXAATC".as_bytes());
     }
 }
