@@ -2,6 +2,7 @@ pub mod dispatcher;
 pub mod worker;
 
 use crate::{
+    errors::Result,
     map::HitInterval,
     utils::{AlignmentParameters, Record},
 };
@@ -101,13 +102,13 @@ impl TaskRxBuffer {
         }
     }
 
-    fn decode_and_reset(&mut self) -> Result<TaskSheet, bincode::Error> {
+    fn decode_and_reset(&mut self) -> Result<TaskSheet> {
         let out = bincode::deserialize(&self.buf)?;
         self.reset();
         Ok(out)
     }
 
-    fn decode_header(&mut self) -> Result<(), bincode::Error> {
+    fn decode_header(&mut self) -> Result<()> {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf
@@ -149,13 +150,13 @@ impl ResultRxBuffer {
         &mut self.buf[self.already_read..]
     }
 
-    fn decode_and_reset(&mut self) -> Result<ResultSheet, bincode::Error> {
+    fn decode_and_reset(&mut self) -> Result<ResultSheet> {
         let out = bincode::deserialize(&self.buf)?;
         self.reset();
         Ok(out)
     }
 
-    fn decode_header(&mut self) -> Result<(), bincode::Error> {
+    fn decode_header(&mut self) -> Result<()> {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf
