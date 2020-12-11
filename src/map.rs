@@ -1699,7 +1699,6 @@ pub mod tests {
             current_interval: RtBiInterval {
                 lower: 5,
                 lower_rev: 5,
-                match_size: 5,
                 size: 5,
             },
             backward_index: 5,
@@ -1716,7 +1715,6 @@ pub mod tests {
             current_interval: RtBiInterval {
                 lower: 5,
                 lower_rev: 5,
-                match_size: 5,
                 size: 5,
             },
             backward_index: 5,

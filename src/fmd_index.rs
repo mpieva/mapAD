@@ -56,7 +56,6 @@ impl RtFMDIndex {
             lower: 0,
             lower_rev: 0,
             size: self.bwt.len(),
-            match_size: 0,
         }
     }
 
@@ -69,7 +68,6 @@ impl RtFMDIndex {
                 lower: 0,
                 lower_rev: 0,
                 size: 0,
-                match_size: 0,
             };
         }
 
@@ -154,7 +152,6 @@ impl<'a> FMDExtIterator<'a> {
             lower: self.fmd_index.less(self.c) + o,
             lower_rev: self.l,
             size: self.s,
-            match_size: self.input_interval.match_size + 1,
         }
     }
 }
@@ -164,7 +161,6 @@ pub struct RtBiInterval {
     pub lower: usize,
     pub lower_rev: usize,
     pub size: usize,
-    pub match_size: usize,
 }
 
 impl RtBiInterval {
@@ -187,7 +183,6 @@ impl RtBiInterval {
             lower: self.lower_rev,
             lower_rev: self.lower,
             size: self.size,
-            match_size: self.match_size,
         }
     }
 
