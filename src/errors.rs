@@ -14,6 +14,7 @@ pub enum Error {
 }
 
 impl fmt::Display for Error {
+    #[cold]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Hts(_err) => write!(f, "HTS error: Details unknown"),
@@ -25,12 +26,14 @@ impl fmt::Display for Error {
 }
 
 impl From<io::Error> for Error {
+    #[cold]
     fn from(e: io::Error) -> Self {
         Error::Io(e)
     }
 }
 
 impl From<bincode::Error> for Error {
+    #[cold]
     fn from(e: bincode::Error) -> Self {
         match *e {
             bincode::ErrorKind::Io(e) => Error::Io(e),
@@ -40,6 +43,7 @@ impl From<bincode::Error> for Error {
 }
 
 impl From<rust_htslib::errors::Error> for Error {
+    #[cold]
     fn from(e: rust_htslib::errors::Error) -> Self {
         Self::Hts(e)
     }
