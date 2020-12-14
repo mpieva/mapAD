@@ -107,6 +107,12 @@ pub enum EditOperation {
     Mismatch(u16, u8),
 }
 
+impl Default for EditOperation {
+    fn default() -> Self {
+        Self::Match(0)
+    }
+}
+
 /// Contains edit operations performed in order to align the sequence
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EditOperationsTrack(Vec<EditOperation>);
@@ -665,7 +671,7 @@ where
 {
     thread_local! {
         static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
-        static TREE_BUF: RefCell<Tree<Option<EditOperation>>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
+        static TREE_BUF: RefCell<Tree<EditOperation>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
     }
 
     for chunk in records {
@@ -1009,7 +1015,7 @@ fn bam_record_helper(
 /// backtracking for size reasons.
 fn extract_edit_operations(
     end_node: NodeId,
-    edit_tree: &Tree<Option<EditOperation>>,
+    edit_tree: &Tree<EditOperation>,
     pattern_len: usize,
 ) -> EditOperationsTrack {
     // Restore outer ordering of the edit operation by the positions they carry as values.
@@ -1017,21 +1023,18 @@ fn extract_edit_operations(
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
     let mut cigar_order_outer: BTreeMap<u16, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
 
-    edit_tree
-        .ancestors(end_node)
-        .filter_map(|&edit_operation| edit_operation)
-        .for_each(|edit_operation| {
-            let position = match edit_operation {
-                EditOperation::Insertion(position) => position,
-                EditOperation::Deletion(position, _) => position,
-                EditOperation::Match(position) => position,
-                EditOperation::Mismatch(position, _) => position,
-            };
-            cigar_order_outer
-                .entry(position)
-                .or_insert_with(SmallVec::new)
-                .push(edit_operation);
-        });
+    edit_tree.ancestors(end_node).for_each(|&edit_operation| {
+        let position = match edit_operation {
+            EditOperation::Insertion(position) => position,
+            EditOperation::Deletion(position, _) => position,
+            EditOperation::Match(position) => position,
+            EditOperation::Mismatch(position, _) => position,
+        };
+        cigar_order_outer
+            .entry(position)
+            .or_insert_with(SmallVec::new)
+            .push(edit_operation);
+    });
 
     EditOperationsTrack(
         cigar_order_outer
@@ -1054,7 +1057,7 @@ fn check_and_push_stack_frame(
     pattern: &[u8],
     alignment_parameters: &AlignmentParameters,
     edit_operation: EditOperation,
-    edit_tree: &mut Tree<Option<EditOperation>>,
+    edit_tree: &mut Tree<EditOperation>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
 ) {
@@ -1075,7 +1078,7 @@ fn check_and_push_stack_frame(
         }
     }
 
-    stack_frame.edit_node_id = edit_tree.add_node(Some(edit_operation), stack_frame.edit_node_id);
+    stack_frame.edit_node_id = edit_tree.add_node(edit_operation, stack_frame.edit_node_id);
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as i16 - 1) {
@@ -1097,7 +1100,7 @@ fn check_and_push_stack_frame(
 fn print_debug(
     stack_frame: &MismatchSearchStackFrame,
     intervals: &BinaryHeap<HitInterval>,
-    edit_tree: &Tree<Option<EditOperation>>,
+    edit_tree: &Tree<EditOperation>,
 ) {
     let switch = false; // TODO: Switch me on/off!
 
@@ -1127,7 +1130,7 @@ pub fn k_mismatch_search(
     parameters: &AlignmentParameters,
     fmd_index: &RtFMDIndex,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
-    edit_tree: &mut Tree<Option<EditOperation>>,
+    edit_tree: &mut Tree<EditOperation>,
 ) -> BinaryHeap<HitInterval> {
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
@@ -1144,7 +1147,7 @@ pub fn k_mismatch_search(
 
     let mut stack_size_limit_reported = false;
     stack.clear();
-    edit_tree.clear();
+    let root_node = edit_tree.clear();
 
     stack.push(MismatchSearchStackFrame {
         j: center_of_read as i16,
@@ -1155,7 +1158,7 @@ pub fn k_mismatch_search(
         gap_backwards: GapState::Closed,
         gap_forwards: GapState::Closed,
         alignment_score: 0.0,
-        edit_node_id: edit_tree.add_node(None, None),
+        edit_node_id: root_node,
         lookahead_score: 0.0,
     });
 
@@ -1689,8 +1692,8 @@ pub mod tests {
 
     #[test]
     fn test_ord_impl() {
-        let mut edit_tree = Tree::new();
-        let root_id = edit_tree.add_node(1, None);
+        let mut edit_tree: Tree<usize> = Tree::new();
+        let root_id = edit_tree.clear();
 
         let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
