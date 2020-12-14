@@ -38,14 +38,17 @@ pub struct Continuous {
 }
 
 impl MismatchBound for Continuous {
+    #[inline]
     fn reject(&self, value: f32, read_length: usize) -> bool {
-        let scaled_read_length = match self.cache.get(read_length) {
-            Some(&v) => v,
-            None => (read_length as f32).powf(self.exponent),
-        };
+        let scaled_read_length = self
+            .cache
+            .get(read_length)
+            .copied()
+            .unwrap_or_else(|| (read_length as f32).powf(self.exponent));
         (value / scaled_read_length) < self.cutoff
     }
 
+    #[inline]
     fn reject_iterative(&self, value: f32, reference: f32) -> bool {
         value < reference + self.representative_mismatch_penalty
     }
@@ -75,11 +78,13 @@ pub struct Discrete {
 }
 
 impl MismatchBound for Discrete {
+    #[inline]
     fn reject(&self, value: f32, read_length: usize) -> bool {
         // Poisson-modelled number (BWA-like) times representative mismatch penalty
         value < self.get(read_length) * self.representative_mismatch_penalty
     }
 
+    #[inline]
     fn reject_iterative(&self, value: f32, reference: f32) -> bool {
         value < reference + self.representative_mismatch_penalty
     }

@@ -74,7 +74,7 @@ impl RtFMDIndex {
         self.extend_iter(interval)
             .find(|&(base, _)| base == self.rank_transform.get(a))
             .map(|(_, interval)| interval)
-            .unwrap()
+            .expect("This is not expected to fail")
     }
 
     pub fn forward_ext(&self, interval: &RtBiInterval, a: u8) -> RtBiInterval {
