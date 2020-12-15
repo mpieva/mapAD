@@ -783,10 +783,14 @@ where
     if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
 
+        // Calculate length of reference strand ignoring sentinel characters
         let strand_len = (suffix_array.len() - 2) / 2;
+        // Get amount of positions in the genome covered by the read
         let effective_read_len = best_alignment.edit_operations.effective_len();
 
         let (absolute_pos, strand) = {
+            // Find a random genomic position to report. We use an `ExactSizeIterator`
+            // to choose a random element from, so this should be a constant time operation.
             let absolute_pos = best_alignment
                 .interval
                 .occ_fwd(suffix_array)
@@ -795,6 +799,7 @@ where
                     Error::InvalidIndex("Could not find reference position".to_string())
                 })?;
 
+            // Determine strand
             if absolute_pos < strand_len {
                 (absolute_pos, Direction::Forward)
             } else {
@@ -805,6 +810,7 @@ where
             }
         };
 
+        // Determine relative-to-chromosome position
         let (tid, relative_pos) =
             identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)?;
 
