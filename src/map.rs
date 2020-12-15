@@ -118,18 +118,20 @@ impl Default for EditOperation {
 pub struct EditOperationsTrack(Vec<EditOperation>);
 
 impl EditOperationsTrack {
+    /// Calculates the amount of positions in the genome
+    /// that are covered by this read
     pub fn effective_len(&self) -> usize {
         self.0
             .iter()
             .fold(0, |acc, edit_operation| {
                 acc + match edit_operation {
-                    EditOperation::Insertion(_) => 1,
-                    EditOperation::Deletion(_, _) => -1,
+                    EditOperation::Insertion(_) => 0,
+                    EditOperation::Deletion(_, _) => 1,
                     EditOperation::Match(_) => 1,
                     EditOperation::Mismatch(_, _) => 1,
                 }
             })
-            .min(0) as usize
+            .max(0) as usize
     }
 
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
@@ -2650,5 +2652,40 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             );
             assert_eq!(intervals.len(), 1);
         }
+    }
+
+    #[test]
+    fn test_edop_effective_len() {
+        let edop_track = EditOperationsTrack(vec![
+            EditOperation::Match(0),
+            EditOperation::Mismatch(1, b'C'),
+            EditOperation::Match(2),
+            EditOperation::Insertion(3),
+            EditOperation::Match(4),
+            EditOperation::Deletion(5, b'A'),
+            EditOperation::Deletion(6, b'G'),
+            EditOperation::Match(7),
+            EditOperation::Match(8),
+            EditOperation::Match(9),
+            EditOperation::Match(10),
+            EditOperation::Insertion(11),
+            EditOperation::Mismatch(10, b'C'),
+        ]);
+        assert_eq!(edop_track.effective_len(), 11);
+
+        let edop_track_2 = EditOperationsTrack(vec![
+            EditOperation::Insertion(0),
+            EditOperation::Insertion(1),
+            EditOperation::Insertion(2),
+        ]);
+        assert_eq!(edop_track_2.effective_len(), 0);
+
+        let edop_track_3 = EditOperationsTrack(vec![
+            EditOperation::Deletion(0, b'A'),
+            EditOperation::Deletion(1, b'C'),
+            EditOperation::Deletion(2, b'G'),
+            EditOperation::Deletion(3, b'T'),
+        ]);
+        assert_eq!(edop_track_3.effective_len(), 4);
     }
 }
