@@ -783,61 +783,42 @@ where
     if let Some(best_alignment) = intervals.pop() {
         let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
 
-        let reference_len = (suffix_array.len() - 2) / 2;
-        let pattern_len = best_alignment.edit_operations.effective_len();
+        let strand_len = (suffix_array.len() - 2) / 2;
+        let effective_read_len = best_alignment.edit_operations.effective_len();
 
-        // Draw randomly from the suffix array interval until a valid position is found
-        // or a maximal number of attempts is reached.
-        const MAX_ITER_ATTEMPTS: usize = 20;
-        const MAX_RANDOM_ATTEMPTS: usize = 100;
-        let random_position = if best_alignment.interval.size <= MAX_ITER_ATTEMPTS {
-            best_alignment
+        let (absolute_pos, strand) = {
+            let absolute_pos = best_alignment
                 .interval
                 .occ_fwd(suffix_array)
-                .filter(|&pos| pos <= reference_len)
-                .map(|pos| (pos, Direction::Forward))
-                .chain(
-                    best_alignment
-                        .interval
-                        .occ_revcomp(suffix_array)
-                        .filter(|&pos| pos <= reference_len)
-                        .map(|pos| (pos, Direction::Backward)),
-                )
                 .choose(rng)
-        } else {
-            let mut i = 0;
-            loop {
-                if (i > best_alignment.interval.size * 2) || (i > MAX_RANDOM_ATTEMPTS) {
-                    break (None);
-                }
-                i += 1;
+                .ok_or_else(|| {
+                    Error::InvalidIndex("Could not find reference position".to_string())
+                })?;
 
-                let (fwd_position, revcomp_position) = best_alignment
-                    .interval
-                    .get_random_positions(rng, suffix_array);
-                if fwd_position + pattern_len < reference_len {
-                    break (Some((fwd_position, Direction::Forward)));
-                } else if revcomp_position + pattern_len < reference_len {
-                    break (Some((revcomp_position, Direction::Backward)));
-                }
+            if absolute_pos < strand_len {
+                (absolute_pos, Direction::Forward)
+            } else {
+                (
+                    suffix_array.len() - absolute_pos - effective_read_len - 1,
+                    Direction::Backward,
+                )
             }
         };
 
-        if let Some((position, strand)) = random_position {
-            let (tid, position) =
-                identifier_position_map.get_reference_identifier(position, pattern_len)?;
+        let (tid, relative_pos) =
+            identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)?;
 
-            return Ok(bam_record_helper(
-                input_record,
-                position,
-                Some(&best_alignment),
-                Some(mapping_quality),
-                tid,
-                Some(strand),
-                duration,
-            ));
-        }
+        return Ok(bam_record_helper(
+            input_record,
+            relative_pos,
+            Some(&best_alignment),
+            Some(mapping_quality),
+            tid,
+            Some(strand),
+            duration,
+        ));
     }
+
     // No match found, report unmapped read
     Ok(bam_record_helper(
         input_record,

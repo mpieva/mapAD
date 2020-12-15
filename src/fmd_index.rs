@@ -6,7 +6,6 @@ use bio::{
         suffix_array::SuffixArray,
     },
 };
-use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -184,22 +183,6 @@ impl RtBiInterval {
             lower_rev: self.lower,
             size: self.size,
         }
-    }
-
-    pub fn get_random_positions<R, S>(&self, rng: &mut R, suffix_array: &S) -> (usize, usize)
-    where
-        R: RngCore,
-        S: SuffixArray,
-    {
-        let rand_suffix_array_pos = rng.gen_range(0, self.size);
-        (
-            suffix_array
-                .get(self.lower + rand_suffix_array_pos)
-                .expect("This is not expected to fail"),
-            suffix_array
-                .get(self.lower_rev + rand_suffix_array_pos)
-                .expect("This is not expected to fail"),
-        )
     }
 
     fn interval_to_pos<'a, S>(
