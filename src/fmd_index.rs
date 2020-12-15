@@ -188,7 +188,7 @@ impl RtBiInterval {
     fn interval_to_pos<'a, S>(
         interval: Interval,
         suffix_array: &'a S,
-    ) -> impl Iterator<Item = usize> + 'a
+    ) -> impl ExactSizeIterator<Item = usize> + 'a
     where
         S: SuffixArray,
     {
@@ -199,14 +199,17 @@ impl RtBiInterval {
         })
     }
 
-    pub fn occ_fwd<'a, S>(&self, suffix_array: &'a S) -> impl Iterator<Item = usize> + 'a
+    pub fn occ_fwd<'a, S>(&self, suffix_array: &'a S) -> impl ExactSizeIterator<Item = usize> + 'a
     where
         S: SuffixArray,
     {
         Self::interval_to_pos(self.forward(), suffix_array)
     }
 
-    pub fn occ_revcomp<'a, S>(&self, suffix_array: &'a S) -> impl Iterator<Item = usize> + 'a
+    pub fn occ_revcomp<'a, S>(
+        &self,
+        suffix_array: &'a S,
+    ) -> impl ExactSizeIterator<Item = usize> + 'a
     where
         S: SuffixArray,
     {
