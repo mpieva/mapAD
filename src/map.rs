@@ -361,14 +361,13 @@ impl FastaIdPositions {
         &self,
         position: usize,
         pattern_length: usize,
-    ) -> Result<(i32, i64)> {
+    ) -> Option<(i32, i64)> {
         self.id_position
             .iter()
             .enumerate()
             .find(|(_, identifier)| {
                 (identifier.start <= position) && (position + pattern_length - 1 <= identifier.end)
             })
-            .ok_or_else(|| Error::InvalidIndex("Index contains invalid data".to_string()))
             .map(|(index, identifier)| (index as i32, (position - identifier.start) as i64))
     }
 }
@@ -810,19 +809,22 @@ where
             }
         };
 
-        // Determine relative-to-chromosome position
-        let (tid, relative_pos) =
-            identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)?;
-
-        return Ok(bam_record_helper(
-            input_record,
-            relative_pos,
-            Some(&best_alignment),
-            Some(mapping_quality),
-            tid,
-            Some(strand),
-            duration,
-        ));
+        // Determine relative-to-chromosome position. `None` means that the read overlaps chromosome boundaries
+        if let Some((tid, relative_pos)) =
+            identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)
+        {
+            return Ok(bam_record_helper(
+                input_record,
+                relative_pos,
+                Some(&best_alignment),
+                Some(mapping_quality),
+                tid,
+                Some(strand),
+                duration,
+            ));
+        } else {
+            trace!("Mapped position overlaps chromosome boundaries, report as unmapped");
+        }
     }
 
     // No match found, report unmapped read
