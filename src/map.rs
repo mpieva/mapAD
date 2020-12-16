@@ -1061,6 +1061,10 @@ fn check_and_push_stack_frame(
         return;
     }
 
+    // TODO: Check performance impact
+    // This is technically redundant. Our micro-benchmarks suggest
+    // that having this here improves the performance but it might
+    // be that actually the opposite is true for large real data.
     if let Some(best_scoring_interval) = intervals.peek() {
         if alignment_parameters.mismatch_bound.reject_iterative(
             stack_frame.lookahead_score,
