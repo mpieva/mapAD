@@ -810,20 +810,21 @@ where
         };
 
         // Determine relative-to-chromosome position. `None` means that the read overlaps chromosome boundaries
-        if let Some((tid, relative_pos)) =
-            identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)
-        {
-            return Ok(bam_record_helper(
-                input_record,
-                relative_pos,
-                Some(&best_alignment),
-                Some(mapping_quality),
-                tid,
-                Some(strand),
-                duration,
-            ));
-        } else {
-            trace!("Mapped position overlaps chromosome boundaries, report as unmapped");
+        match identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len) {
+            Some((tid, relative_pos)) => {
+                return Ok(bam_record_helper(
+                    input_record,
+                    relative_pos,
+                    Some(&best_alignment),
+                    Some(mapping_quality),
+                    tid,
+                    Some(strand),
+                    duration,
+                ));
+            }
+            None => {
+                trace!("Mapped position overlaps chromosome boundaries, report as unmapped");
+            }
         }
     }
 
