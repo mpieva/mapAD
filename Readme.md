@@ -194,8 +194,8 @@ are PHRED-scaled, and, for better compatibility with `BWA`, confined to the inte
   To parallelize alignments, `mapAD` will use all idle CPU cores on the machine it is run on (this behaviour can be 
   controlled via the `RAYON_NUM_THREADS` environment variable).
   
-- When using the distributed mapping feature (dispatcher/workers), each worker "only" needs around 30GB of RAM while 
-  the dispatcher node uses around 60GB RAM (?) since it keeps the suffix array in memory.
+- When using the distributed mapping feature (dispatcher/workers), each worker needs around 
+  `(10 + 0.5 * |threads|)` GB of RAM while the dispatcher node uses around 70GB RAM since it keeps the suffix array in memory.
  
 - Indexing `hg19`, however, needs around 160GB of RAM. This will be improved in future versions.
 

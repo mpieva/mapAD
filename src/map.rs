@@ -136,7 +136,7 @@ impl EditOperationsTrack {
 
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
     /// The strand a read is mapped to is taken into account here.
-    fn to_bam_fields(&self, strand: Option<Direction>) -> (bam::record::CigarString, Vec<u8>, u16) {
+    fn to_bam_fields(&self, strand: Direction) -> (bam::record::CigarString, Vec<u8>, u16) {
         // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut num_matches: u32 = 0;
         let mut num_operations = 1;
@@ -146,9 +146,8 @@ impl EditOperationsTrack {
         let mut md_tag = Vec::new();
 
         let track = match strand {
-            Some(Direction::Forward) => Either::Left(self.0.iter()),
-            Some(Direction::Backward) => Either::Right(self.0.iter().rev()),
-            None => unreachable!(),
+            Direction::Forward => Either::Left(self.0.iter()),
+            Direction::Backward => Either::Right(self.0.iter().rev()),
         };
         for edit_operation in track {
             edit_distance = Self::add_edit_distance(*edit_operation, edit_distance);
@@ -236,14 +235,13 @@ impl EditOperationsTrack {
     fn add_md_edit_operation(
         edit_operation: Option<EditOperation>,
         last_edit_operation: Option<EditOperation>,
-        strand: Option<Direction>,
+        strand: Direction,
         mut k: u32,
         md_tag: &mut Vec<u8>,
     ) -> u32 {
         let comp_if_necessary = |reference_base| match strand {
-            Some(Direction::Forward) => reference_base,
-            Some(Direction::Backward) => dna::complement(reference_base),
-            None => unreachable!(),
+            Direction::Forward => reference_base,
+            Direction::Backward => dna::complement(reference_base),
         };
 
         match edit_operation {
@@ -911,7 +909,9 @@ fn bam_record_helper(
     bam_record.set_flags(input_record.bam_flags);
 
     let (cigar, md_tag, edit_distance) = if let Some(hit_interval) = hit_interval {
-        let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields(strand);
+        let (cigar, md_tag, edit_distance) = hit_interval
+            .edit_operations
+            .to_bam_fields(strand.expect("This is not expected to fail"));
         (Some(cigar), Some(md_tag), Some(edit_distance))
     } else {
         (None, None, None)
@@ -1827,9 +1827,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(
             cigar,
@@ -1865,9 +1863,7 @@ pub mod tests {
         );
 
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
@@ -1903,9 +1899,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(best_hit.alignment_score, -2.0);
         assert_eq!(
@@ -1941,9 +1935,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
@@ -1987,9 +1979,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(best_hit.alignment_score, -4.0);
         assert_eq!(
@@ -2042,9 +2032,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(md_tag, "5C1".as_bytes());
 
@@ -2080,9 +2068,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(md_tag, "4^G2".as_bytes());
 
@@ -2111,9 +2097,7 @@ pub mod tests {
         );
 
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(md_tag, "3^TA3".as_bytes());
 
@@ -2141,9 +2125,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(md_tag, "7".as_bytes());
 
@@ -2171,9 +2153,7 @@ pub mod tests {
             &mut tree_buf,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit
-            .edit_operations
-            .to_bam_fields(Some(Direction::Forward));
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
         assert_eq!(md_tag, "7".as_bytes());
     }
@@ -2302,7 +2282,7 @@ pub mod tests {
 
         let (_cigar, md, edop) = best_alignment
             .edit_operations
-            .to_bam_fields(Some(Direction::Backward));
+            .to_bam_fields(Direction::Backward);
         assert_eq!(md, b"1T2");
 
         assert_eq!(edop, 1);
