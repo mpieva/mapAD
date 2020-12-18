@@ -47,26 +47,23 @@ where
     type Item = Result<TaskSheet>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(task) = self.requeried_tasks.pop() {
+            info!("Retrying previously failed task {}", task.chunk_id);
+            return Some(Ok(task));
+        }
+
         let chunk = self
             .records
             .by_ref()
             .take(self.chunk_size)
             .collect::<Result<Vec<_>>>();
-
-        if let Ok(ref inner) = chunk {
-            if inner.is_empty() {
-                return if let Some(task) = self.requeried_tasks.pop() {
-                    info!("Retrying previously failed task {}", task.chunk_id);
-                    Some(Ok(task))
-                } else {
-                    None
-                };
-            }
-        }
-
         self.chunk_id += 1;
+
         match chunk {
-            Ok(inner) => Some(Ok(TaskSheet::from_records(self.chunk_id - 1, inner, None))),
+            Ok(inner) if !inner.is_empty() => {
+                Some(Ok(TaskSheet::from_records(self.chunk_id - 1, inner, None)))
+            }
+            Ok(_) => None,
             Err(e) => Some(Err(e)),
         }
     }
