@@ -65,7 +65,7 @@ impl Worker {
                     if let Some(fmd_index) = &self.fmd_index {
                         if let Some(alignment_parameters) = &self.alignment_parameters {
                             info!("Map reads");
-                            let results = std::mem::replace(&mut task.records, Vec::new())
+                            let results = std::mem::take(&mut task.records)
                                 .into_par_iter()
                                 .map(|record| {
                                     STACK_BUF.with(|stack_buf| {
