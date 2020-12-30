@@ -185,10 +185,10 @@ impl RtBiInterval {
         }
     }
 
-    fn interval_to_pos<'a, S>(
+    fn interval_to_pos<S>(
         interval: Interval,
-        suffix_array: &'a S,
-    ) -> impl ExactSizeIterator<Item = usize> + 'a
+        suffix_array: &S,
+    ) -> impl ExactSizeIterator<Item = usize> + '_
     where
         S: SuffixArray,
     {

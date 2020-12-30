@@ -26,10 +26,11 @@ fn define_cli<'a>() -> ArgMatches<'a> {
             Ok(s) => s,
             Err(_) => return Err(error_message),
         };
-        if (v >= 0.0) && (v <= 1.0) {
-            return Ok(());
+        if (0.0..=1.0).contains(&v) {
+            Ok(())
+        } else {
+            Err(error_message)
         }
-        Err(error_message)
     };
 
     App::new(map::CRATE_NAME)
