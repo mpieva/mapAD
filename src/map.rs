@@ -810,7 +810,7 @@ where
         // Determine relative-to-chromosome position. `None` means that the read overlaps chromosome boundaries
         match identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len) {
             Some((tid, relative_pos)) => {
-                return Ok(bam_record_helper(
+                return bam_record_helper(
                     input_record,
                     relative_pos,
                     Some(&best_alignment),
@@ -818,7 +818,7 @@ where
                     tid,
                     Some(strand),
                     duration,
-                ));
+                );
             }
             None => {
                 trace!("Mapped position overlaps chromosome boundaries, report as unmapped");
@@ -827,15 +827,7 @@ where
     }
 
     // No match found, report unmapped read
-    Ok(bam_record_helper(
-        input_record,
-        -1,
-        None,
-        None,
-        -1,
-        None,
-        duration,
-    ))
+    bam_record_helper(input_record, -1, None, None, -1, None, duration)
 }
 
 /// Computes optimal per-base alignment scores for a read,
@@ -904,7 +896,7 @@ fn bam_record_helper(
     tid: i32,
     strand: Option<Direction>,
     duration: Option<&Duration>,
-) -> bam::Record {
+) -> Result<bam::Record> {
     let mut bam_record = bam::record::Record::new();
     bam_record.set_flags(input_record.bam_flags);
 
@@ -973,31 +965,37 @@ fn bam_record_helper(
 
     // Add tags that were already present in the input
     for (input_tag, value) in &input_record.bam_tags {
-        bam_record.push_aux(input_tag, &value.borrow_htslib_bam_record());
+        bam_record.push_aux(input_tag, value.into())?;
     }
 
+    let _ = bam_record.remove_aux(b"AS");
     if let Some(hit_interval) = hit_interval {
-        bam_record.push_aux(
-            b"AS",
-            &bam::record::Aux::Integer(hit_interval.alignment_score.round() as i64),
-        );
+        bam_record.push_aux(b"AS", bam::record::Aux::Float(hit_interval.alignment_score))?;
     };
+
+    let _ = bam_record.remove_aux(b"NM");
     if let Some(edit_distance) = edit_distance {
-        bam_record.push_aux(b"NM", &bam::record::Aux::Integer(i64::from(edit_distance)));
+        bam_record.push_aux(b"NM", bam::record::Aux::I32(edit_distance as i32))?;
     };
+
+    let _ = bam_record.remove_aux(b"MD");
     // CIGAR strings and MD tags are reversed during generation
     if let Some(md_tag) = md_tag {
-        bam_record.push_aux(b"MD", &bam::record::Aux::String(&md_tag));
-    }
-    if let Some(duration) = duration {
-        // Add the time that was needed for mapping the read
         bam_record.push_aux(
-            b"XD",
-            &bam::record::Aux::Integer(duration.as_micros() as i64),
-        );
+            b"MD",
+            bam::record::Aux::String(
+                std::str::from_utf8(&md_tag).expect("The tag is constructed internally."),
+            ),
+        )?;
     }
 
-    bam_record
+    let _ = bam_record.remove_aux(b"XD");
+    if let Some(duration) = duration {
+        // Add the time that was needed for mapping the read
+        bam_record.push_aux(b"XD", bam::record::Aux::Float(duration.as_secs_f32()))?;
+    }
+
+    Ok(bam_record)
 }
 
 /// Derive Cigar string from oddly-ordered tracks of edit operations.

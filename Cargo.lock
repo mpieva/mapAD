@@ -73,7 +73,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1161c7b80eea668a884b4be136d83ef5175df5aaa6dcba482bdf4fbe1d046f2"
 dependencies = [
  "approx",
- "bio-types",
+ "bio-types 0.7.0",
  "bit-set",
  "bv",
  "bytecount",
@@ -100,7 +100,7 @@ dependencies = [
  "snafu",
  "statrs",
  "strum",
- "strum_macros",
+ "strum_macros 0.18.0",
  "triple_accel",
  "vec_map",
 ]
@@ -117,6 +117,19 @@ dependencies = [
  "regex",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "bio-types"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58d64154e76eb7c0d369ad6d26b98bbb331c8968da16d063a3ea215e23bbb31c"
+dependencies = [
+ "derive-new",
+ "lazy_static",
+ "quick-error",
+ "regex",
+ "strum_macros 0.20.1",
 ]
 
 [[package]]
@@ -539,7 +552,7 @@ dependencies = [
 [[package]]
 name = "hts-sys"
 version = "1.11.1-fix1"
-source = "git+https://github.com/jch-13/rust-htslib.git?branch=feature/get_all_bam_tags#0cebb2574dd9bde2a0263c768a180d7dfdd56722"
+source = "git+https://github.com/jch-13/rust-htslib.git?branch=aux/rewrite#02332ae713710f02d49672c11b5eeeda36816ab1"
 dependencies = [
  "cc",
  "fs-utils",
@@ -1037,10 +1050,11 @@ dependencies = [
 
 [[package]]
 name = "rust-htslib"
-version = "0.35.2"
-source = "git+https://github.com/jch-13/rust-htslib.git?branch=feature/get_all_bam_tags#0cebb2574dd9bde2a0263c768a180d7dfdd56722"
+version = "0.36.1-alpha.0"
+source = "git+https://github.com/jch-13/rust-htslib.git?branch=aux/rewrite#02332ae713710f02d49672c11b5eeeda36816ab1"
 dependencies = [
- "bio-types",
+ "bio-types 0.10.0",
+ "byteorder",
  "custom_derive",
  "derefable",
  "derive-new",
@@ -1051,6 +1065,7 @@ dependencies = [
  "linear-map",
  "newtype_derive",
  "regex",
+ "strum_macros 0.20.1",
  "thiserror",
  "url",
 ]
@@ -1245,6 +1260,18 @@ name = "strum_macros"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87c85aa3f8ea653bfd3ddf25f7ee357ee4d204731f6aa9ad04002306f6e2774c"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.54",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee8bc6b87a5112aeeab1f4a9f7ab634fe6cbefc4850006df31267f4cfb9e3149"
 dependencies = [
  "heck",
  "proc-macro2 1.0.24",

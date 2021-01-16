@@ -12,39 +12,81 @@ use bio::{
     },
     io::fastq,
 };
-use log::debug;
-use rust_htslib::bam;
+use log::{debug, warn};
+use rust_htslib::{bam, bam::record::Aux};
 use serde::{Deserialize, Serialize};
 
 use std::{fmt::Debug, fs::File};
 
-/// Auxiliary record data.
+/// An owned representation of the `bam::record::Aux` data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BamTag {
-    Integer(i64),
-    String(Vec<u8>),
-    Float(f64),
     Char(u8),
+    I8(i8),
+    U8(u8),
+    I16(i16),
+    U16(u16),
+    I32(i32),
+    U32(u32),
+    Float(f32),
+    Double(f64),
+    String(String),
+    HexByteArray(String),
+    ArrayI8(Vec<i8>),
+    ArrayU8(Vec<u8>),
+    ArrayI16(Vec<i16>),
+    ArrayU16(Vec<u16>),
+    ArrayI32(Vec<i32>),
+    ArrayU32(Vec<u32>),
+    ArrayFloat(Vec<f32>),
 }
 
-impl From<bam::record::Aux<'_>> for BamTag {
-    fn from(input: bam::record::Aux) -> Self {
+impl From<Aux<'_>> for BamTag {
+    fn from(input: Aux) -> Self {
         match input {
-            bam::record::Aux::Integer(v) => BamTag::Integer(v),
-            bam::record::Aux::String(v) => BamTag::String(v.to_owned()),
-            bam::record::Aux::Float(v) => BamTag::Float(v),
-            bam::record::Aux::Char(v) => BamTag::Char(v),
+            Aux::Char(v) => BamTag::Char(v),
+            Aux::I8(v) => BamTag::I8(v),
+            Aux::U8(v) => BamTag::U8(v),
+            Aux::I16(v) => BamTag::I16(v),
+            Aux::U16(v) => BamTag::U16(v),
+            Aux::I32(v) => BamTag::I32(v),
+            Aux::U32(v) => BamTag::U32(v),
+            Aux::Float(v) => BamTag::Float(v),
+            Aux::Double(v) => BamTag::Double(v),
+            Aux::String(v) => BamTag::String(v.to_owned()),
+            Aux::HexByteArray(v) => BamTag::HexByteArray(v.to_owned()),
+            Aux::ArrayI8(v) => BamTag::ArrayI8(v.iter().collect()),
+            Aux::ArrayU8(v) => BamTag::ArrayU8(v.iter().collect()),
+            Aux::ArrayI16(v) => BamTag::ArrayI16(v.iter().collect()),
+            Aux::ArrayU16(v) => BamTag::ArrayU16(v.iter().collect()),
+            Aux::ArrayI32(v) => BamTag::ArrayI32(v.iter().collect()),
+            Aux::ArrayU32(v) => BamTag::ArrayU32(v.iter().collect()),
+            Aux::ArrayFloat(v) => BamTag::ArrayFloat(v.iter().collect()),
         }
     }
 }
 
-impl BamTag {
-    pub fn borrow_htslib_bam_record(&self) -> bam::record::Aux<'_> {
-        match self {
-            Self::Integer(v) => bam::record::Aux::Integer(*v),
-            Self::String(v) => bam::record::Aux::String(v),
-            Self::Float(v) => bam::record::Aux::Float(*v),
-            Self::Char(v) => bam::record::Aux::Char(*v),
+impl<'a> From<&'a BamTag> for Aux<'a> {
+    fn from(input: &'a BamTag) -> Self {
+        match input {
+            BamTag::Char(v) => Aux::Char(*v),
+            BamTag::I8(v) => Aux::I8(*v),
+            BamTag::U8(v) => Aux::U8(*v),
+            BamTag::I16(v) => Aux::I16(*v),
+            BamTag::U16(v) => Aux::U16(*v),
+            BamTag::I32(v) => Aux::I32(*v),
+            BamTag::U32(v) => Aux::U32(*v),
+            BamTag::Float(v) => Aux::Float(*v),
+            BamTag::Double(v) => Aux::Double(*v),
+            BamTag::String(v) => Aux::String(v),
+            BamTag::HexByteArray(v) => Aux::HexByteArray(v),
+            BamTag::ArrayI8(v) => Aux::ArrayI8(v.into()),
+            BamTag::ArrayU8(v) => Aux::ArrayU8(v.into()),
+            BamTag::ArrayI16(v) => Aux::ArrayI16(v.into()),
+            BamTag::ArrayU16(v) => Aux::ArrayU16(v.into()),
+            BamTag::ArrayI32(v) => Aux::ArrayI32(v.into()),
+            BamTag::ArrayU32(v) => Aux::ArrayU32(v.into()),
+            BamTag::ArrayFloat(v) => Aux::ArrayFloat(v.into()),
         }
     }
 }
@@ -75,10 +117,20 @@ impl From<bam::Record> for Record {
         };
 
         let input_tags = input
-            .get_tags()
-            .iter()
-            .map(|&(tag, value)| ([tag[0], tag[1]], value.into()))
-            .collect();
+            .aux_iter()
+            .map(|maybe_tag| {
+                maybe_tag
+                    .map(|(tag, value)| ([tag[0], tag[1]], value.into()))
+                    .map_err(|e| {
+                        warn!(
+                            "Error reading auxiliary data of record {}. Auxiliary data will be incomplete.",
+                            String::from_utf8_lossy(input.qname())
+                        );
+                        e.into()
+                    })
+            })
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
 
         Self {
             sequence,
