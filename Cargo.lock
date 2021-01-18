@@ -549,7 +549,7 @@ dependencies = [
 [[package]]
 name = "hts-sys"
 version = "1.11.1-fix1"
-source = "git+https://github.com/jch-13/rust-htslib.git?branch=aux/rewrite#02332ae713710f02d49672c11b5eeeda36816ab1"
+source = "git+https://github.com/jch-13/rust-htslib.git?branch=aux/rewrite#175d2b7434a7d2faa50e51d80153568d156d292b"
 dependencies = [
  "cc",
  "fs-utils",
@@ -1091,7 +1091,7 @@ dependencies = [
 [[package]]
 name = "rust-htslib"
 version = "0.36.1-alpha.0"
-source = "git+https://github.com/jch-13/rust-htslib.git?branch=aux/rewrite#02332ae713710f02d49672c11b5eeeda36816ab1"
+source = "git+https://github.com/jch-13/rust-htslib.git?branch=aux/rewrite#175d2b7434a7d2faa50e51d80153568d156d292b"
 dependencies = [
  "bio-types",
  "byteorder",
