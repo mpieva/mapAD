@@ -1,7 +1,11 @@
+use std::convert::TryFrom;
+
 use slab::Slab;
 
+/// Type wrapper around `u32` instead of `usize`
+/// to save memory
 #[derive(Copy, Clone, Debug)]
-pub struct NodeId(usize);
+pub struct NodeId(u32);
 
 /// Very simply tree structure. Except for root nodes, each node has a parent.
 /// The only direction of traversal is from children to parents (towards a root).
@@ -29,22 +33,30 @@ where
 
     /// Create a new tree with specified capacity to avoid frequent allocations
     /// if the maximal size of the tree is known upfront
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(Slab::with_capacity(capacity))
+    pub fn with_capacity(capacity: u32) -> Self {
+        Self(Slab::with_capacity(capacity as usize))
     }
 
     /// Remove node from the tree. There is no safety net, it's totally possible to remove the root of a subtree without any warning.
     /// Also, the key of the removed item will be reused. So please ensure to invalidate the old key.
     pub fn remove(&mut self, key: NodeId) {
         if key.0 != 0 {
-            let _ = self.0.remove(key.0);
+            let _ = self.0.remove(key.0 as usize);
         }
     }
 
     /// Add node to tree under `parent`. If `parent` is `None`, the current node is inserted as a root.
     /// It's possible to insert multiple roots into one tree.
-    pub fn add_node(&mut self, value: T, parent: NodeId) -> NodeId {
-        NodeId(self.0.insert(Node { value, parent }))
+    ///
+    /// Returns `Err` variant if index is out of the range of `NodeId`.
+    pub fn add_node(
+        &mut self,
+        value: T,
+        parent: NodeId,
+    ) -> Result<NodeId, std::num::TryFromIntError> {
+        Ok(NodeId(u32::try_from(
+            self.0.insert(Node { value, parent }),
+        )?))
     }
 
     /// Returns an _inclusive_ iterator over the data associated with the ancestors of a given node ID
@@ -98,7 +110,7 @@ impl<'a, T> Iterator for Ancestors<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.state.0 != 0 {
-            if let Some(node) = self.tree.0.get(self.state.0) {
+            if let Some(node) = self.tree.0.get(self.state.0 as usize) {
                 self.state = node.parent;
                 return Some(&node.value);
             }
@@ -117,10 +129,10 @@ mod tests {
         let mut tree = Tree::new();
 
         let root_id = tree.clear();
-        let first_id = tree.add_node(value, root_id);
-        let second_id = tree.add_node(value + 1, first_id);
-        let third_id = tree.add_node(value + 2, second_id);
-        let fourth_id = tree.add_node(value + 3, third_id);
+        let first_id = tree.add_node(value, root_id).unwrap();
+        let second_id = tree.add_node(value + 1, first_id).unwrap();
+        let third_id = tree.add_node(value + 2, second_id).unwrap();
+        let fourth_id = tree.add_node(value + 3, third_id).unwrap();
 
         let out = tree.ancestors(fourth_id).copied().collect::<Vec<_>>();
         assert_eq!(out, vec![18, 17, 16, 15]);
@@ -135,12 +147,12 @@ mod tests {
         let value = 15;
         let mut tree = Tree::new();
         let root_id = tree.clear();
-        tree.add_node(value, root_id);
+        tree.add_node(value, root_id).unwrap();
 
         assert_eq!(tree.len(), 2);
         assert_eq!(tree.len(), tree.0.len());
 
-        tree.add_node(value, root_id);
+        tree.add_node(value, root_id).unwrap();
 
         assert_eq!(tree.len(), 3);
         assert_eq!(tree.len(), tree.0.len());
@@ -161,14 +173,14 @@ mod tests {
 
         let root_id = tree.clear();
         for _i in 0..1024 {
-            tree.add_node(value, root_id);
+            tree.add_node(value, root_id).unwrap();
         }
 
         assert_eq!(tree.len(), 1025);
 
         let mut parent = root_id;
         for _i in 0..1024 {
-            parent = tree.add_node(value, parent);
+            parent = tree.add_node(value, parent).unwrap();
         }
 
         assert_eq!(tree.len(), 2049);

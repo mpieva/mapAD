@@ -36,7 +36,7 @@ use crate::{
 };
 
 pub const CRATE_NAME: &str = "mapAD";
-pub const STACK_LIMIT: usize = 5_000_000;
+pub const STACK_LIMIT: u32 = 10_000_000;
 
 /// A subset of MismatchSearchStackFrame to store hits
 #[derive(Serialize, Deserialize, Debug)]
@@ -669,7 +669,7 @@ where
     T: Iterator<Item = Result<Record>>,
 {
     thread_local! {
-        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT + 9));
+        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT as usize + 9));
         static TREE_BUF: RefCell<Tree<EditOperation>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
     }
 
@@ -1072,7 +1072,9 @@ fn check_and_push_stack_frame(
         }
     }
 
-    stack_frame.edit_node_id = edit_tree.add_node(edit_operation, stack_frame.edit_node_id);
+    stack_frame.edit_node_id = edit_tree
+        .add_node(edit_operation, stack_frame.edit_node_id)
+        .expect("We bound the length of `edit_tree` at `STACK_LIMIT` < `u32`");
 
     // This route through the read graph is finished successfully, push the interval
     if stack_frame.j < 0 || stack_frame.j > (pattern.len() as i16 - 1) {
@@ -1350,7 +1352,7 @@ pub fn k_mismatch_search(
         }
 
         // Limit stack size
-        if edit_tree.len() >= STACK_LIMIT {
+        if edit_tree.len() >= STACK_LIMIT as usize {
             if !stack_size_limit_reported {
                 trace!(
                     "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (size: {}).",
@@ -1360,7 +1362,7 @@ pub fn k_mismatch_search(
                 stack_size_limit_reported = true;
             }
 
-            for _ in 0..(edit_tree.len() - STACK_LIMIT + 9) {
+            for _ in 0..(edit_tree.len() - STACK_LIMIT as usize + 9) {
                 if let Some(poor_frame) = stack.pop_min() {
                     edit_tree.remove(poor_frame.edit_node_id);
                 }
