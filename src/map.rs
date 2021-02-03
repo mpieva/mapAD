@@ -36,7 +36,10 @@ use crate::{
 };
 
 pub const CRATE_NAME: &str = "mapAD";
-pub const STACK_LIMIT: u32 = 6_000_000;
+
+// These settings lead to a memory consumption of ~245 MiB per thread
+pub const STACK_LIMIT: u32 = 2_000_000;
+pub const EDIT_TREE_LIMIT: u32 = 10_000_000;
 
 /// A subset of MismatchSearchStackFrame to store hits
 #[derive(Serialize, Deserialize, Debug)]
@@ -670,7 +673,7 @@ where
 {
     thread_local! {
         static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT as usize + 9));
-        static TREE_BUF: RefCell<Tree<EditOperation>> = RefCell::new(Tree::with_capacity(STACK_LIMIT + 9));
+        static TREE_BUF: RefCell<Tree<EditOperation>> = RefCell::new(Tree::with_capacity(EDIT_TREE_LIMIT + 9));
     }
 
     for chunk in records {
@@ -1352,7 +1355,7 @@ pub fn k_mismatch_search(
         }
 
         // Limit stack size
-        if edit_tree.len() >= STACK_LIMIT as usize {
+        if stack.len() >= STACK_LIMIT as usize || edit_tree.len() >= EDIT_TREE_LIMIT as usize {
             if !stack_size_limit_reported {
                 trace!(
                     "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (size: {}).",
@@ -1362,7 +1365,9 @@ pub fn k_mismatch_search(
                 stack_size_limit_reported = true;
             }
 
-            for _ in 0..(edit_tree.len() - STACK_LIMIT as usize + 9) {
+            for _ in 0..((stack.len() - STACK_LIMIT as usize)
+                .max(edit_tree.len() - EDIT_TREE_LIMIT as usize))
+            {
                 if let Some(poor_frame) = stack.pop_min() {
                     edit_tree.remove(poor_frame.edit_node_id);
                 }

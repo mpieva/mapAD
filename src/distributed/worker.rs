@@ -37,7 +37,7 @@ impl Worker {
     pub fn run(&mut self) -> Result<()> {
         thread_local! {
             static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT as usize + 9));
-            static TREE_BUF: RefCell<Tree<map::EditOperation>> = RefCell::new(Tree::with_capacity(map::STACK_LIMIT + 9));
+            static TREE_BUF: RefCell<Tree<map::EditOperation>> = RefCell::new(Tree::with_capacity(map::EDIT_TREE_LIMIT + 9));
         }
 
         loop {
