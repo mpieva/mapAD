@@ -15,7 +15,7 @@ use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use bio::{
     alphabets::dna,
@@ -391,98 +391,155 @@ impl BiDArray {
         alignment_parameters: &AlignmentParameters,
         fmd_index: &RtFMDIndex,
     ) -> Self {
+        // This value is never actually used as `u16` but this type
+        // restricts the values to the valid range.
+        const MAX_OFFSET: u16 = 10;
+
+        // Compute a backward-D-iterator for every offset
+        let d_backwards = {
+            let mut offset_d_backward_iterators = (0..MAX_OFFSET as usize)
+                .map(|offset| {
+                    Self::compute_part(
+                        &pattern[..split],
+                        &base_qualities[..split],
+                        Direction::Forward,
+                        pattern.len(),
+                        offset as i16,
+                        alignment_parameters,
+                        fmd_index,
+                    )
+                })
+                .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
+
+            // Construct backward-D-array from minimal (most severe) penalties for each position
+            let mut d_backwards: SmallVec<[f32; 64]> = smallvec!(0.0; split);
+            for d_rev_cell in d_backwards.iter_mut() {
+                *d_rev_cell = offset_d_backward_iterators
+                    .iter_mut()
+                    .map(|offset_d_rev_iter| {
+                        offset_d_rev_iter
+                            .next()
+                            .expect("Iterator is guaranteed to have the right length")
+                    })
+                    .fold(0.0, |min_penalty, penalty| min_penalty.min(penalty));
+            }
+            d_backwards
+        };
+
+        // Compute a forward-D-iterator for every offset
+        let d_forwards = {
+            let mut offset_d_forward_iterators = (0..MAX_OFFSET)
+                .map(|offset| {
+                    Self::compute_part(
+                        &pattern[split..],
+                        &base_qualities[split..],
+                        Direction::Backward,
+                        pattern.len(),
+                        offset as i16,
+                        alignment_parameters,
+                        fmd_index,
+                    )
+                })
+                .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
+
+            // Construct forward-D-array from minimal (most severe) penalties for each position
+            let mut d_forwards: SmallVec<[f32; 64]> = smallvec!(0.0; pattern.len() - split);
+            for d_fwd_cell in d_forwards.iter_mut() {
+                *d_fwd_cell = offset_d_forward_iterators
+                    .iter_mut()
+                    .map(|offset_d_fwd_iter| {
+                        offset_d_fwd_iter
+                            .next()
+                            .expect("Iterator is guaranteed to have the right length")
+                    })
+                    .fold(0.0, |min_penalty, penalty| min_penalty.min(penalty));
+            }
+            d_forwards
+        };
+
         Self {
-            d_backwards: Self::compute_part(
-                &pattern[..split],
-                &base_qualities[..split],
-                Direction::Forward,
-                pattern.len(),
-                alignment_parameters,
-                fmd_index,
-            ),
-            d_forwards: Self::compute_part(
-                &pattern[split..],
-                &base_qualities[split..],
-                Direction::Backward,
-                pattern.len(),
-                alignment_parameters,
-                fmd_index,
-            ),
+            d_backwards,
+            d_forwards,
             split,
         }
     }
 
     /// Computes either left or right part of the Bi-D-Array for the given pattern.
     /// `Direction` here is the opposite of the read alignment direction in `k_mismatch_search`.
-    fn compute_part(
-        pattern_part: &[u8],
-        base_qualities_part: &[u8],
+    fn compute_part<'a>(
+        pattern_part: &'a [u8],
+        base_qualities_part: &'a [u8],
         direction: Direction,
         full_pattern_length: usize,
-        alignment_parameters: &AlignmentParameters,
-        fmd_index: &RtFMDIndex,
-    ) -> SmallVec<[f32; 64]> {
-        let directed_pattern_iterator = || match direction {
-            Direction::Forward => Either::Left(pattern_part.iter()),
-            Direction::Backward => Either::Right(pattern_part.iter().rev()),
-        };
-        let directed_index = |index, length| match direction {
-            Direction::Forward => index,
-            Direction::Backward => length - 1 - index,
-        };
+        initial_skip: i16,
+        alignment_parameters: &'a AlignmentParameters,
+        fmd_index: &'a RtFMDIndex,
+    ) -> impl Iterator<Item = f32> + 'a {
+        fn directed_index(index: usize, length: usize, direction: Direction) -> usize {
+            match direction {
+                Direction::Forward => index,
+                Direction::Backward => length - 1 - index,
+            }
+        }
 
-        directed_pattern_iterator()
+        std::iter::repeat(0.0).take(initial_skip as usize).chain(
+            match direction {
+                Direction::Forward => Either::Left(pattern_part.iter()),
+                Direction::Backward => Either::Right(pattern_part.iter().rev()),
+            }
             .enumerate()
+            .skip(initial_skip as usize)
             .scan(
-                (0.0, None, fmd_index.init_interval()),
-                |(z, last_mismatch_pos, interval), (index, &base)| {
+                (0.0, initial_skip - 1, fmd_index.init_interval()),
+                move |(z, last_mismatch_pos, interval), (index, &base)| {
                     *interval = match direction {
                         Direction::Forward => fmd_index.forward_ext(interval, base),
                         Direction::Backward => fmd_index.backward_ext(interval, base),
                     };
                     if interval.size < 1 {
-                        *z += directed_pattern_iterator()
-                            .take(index + 1)
-                            .enumerate()
-                            .skip(if let Some(lmp) = *last_mismatch_pos {
-                                lmp + 1
-                            } else {
-                                0
-                            })
-                            .map(|(j, &base_j)| {
-                                let idx_mapped_to_read = directed_index(j, full_pattern_length);
-                                let best_penalty_mm_only =
-                                    alignment_parameters.difference_model.get_min_penalty(
-                                        idx_mapped_to_read,
-                                        full_pattern_length,
-                                        base_j,
-                                        base_qualities_part
-                                            [directed_index(j, base_qualities_part.len())],
-                                        true,
-                                    );
-                                let optimal_penalty =
-                                    alignment_parameters.difference_model.get_min_penalty(
-                                        idx_mapped_to_read,
-                                        full_pattern_length,
-                                        base_j,
-                                        base_qualities_part
-                                            [directed_index(j, base_qualities_part.len())],
-                                        false,
-                                    );
-                                // The optimal penalty conditioned on position and base is subtracted because we
-                                // optimize the ratio `AS/optimal_AS` (in log space) to find the best mappings
-                                best_penalty_mm_only - optimal_penalty
-                            })
-                            .fold(std::f32::MIN, |acc, penalty| acc.max(penalty))
-                            .max(alignment_parameters.penalty_gap_open)
-                            .max(alignment_parameters.penalty_gap_extend);
+                        // Sub-read does not align perfectly, scan sub-sequence to find the most conservative penalty
+                        *z += match direction {
+                            Direction::Forward => Either::Left(pattern_part.iter()),
+                            Direction::Backward => Either::Right(pattern_part.iter().rev()),
+                        }
+                        .enumerate()
+                        .take(index + 1)
+                        .skip((*last_mismatch_pos + 1) as usize)
+                        .map(|(j, &base_j)| {
+                            let idx_mapped_to_read =
+                                directed_index(j, full_pattern_length, direction);
+                            let best_penalty_mm_only =
+                                alignment_parameters.difference_model.get_min_penalty(
+                                    idx_mapped_to_read,
+                                    full_pattern_length,
+                                    base_j,
+                                    base_qualities_part
+                                        [directed_index(j, base_qualities_part.len(), direction)],
+                                    true,
+                                );
+                            let optimal_penalty =
+                                alignment_parameters.difference_model.get_min_penalty(
+                                    idx_mapped_to_read,
+                                    full_pattern_length,
+                                    base_j,
+                                    base_qualities_part
+                                        [directed_index(j, base_qualities_part.len(), direction)],
+                                    false,
+                                );
+                            // The optimal penalty, conditioning on position and base, is subtracted because we
+                            // optimize the ratio `AS/optimal_AS` (in log space) to find the best mappings
+                            best_penalty_mm_only - optimal_penalty
+                        })
+                        .fold(std::f32::MIN, |acc, penalty| acc.max(penalty))
+                        .max(alignment_parameters.penalty_gap_open)
+                        .max(alignment_parameters.penalty_gap_extend);
                         *interval = fmd_index.init_interval();
-                        *last_mismatch_pos = Some(index);
+                        *last_mismatch_pos = index as i16;
                     }
                     Some(*z)
                 },
-            )
-            .collect()
+            ),
+        )
     }
 
     fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
@@ -497,9 +554,8 @@ impl BiDArray {
                     + self.d_forwards.get(forward_index)?,
             )
         };
-        let out = inner().unwrap_or(0.0);
-        debug_assert!(out <= 0.0);
-        out
+
+        inner().unwrap_or(0.0)
     }
 }
 
@@ -1355,7 +1411,7 @@ pub fn k_mismatch_search(
         }
 
         // Limit stack size
-        if stack.len() >= STACK_LIMIT as usize || edit_tree.len() >= EDIT_TREE_LIMIT as usize {
+        if stack.len() > STACK_LIMIT as usize || edit_tree.len() > EDIT_TREE_LIMIT as usize {
             if !stack_size_limit_reported {
                 trace!(
                     "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (size: {}).",
@@ -1365,12 +1421,11 @@ pub fn k_mismatch_search(
                 stack_size_limit_reported = true;
             }
 
-            for _ in 0..((stack.len() - STACK_LIMIT as usize)
-                .max(edit_tree.len() - EDIT_TREE_LIMIT as usize))
+            for _ in 0..(stack.len() - STACK_LIMIT as usize)
+                .max(edit_tree.len() - EDIT_TREE_LIMIT as usize)
             {
-                if let Some(poor_frame) = stack.pop_min() {
-                    edit_tree.remove(poor_frame.edit_node_id);
-                }
+                let poor_frame = stack.pop_min().expect("This is not expected to fail");
+                edit_tree.remove(poor_frame.edit_node_id);
             }
         }
     }
@@ -1523,7 +1578,7 @@ pub mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -3.6297126, -3.6297126]);
+        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -3.6297126, -5.4444757]);
         assert_eq!(
             &*bi_d_array.d_forwards,
             &[0.0, -3.8959491, -3.8959491, -9.413074]
