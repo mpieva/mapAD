@@ -1414,9 +1414,10 @@ pub fn k_mismatch_search(
         if stack.len() > STACK_LIMIT as usize || edit_tree.len() > EDIT_TREE_LIMIT as usize {
             if !stack_size_limit_reported {
                 trace!(
-                    "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (size: {}).",
+                    "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (stack size: {}, edit tree size: {}).",
                     pattern.len(),
                     stack.len(),
+                    edit_tree.len(),
                 );
                 stack_size_limit_reported = true;
             }
