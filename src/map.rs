@@ -1321,6 +1321,10 @@ pub fn k_mismatch_search(
 
         // Bidirectional extension of the (hit) interval
         for (c, mut interval_prime) in fmd_index.extend_iter(&fmd_ext_interval) {
+            if interval_prime.size < 1 {
+                continue;
+            }
+
             // Special treatment of forward extension
             let c = match stack_frame.direction {
                 Direction::Forward => {
@@ -1329,10 +1333,6 @@ pub fn k_mismatch_search(
                 }
                 Direction::Backward => fmd_index.get_rev(c),
             };
-
-            if interval_prime.size < 1 {
-                continue;
-            }
 
             //
             // Deletion in read / insertion in reference
