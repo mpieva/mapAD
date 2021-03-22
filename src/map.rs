@@ -88,6 +88,7 @@ impl Direction {
         }
     }
 
+    #[allow(dead_code)]
     fn is_forward(self) -> bool {
         use self::Direction::*;
         match self {
@@ -96,6 +97,7 @@ impl Direction {
         }
     }
 
+    #[allow(dead_code)]
     fn is_backward(self) -> bool {
         !self.is_forward()
     }
@@ -1207,23 +1209,70 @@ pub fn k_mismatch_search(
 
     while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
-        let (j, next_backward_index, next_forward_index, fmd_ext_interval);
+        let (
+            j,
+            next_backward_index,
+            next_forward_index,
+            fmd_ext_interval,
+            next_insertion_backward,
+            next_insertion_forward,
+            next_deletion_backward,
+            next_deletion_forward,
+            mut insertion_score,
+            mut deletion_score,
+            next_closed_gap_backward,
+            next_closed_gap_forward,
+        );
         match stack_frame.direction {
             Direction::Forward => {
                 next_forward_index = stack_frame.forward_index + 1;
                 next_backward_index = stack_frame.backward_index;
                 j = stack_frame.forward_index;
                 fmd_ext_interval = stack_frame.current_interval.swapped();
+                next_insertion_backward = stack_frame.gap_backwards;
+                next_insertion_forward = GapState::Insertion;
+                next_deletion_backward = stack_frame.gap_backwards;
+                next_deletion_forward = GapState::Deletion;
+                next_closed_gap_backward = stack_frame.gap_backwards;
+                next_closed_gap_forward = GapState::Closed;
+                insertion_score = if stack_frame.gap_forwards == GapState::Insertion {
+                    parameters.penalty_gap_extend
+                } else {
+                    parameters.penalty_gap_open
+                };
+                deletion_score = if stack_frame.gap_forwards == GapState::Deletion {
+                    parameters.penalty_gap_extend
+                } else {
+                    parameters.penalty_gap_open
+                };
             }
             Direction::Backward => {
                 next_forward_index = stack_frame.forward_index;
                 next_backward_index = stack_frame.backward_index - 1;
                 j = stack_frame.backward_index;
                 fmd_ext_interval = stack_frame.current_interval;
+                next_insertion_backward = GapState::Insertion;
+                next_insertion_forward = stack_frame.gap_forwards;
+                next_deletion_backward = GapState::Deletion;
+                next_deletion_forward = stack_frame.gap_forwards;
+                next_closed_gap_backward = GapState::Closed;
+                next_closed_gap_forward = stack_frame.gap_forwards;
+                insertion_score = if stack_frame.gap_backwards == GapState::Insertion {
+                    parameters.penalty_gap_extend
+                } else {
+                    parameters.penalty_gap_open
+                };
+                deletion_score = if stack_frame.gap_backwards == GapState::Deletion {
+                    parameters.penalty_gap_extend
+                } else {
+                    parameters.penalty_gap_open
+                };
             }
         };
 
         let optimal_penalty = optimal_penalties[j as usize];
+        insertion_score = insertion_score - optimal_penalty + stack_frame.alignment_score;
+        deletion_score += stack_frame.alignment_score;
 
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
@@ -1245,20 +1294,9 @@ pub fn k_mismatch_search(
         // Insertion in read / deletion in reference
         //
         {
-            let new_alignment_score = if (stack_frame.gap_backwards == GapState::Insertion
-                && stack_frame.direction.is_backward())
-                || (stack_frame.gap_forwards == GapState::Insertion
-                    && stack_frame.direction.is_forward())
-            {
-                parameters.penalty_gap_extend
-            } else {
-                parameters.penalty_gap_open
-            } - optimal_penalty
-                + stack_frame.alignment_score;
-
             if !parameters
                 .mismatch_bound
-                .reject(new_alignment_score + lower_bound, pattern.len())
+                .reject(insertion_score + lower_bound, pattern.len())
             {
                 check_and_push_stack_frame(
                     MismatchSearchStackFrame {
@@ -1266,17 +1304,9 @@ pub fn k_mismatch_search(
                         forward_index: next_forward_index,
                         direction: stack_frame.direction.reverse(),
                         // Mark opened gap at the corresponding end
-                        gap_backwards: if stack_frame.direction.is_backward() {
-                            GapState::Insertion
-                        } else {
-                            stack_frame.gap_backwards
-                        },
-                        gap_forwards: if stack_frame.direction.is_forward() {
-                            GapState::Insertion
-                        } else {
-                            stack_frame.gap_forwards
-                        },
-                        alignment_score: new_alignment_score,
+                        gap_backwards: next_insertion_backward,
+                        gap_forwards: next_insertion_forward,
+                        alignment_score: insertion_score,
                         ..stack_frame
                     },
                     pattern,
@@ -1308,35 +1338,17 @@ pub fn k_mismatch_search(
             // Deletion in read / insertion in reference
             //
             {
-                let new_alignment_score = if (stack_frame.gap_backwards == GapState::Deletion
-                    && stack_frame.direction.is_backward())
-                    || (stack_frame.gap_forwards == GapState::Deletion
-                        && stack_frame.direction.is_forward())
-                {
-                    parameters.penalty_gap_extend
-                } else {
-                    parameters.penalty_gap_open
-                } + stack_frame.alignment_score;
-
                 if !parameters
                     .mismatch_bound
-                    .reject(new_alignment_score + lower_bound, pattern.len())
+                    .reject(deletion_score + lower_bound, pattern.len())
                 {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
                             current_interval: interval_prime,
                             // Mark open gap at the corresponding end
-                            gap_backwards: if stack_frame.direction.is_backward() {
-                                GapState::Deletion
-                            } else {
-                                stack_frame.gap_backwards
-                            },
-                            gap_forwards: if stack_frame.direction.is_forward() {
-                                GapState::Deletion
-                            } else {
-                                stack_frame.gap_forwards
-                            },
-                            alignment_score: new_alignment_score,
+                            gap_backwards: next_deletion_backward,
+                            gap_forwards: next_deletion_forward,
+                            alignment_score: deletion_score,
                             ..stack_frame
                         },
                         pattern,
@@ -1373,16 +1385,8 @@ pub fn k_mismatch_search(
                             forward_index: next_forward_index,
                             direction: stack_frame.direction.reverse(),
                             // Mark closed gap at the corresponding end
-                            gap_backwards: if stack_frame.direction.is_backward() {
-                                GapState::Closed
-                            } else {
-                                stack_frame.gap_backwards
-                            },
-                            gap_forwards: if stack_frame.direction.is_forward() {
-                                GapState::Closed
-                            } else {
-                                stack_frame.gap_forwards
-                            },
+                            gap_backwards: next_closed_gap_backward,
+                            gap_forwards: next_closed_gap_forward,
                             alignment_score: new_alignment_score,
                             ..stack_frame
                         },
