@@ -299,7 +299,6 @@ enum GapState {
 /// This is used as key for the priority stack.
 #[derive(Debug)]
 pub struct MismatchSearchStackFrame {
-    j: i16,
     current_interval: RtBiInterval,
     backward_index: i16,
     forward_index: i16,
@@ -1127,7 +1126,7 @@ fn check_and_push_stack_frame(
         .expect("We bound the length of `edit_tree` at `STACK_LIMIT` < `u32`");
 
     // This route through the read graph is finished successfully, push the interval
-    if stack_frame.j < 0 || stack_frame.j > (pattern.len() as i16 - 1) {
+    if stack_frame.backward_index < 0 && stack_frame.forward_index > (pattern.len() as i16 - 1) {
         let edit_operations =
             extract_edit_operations(stack_frame.edit_node_id, edit_tree, pattern.len());
         intervals.push(HitInterval {
@@ -1196,7 +1195,6 @@ pub fn k_mismatch_search(
     let root_node = edit_tree.clear();
 
     stack.push(MismatchSearchStackFrame {
-        j: center_of_read as i16,
         current_interval: fmd_index.init_interval(),
         backward_index: center_of_read as i16 - 1,
         forward_index: center_of_read as i16,
@@ -1209,23 +1207,23 @@ pub fn k_mismatch_search(
 
     while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
-        let (next_j, next_backward_index, next_forward_index, fmd_ext_interval);
+        let (j, next_backward_index, next_forward_index, fmd_ext_interval);
         match stack_frame.direction {
             Direction::Forward => {
                 next_forward_index = stack_frame.forward_index + 1;
                 next_backward_index = stack_frame.backward_index;
-                next_j = stack_frame.backward_index;
+                j = stack_frame.forward_index;
                 fmd_ext_interval = stack_frame.current_interval.swapped();
             }
             Direction::Backward => {
                 next_forward_index = stack_frame.forward_index;
                 next_backward_index = stack_frame.backward_index - 1;
-                next_j = stack_frame.forward_index;
+                j = stack_frame.backward_index;
                 fmd_ext_interval = stack_frame.current_interval;
             }
         };
 
-        let optimal_penalty = optimal_penalties[stack_frame.j as usize];
+        let optimal_penalty = optimal_penalties[j as usize];
 
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
@@ -1264,7 +1262,6 @@ pub fn k_mismatch_search(
             {
                 check_and_push_stack_frame(
                     MismatchSearchStackFrame {
-                        j: next_j,
                         backward_index: next_backward_index,
                         forward_index: next_forward_index,
                         direction: stack_frame.direction.reverse(),
@@ -1284,7 +1281,7 @@ pub fn k_mismatch_search(
                     },
                     pattern,
                     &parameters,
-                    EditOperation::Insertion(stack_frame.j as u16),
+                    EditOperation::Insertion(j as u16),
                     edit_tree,
                     stack,
                     &mut hit_intervals,
@@ -1344,7 +1341,7 @@ pub fn k_mismatch_search(
                         },
                         pattern,
                         &parameters,
-                        EditOperation::Deletion(stack_frame.j as u16, c),
+                        EditOperation::Deletion(j as u16, c),
                         edit_tree,
                         stack,
                         &mut hit_intervals,
@@ -1357,11 +1354,11 @@ pub fn k_mismatch_search(
             //
             {
                 let new_alignment_score = parameters.difference_model.get(
-                    stack_frame.j as usize,
+                    j as usize,
                     pattern.len(),
                     c,
-                    pattern[stack_frame.j as usize],
-                    base_qualities[stack_frame.j as usize],
+                    pattern[j as usize],
+                    base_qualities[j as usize],
                 ) - optimal_penalty
                     + stack_frame.alignment_score;
 
@@ -1371,7 +1368,6 @@ pub fn k_mismatch_search(
                 {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
-                            j: next_j,
                             current_interval: interval_prime,
                             backward_index: next_backward_index,
                             forward_index: next_forward_index,
@@ -1392,10 +1388,10 @@ pub fn k_mismatch_search(
                         },
                         pattern,
                         &parameters,
-                        if c == pattern[stack_frame.j as usize] {
-                            EditOperation::Match(stack_frame.j as u16)
+                        if c == pattern[j as usize] {
+                            EditOperation::Match(j as u16)
                         } else {
-                            EditOperation::Mismatch(stack_frame.j as u16, c)
+                            EditOperation::Mismatch(j as u16, c)
                         },
                         edit_tree,
                         stack,
@@ -1756,7 +1752,6 @@ pub mod tests {
 
         let map_params_large = MismatchSearchStackFrame {
             alignment_score: -5.0,
-            j: 0,
             current_interval: RtBiInterval {
                 lower: 5,
                 lower_rev: 5,
@@ -1771,7 +1766,6 @@ pub mod tests {
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
-            j: 0,
             current_interval: RtBiInterval {
                 lower: 5,
                 lower_rev: 5,
@@ -2726,6 +2720,6 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
 
     #[test]
     fn stack_frame_size() {
-        assert_eq!(48, std::mem::size_of::<MismatchSearchStackFrame>());
+        assert_eq!(40, std::mem::size_of::<MismatchSearchStackFrame>());
     }
 }
