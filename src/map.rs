@@ -2723,4 +2723,9 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         ]);
         assert_eq!(edop_track_3.effective_len(), 4);
     }
+
+    #[test]
+    fn stack_frame_size() {
+        assert_eq!(48, std::mem::size_of::<MismatchSearchStackFrame>());
+    }
 }
