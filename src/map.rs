@@ -1214,20 +1214,23 @@ pub fn k_mismatch_search(
             next_backward_index,
             next_forward_index,
             fmd_ext_interval,
+            optimal_penalty,
             next_insertion_backward,
             next_insertion_forward,
             next_deletion_backward,
             next_deletion_forward,
-            mut insertion_score,
-            mut deletion_score,
+            insertion_score,
+            deletion_score,
             next_closed_gap_backward,
             next_closed_gap_forward,
         );
+        let mut mm_scores = [0_f32; 4];
         match stack_frame.direction {
             Direction::Forward => {
                 next_forward_index = stack_frame.forward_index + 1;
                 next_backward_index = stack_frame.backward_index;
                 j = stack_frame.forward_index;
+                optimal_penalty = optimal_penalties[j as usize];
                 fmd_ext_interval = stack_frame.current_interval.swapped();
                 next_insertion_backward = stack_frame.gap_backwards;
                 next_insertion_forward = GapState::Insertion;
@@ -1239,17 +1242,29 @@ pub fn k_mismatch_search(
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                };
+                } - optimal_penalty
+                    + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_forwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                };
+                } + stack_frame.alignment_score;
+                for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
+                    *score = parameters.difference_model.get(
+                        j as usize,
+                        pattern.len(),
+                        dna::complement(base),
+                        pattern[j as usize],
+                        base_qualities[j as usize],
+                    ) - optimal_penalty
+                        + stack_frame.alignment_score;
+                }
             }
             Direction::Backward => {
                 next_forward_index = stack_frame.forward_index;
                 next_backward_index = stack_frame.backward_index - 1;
                 j = stack_frame.backward_index;
+                optimal_penalty = optimal_penalties[j as usize];
                 fmd_ext_interval = stack_frame.current_interval;
                 next_insertion_backward = GapState::Insertion;
                 next_insertion_forward = stack_frame.gap_forwards;
@@ -1261,18 +1276,25 @@ pub fn k_mismatch_search(
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                };
+                } - optimal_penalty
+                    + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_backwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                };
+                } + stack_frame.alignment_score;
+                for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
+                    *score = parameters.difference_model.get(
+                        j as usize,
+                        pattern.len(),
+                        base,
+                        pattern[j as usize],
+                        base_qualities[j as usize],
+                    ) - optimal_penalty
+                        + stack_frame.alignment_score;
+                }
             }
         };
-
-        let optimal_penalty = optimal_penalties[j as usize];
-        insertion_score = insertion_score - optimal_penalty + stack_frame.alignment_score;
-        deletion_score += stack_frame.alignment_score;
 
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
@@ -1320,7 +1342,10 @@ pub fn k_mismatch_search(
         }
 
         // Bidirectional extension of the (hit) interval
-        for (c, mut interval_prime) in fmd_index.extend_iter(&fmd_ext_interval) {
+        for ((c, mut interval_prime), mm_score) in fmd_index
+            .extend_iter(&fmd_ext_interval)
+            .zip(mm_scores.iter())
+        {
             if interval_prime.size < 1 {
                 continue;
             }
@@ -1365,18 +1390,9 @@ pub fn k_mismatch_search(
             // Match/mismatch
             //
             {
-                let new_alignment_score = parameters.difference_model.get(
-                    j as usize,
-                    pattern.len(),
-                    c,
-                    pattern[j as usize],
-                    base_qualities[j as usize],
-                ) - optimal_penalty
-                    + stack_frame.alignment_score;
-
                 if !parameters
                     .mismatch_bound
-                    .reject(new_alignment_score + lower_bound, pattern.len())
+                    .reject(mm_score + lower_bound, pattern.len())
                 {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
@@ -1387,7 +1403,7 @@ pub fn k_mismatch_search(
                             // Mark closed gap at the corresponding end
                             gap_backwards: next_closed_gap_backward,
                             gap_forwards: next_closed_gap_forward,
-                            alignment_score: new_alignment_score,
+                            alignment_score: *mm_score,
                             ..stack_frame
                         },
                         pattern,
