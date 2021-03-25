@@ -1,6 +1,6 @@
 [package]
 name = "mapad"
-version = "0.0.30"
+version = "0.0.31-alpha.0"
 description = "An aDNA aware short-read mapper"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 edition = "2018"

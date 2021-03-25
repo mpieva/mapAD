@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "mapad"
-version = "0.0.30"
+version = "0.0.31-alpha.0"
 dependencies = [
  "assert_approx_eq",
  "bincode",
