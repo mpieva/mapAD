@@ -87,6 +87,7 @@ pub struct SimpleAncientDnaModel {
 }
 
 impl SequenceDifferenceModel for SimpleAncientDnaModel {
+    #[inline]
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32 {
         let fp_dist = i;
         let tp_dist = read_length - 1 - i;
