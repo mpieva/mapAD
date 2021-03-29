@@ -188,6 +188,16 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .validator(probability_validator),
                 )
                 .arg(
+                    Arg::with_name("gap_extension_penalty")
+                        .required(true)
+                        .short("g")
+                        .help("Gap extension penalty as a fraction of the representative mismatch penalty")
+                        .takes_value(true)
+                        .value_name("FLOAT")
+                        .default_value("1.0")
+                        .validator(probability_validator),
+                )
+                .arg(
                     Arg::with_name("chunk_size")
                         .required(true)
                         .long("batch_size")
@@ -373,7 +383,9 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         penalty_gap_open: value_t!(arg_matches.value_of("indel_rate"), f32)
             .unwrap_or_else(|e| e.exit())
             .log2(),
-        penalty_gap_extend: difference_model.get_representative_mismatch_penalty(), // FIXME
+        penalty_gap_extend: value_t!(arg_matches.value_of("gap_extension_penalty"), f32)
+            .unwrap_or_else(|e| e.exit())
+            * difference_model.get_representative_mismatch_penalty(),
         difference_model,
         chunk_size: value_t!(arg_matches.value_of("chunk_size"), usize)
             .unwrap_or_else(|e| e.exit()),
