@@ -190,7 +190,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 .arg(
                     Arg::with_name("gap_extension_penalty")
                         .required(true)
-                        .short("g")
+                        .short("x")
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
                         .takes_value(true)
                         .value_name("FLOAT")
