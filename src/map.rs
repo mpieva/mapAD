@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     backtrack_tree::{NodeId, Tree},
     errors::{Error, Result},
-    fmd_index::{RtBiInterval, RtFMDIndex},
+    fmd_index::{RtBiInterval, RtFmdIndex},
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
     utils::{load_index_from_path, AlignmentParameters, Record},
@@ -389,7 +389,7 @@ impl BiDArray {
         base_qualities: &[u8],
         split: usize,
         alignment_parameters: &AlignmentParameters,
-        fmd_index: &RtFMDIndex,
+        fmd_index: &RtFmdIndex,
     ) -> Self {
         // This value is never actually used as `u16` but this type
         // restricts the values to the valid range.
@@ -473,7 +473,7 @@ impl BiDArray {
         full_pattern_length: usize,
         initial_skip: i16,
         alignment_parameters: &'a AlignmentParameters,
-        fmd_index: &'a RtFMDIndex,
+        fmd_index: &'a RtFmdIndex,
     ) -> impl Iterator<Item = f32> + 'a {
         fn directed_index(index: usize, length: usize, direction: Direction) -> usize {
             match direction {
@@ -717,7 +717,7 @@ pub fn run(
 /// input file type
 fn run_inner<S, T>(
     records: ChunkIterator<T>,
-    fmd_index: &RtFMDIndex,
+    fmd_index: &RtFmdIndex,
     suffix_array: &S,
     alignment_parameters: &AlignmentParameters,
     identifier_position_map: &FastaIdPositions,
@@ -1175,7 +1175,7 @@ pub fn k_mismatch_search(
     pattern: &[u8],
     base_qualities: &[u8],
     parameters: &AlignmentParameters,
-    fmd_index: &RtFMDIndex,
+    fmd_index: &RtFmdIndex,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     edit_tree: &mut Tree<EditOperation>,
 ) -> BinaryHeap<HitInterval> {
@@ -1667,7 +1667,7 @@ pub mod tests {
 
     #[test]
     fn test_vindija_pwm_alignment() {
-        let difference_model = SequenceDifferenceModelDispatch::from(VindijaPWM::new());
+        let difference_model = SequenceDifferenceModelDispatch::from(VindijaPwm::new());
 
         let parameters = AlignmentParameters {
             difference_model,
@@ -1806,7 +1806,7 @@ pub mod tests {
 
     #[test]
     fn test_corner_cases() {
-        let difference_model = SequenceDifferenceModelDispatch::from(VindijaPWM::new());
+        let difference_model = SequenceDifferenceModelDispatch::from(VindijaPwm::new());
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
 
         let parameters = AlignmentParameters {

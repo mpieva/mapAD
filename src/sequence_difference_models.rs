@@ -60,7 +60,7 @@ pub trait SequenceDifferenceModel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SequenceDifferenceModelDispatch {
     SimpleAncientDnaModel,
-    VindijaPWM,
+    VindijaPwm,
     TestDifferenceModel,
 }
 
@@ -202,16 +202,16 @@ impl SimpleAncientDnaModel {
 /// It only takes C->T deaminations into account and assumes
 /// symmetry between 5' and 3' ends of the deamination pattern.
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
-pub struct VindijaPWM {
+pub struct VindijaPwm {
     // "Sparse" position probability matrix
     ppm_read_ends_symmetric_ct: [f32; 7],
     position_probability_ct_default: f32,
     observed_substitution_probability_default: f32,
 }
 
-impl VindijaPWM {
+impl VindijaPwm {
     pub fn new() -> Self {
-        VindijaPWM {
+        VindijaPwm {
             // The following values are roughly derived with
             // the naked eye from Prüfer et al. (2017), Fig. S3.
             ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
@@ -221,7 +221,7 @@ impl VindijaPWM {
     }
 }
 
-impl SequenceDifferenceModel for VindijaPWM {
+impl SequenceDifferenceModel for VindijaPwm {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, _base_quality: u8) -> f32 {
         let position_probability = match from {
             b'C' => {
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_vindija_pwm() {
-        let vindija_pwm = VindijaPWM::new();
+        let vindija_pwm = VindijaPwm::new();
         let read_length = 35;
 
         //        println!("Vindija PWM");

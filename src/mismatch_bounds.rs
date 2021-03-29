@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_allowed_mismatches() {
-        let difference_model = VindijaPWM::new();
+        let difference_model = VindijaPwm::new();
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
         let mismatch_bound = Discrete::new(0.04, 0.02, repr_mm_penalty);
 
@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn test_allowed_mismatches_bwa_ancient_parameters() {
-        let difference_model = VindijaPWM::new();
+        let difference_model = VindijaPwm::new();
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
         let mismatch_bound = Discrete::new(0.01, 0.02, repr_mm_penalty);
 
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let difference_model = VindijaPWM::new();
+        let difference_model = VindijaPwm::new();
         let representative_mismatch_boundary =
             difference_model.get_representative_mismatch_penalty();
         let mismatch_bound = Discrete::new(0.06, 0.02, representative_mismatch_boundary);

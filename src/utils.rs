@@ -1,5 +1,5 @@
 use crate::{
-    errors::Result, fmd_index::RtFMDIndex, mismatch_bounds::MismatchBoundDispatch,
+    errors::Result, fmd_index::RtFmdIndex, mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
 };
 
@@ -168,7 +168,7 @@ pub struct AlignmentParameters {
     pub chunk_size: usize,
 }
 
-pub fn load_index_from_path(path: &str) -> Result<RtFMDIndex> {
+pub fn load_index_from_path(path: &str) -> Result<RtFmdIndex> {
     debug!("Load BWT");
     let bwt: BWT = {
         let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);
@@ -194,14 +194,14 @@ pub fn load_index_from_path(path: &str) -> Result<RtFMDIndex> {
     };
 
     debug!("Reconstruct index");
-    Ok(RtFMDIndex::new(bwt, less, occ, rt))
+    Ok(RtFmdIndex::new(bwt, less, occ, rt))
 }
 
 /// This is only used in tests and benchmarks
 pub fn build_auxiliary_structures(
     mut reference: Vec<u8>,
     mut src_alphabet: alphabets::Alphabet,
-) -> (RtFMDIndex, RawSuffixArray) {
+) -> (RtFmdIndex, RawSuffixArray) {
     let ref_seq_revcomp = alphabets::dna::revcomp(reference.iter());
     reference.extend_from_slice(b"$");
     reference.extend_from_slice(&ref_seq_revcomp);
@@ -218,5 +218,5 @@ pub fn build_auxiliary_structures(
     let less = less(&bwt, &rank_alphabet);
     let occ = Occ::new(&bwt, 3, &rank_alphabet);
 
-    (RtFMDIndex::new(bwt, less, occ, rank_transform), sar)
+    (RtFmdIndex::new(bwt, less, occ, rank_transform), sar)
 }

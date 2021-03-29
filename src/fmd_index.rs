@@ -9,7 +9,7 @@ use bio::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct RtFMDIndex {
+pub struct RtFmdIndex {
     bwt: BWT,
     less: Less,
     occ: Occ,
@@ -17,7 +17,7 @@ pub struct RtFMDIndex {
     back_transform: Vec<u8>,
 }
 
-impl FMIndexable for RtFMDIndex {
+impl FMIndexable for RtFmdIndex {
     fn occ(&self, r: usize, a: u8) -> usize {
         self.occ.get(&self.bwt, r, a)
     }
@@ -31,7 +31,7 @@ impl FMIndexable for RtFMDIndex {
 }
 
 /// FMD-Index (Li, 2012) that operates on ranks of symbols instead of their ASCII representations
-impl RtFMDIndex {
+impl RtFmdIndex {
     pub fn new(bwt: BWT, less: Less, occ: Occ, rank_transform: RankTransform) -> Self {
         let mut back_transform = rank_transform
             .ranks
@@ -82,8 +82,8 @@ impl RtFMDIndex {
     }
 
     /// Returns an Iterator over the alphabet to extend the RtBiInterval
-    pub fn extend_iter<'a>(&'a self, interval: &'a RtBiInterval) -> FMDExtIterator<'a> {
-        FMDExtIterator::new(interval, self)
+    pub fn extend_iter<'a>(&'a self, interval: &'a RtBiInterval) -> FmdExtIterator<'a> {
+        FmdExtIterator::new(interval, self)
     }
 
     pub fn get_rev(&self, a: u8) -> u8 {
@@ -92,15 +92,15 @@ impl RtFMDIndex {
 }
 
 /// Extension of a RtBiInterval, implemented as an Iterator over the alphabet
-pub struct FMDExtIterator<'a> {
+pub struct FmdExtIterator<'a> {
     s: usize,
     l: usize,
     c: u8,
     input_interval: &'a RtBiInterval,
-    fmd_index: &'a RtFMDIndex,
+    fmd_index: &'a RtFmdIndex,
 }
 
-impl<'a> Iterator for FMDExtIterator<'a> {
+impl<'a> Iterator for FmdExtIterator<'a> {
     type Item = (u8, RtBiInterval);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -117,10 +117,10 @@ impl<'a> Iterator for FMDExtIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for FMDExtIterator<'a> {}
+impl<'a> ExactSizeIterator for FmdExtIterator<'a> {}
 
-impl<'a> FMDExtIterator<'a> {
-    fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFMDIndex) -> Self {
+impl<'a> FmdExtIterator<'a> {
+    fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFmdIndex) -> Self {
         let mut initial_state = Self {
             s: 0,
             l: interval.lower_rev,

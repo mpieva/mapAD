@@ -2,7 +2,7 @@ use crate::{
     backtrack_tree::Tree,
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
     errors::{Error, Result},
-    fmd_index::RtFMDIndex,
+    fmd_index::RtFmdIndex,
     map,
     utils::{load_index_from_path, AlignmentParameters},
 };
@@ -19,7 +19,7 @@ use std::{
 pub struct Worker {
     network_buffer: TaskRxBuffer,
     connection: TcpStream,
-    fmd_index: Option<RtFMDIndex>,
+    fmd_index: Option<RtFmdIndex>,
     alignment_parameters: Option<AlignmentParameters>,
 }
 
