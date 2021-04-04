@@ -530,7 +530,7 @@ impl BiDArray {
                             // optimize the ratio `AS/optimal_AS` (in log space) to find the best mappings
                             best_penalty_mm_only - optimal_penalty
                         })
-                        .fold(std::f32::MIN, |acc, penalty| acc.max(penalty))
+                        .fold(f32::MIN, |acc, penalty| acc.max(penalty))
                         .max(alignment_parameters.penalty_gap_open)
                         .max(alignment_parameters.penalty_gap_extend);
                         *interval = fmd_index.init_interval();

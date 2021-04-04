@@ -2,7 +2,7 @@ use either::Either;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-const MAX_ENCODED_BASE_QUALITY: u8 = u8::max_value();
+const MAX_ENCODED_BASE_QUALITY: u8 = u8::MAX;
 
 /// Sequence difference models are expected to yield only non-positive values (and 0.0), for example log probabilities.
 #[enum_dispatch]
@@ -48,7 +48,7 @@ pub trait SequenceDifferenceModel {
             Either::Right(iterator)
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
-        .fold(std::f32::MIN, |acc, v| acc.max(v))
+        .fold(f32::MIN, |acc, v| acc.max(v))
         .min(0.0)
     }
 }

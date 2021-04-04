@@ -97,24 +97,21 @@ impl Display for Discrete {
         let text = {
             let mut tmp = (Self::MIN_READ_LENGTH..=MAX_CACHED_READ_LENGTH)
                 .map(|read_length| (read_length, self.get(read_length)))
-                .scan(
-                    std::f32::MIN,
-                    |previous, (read_length, allowed_mismatches)| {
-                        if (allowed_mismatches - *previous).abs() > std::f32::EPSILON {
-                            *previous = allowed_mismatches;
-                            Some(Some((read_length, allowed_mismatches)))
-                        } else {
-                            Some(None)
-                        }
-                    },
-                )
+                .scan(f32::MIN, |previous, (read_length, allowed_mismatches)| {
+                    if (allowed_mismatches - *previous).abs() > f32::EPSILON {
+                        *previous = allowed_mismatches;
+                        Some(Some((read_length, allowed_mismatches)))
+                    } else {
+                        Some(None)
+                    }
+                })
                 .flatten()
                 .map(|(read_length, allowed_mismatches)| {
                     format!(
                         "{:>width$} bp:\t{} {}\n",
                         read_length,
                         allowed_mismatches,
-                        if allowed_mismatches > 1.0 + std::f32::EPSILON {
+                        if allowed_mismatches > 1.0 + f32::EPSILON {
                             "mismatches"
                         } else {
                             "mismatch"
