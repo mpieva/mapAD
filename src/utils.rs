@@ -1,5 +1,12 @@
 use crate::{
-    errors::Result, fmd_index::RtFmdIndex, mismatch_bounds::MismatchBoundDispatch,
+    errors::{Error, Result},
+    fmd_index::RtFmdIndex,
+    index::{
+        VersionedBwt, VersionedIdPosMap, VersionedLess, VersionedOcc, VersionedRt,
+        VersionedSuffixArray, INDEX_VERSION,
+    },
+    map::FastaIdPositions,
+    mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
 };
 
@@ -7,7 +14,7 @@ use bio::{
     alphabets,
     alphabets::{dna, RankTransform},
     data_structures::{
-        bwt::{bwt, less, Less, Occ, BWT},
+        bwt::{bwt, less, Occ, BWT},
         suffix_array::{suffix_array, RawSuffixArray},
     },
     io::fastq,
@@ -168,29 +175,70 @@ pub struct AlignmentParameters {
     pub chunk_size: usize,
 }
 
-pub fn load_index_from_path(path: &str) -> Result<RtFmdIndex> {
+pub fn load_suffix_array_from_path(reference_path: &str) -> Result<RawSuffixArray> {
+    let d_suffix_array =
+        snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
+    let versioned_suffix_array: VersionedSuffixArray = bincode::deserialize_from(d_suffix_array)?;
+    if versioned_suffix_array.version == INDEX_VERSION {
+        Ok(versioned_suffix_array.data)
+    } else {
+        Err(Error::IndexVersionMismatch)
+    }
+}
+
+pub fn load_id_pos_map_from_path(reference_path: &str) -> Result<FastaIdPositions> {
+    let d_pi = snap::read::FrameDecoder::new(File::open(format!("{}.tpi", reference_path))?);
+    let versioned_identifier_position_map: VersionedIdPosMap = bincode::deserialize_from(d_pi)?;
+    if versioned_identifier_position_map.version == INDEX_VERSION {
+        Ok(versioned_identifier_position_map.data)
+    } else {
+        Err(Error::IndexVersionMismatch)
+    }
+}
+
+pub fn load_index_from_path(reference_path: &str) -> Result<RtFmdIndex> {
     debug!("Load BWT");
     let bwt: BWT = {
-        let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", path))?);
-        bincode::deserialize_from(d_bwt)?
+        let d_bwt = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", reference_path))?);
+        let versioned_bwt: VersionedBwt = bincode::deserialize_from(d_bwt)?;
+        if versioned_bwt.version == INDEX_VERSION {
+            versioned_bwt.data
+        } else {
+            return Err(Error::IndexVersionMismatch);
+        }
     };
 
     debug!("Load \"C\" table");
-    let less: Less = {
-        let d_less = snap::read::FrameDecoder::new(File::open(format!("{}.tle", path))?);
-        bincode::deserialize_from(d_less)?
+    let less = {
+        let d_less = snap::read::FrameDecoder::new(File::open(format!("{}.tle", reference_path))?);
+        let versioned_less: VersionedLess = bincode::deserialize_from(d_less)?;
+        if versioned_less.version == INDEX_VERSION {
+            versioned_less.data
+        } else {
+            return Err(Error::IndexVersionMismatch);
+        }
     };
 
     debug!("Load \"Occ\" table");
-    let occ: Occ = {
-        let d_occ = snap::read::FrameDecoder::new(File::open(format!("{}.toc", path))?);
-        bincode::deserialize_from(d_occ)?
+    let occ = {
+        let d_occ = snap::read::FrameDecoder::new(File::open(format!("{}.toc", reference_path))?);
+        let versioned_occ: VersionedOcc = bincode::deserialize_from(d_occ)?;
+        if versioned_occ.version == INDEX_VERSION {
+            versioned_occ.data
+        } else {
+            return Err(Error::IndexVersionMismatch);
+        }
     };
 
     debug!("Load \"RT\" table");
-    let rt: RankTransform = {
-        let d_rt = snap::read::FrameDecoder::new(File::open(format!("{}.trt", path))?);
-        bincode::deserialize_from(d_rt)?
+    let rt = {
+        let d_rt = snap::read::FrameDecoder::new(File::open(format!("{}.trt", reference_path))?);
+        let versioned_rt: VersionedRt = bincode::deserialize_from(d_rt)?;
+        if versioned_rt.version == INDEX_VERSION {
+            versioned_rt.data
+        } else {
+            return Err(Error::IndexVersionMismatch);
+        }
     };
 
     debug!("Reconstruct index");

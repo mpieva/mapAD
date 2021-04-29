@@ -13,7 +13,6 @@ use rust_htslib::{bam, bam::Read as BamRead};
 
 use std::{
     collections::{BinaryHeap, HashMap},
-    fs::File,
     io,
     io::{Read, Write},
     iter::Map,
@@ -172,22 +171,20 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         // Things that determine the concrete values of the generics used in `run_inner(...)`
         // are set up here to allow static dispatch
         info!("Load position map");
-        let identifier_position_map: map::FastaIdPositions = {
-            let d_pi = snap::read::FrameDecoder::new(File::open(format!(
-                "{}.tpi",
-                &self.reference_path.display()
-            ))?);
-            bincode::deserialize_from(d_pi)?
-        };
+        let identifier_position_map =
+            load_id_pos_map_from_path(self.reference_path.to_str().ok_or_else(|| {
+                Error::InvalidIndex(
+                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
+                )
+            })?)?;
 
         info!("Load suffix array");
-        let suffix_array: Vec<usize> = {
-            let d_suffix_array = snap::read::FrameDecoder::new(File::open(format!(
-                "{}.tsa",
-                &self.reference_path.display()
-            ))?);
-            bincode::deserialize_from(d_suffix_array)?
-        };
+        let suffix_array =
+            load_suffix_array_from_path(self.reference_path.to_str().ok_or_else(|| {
+                Error::InvalidIndex(
+                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
+                )
+            })?)?;
 
         // Static dispatch of the Record type based on the filename extension
         match self

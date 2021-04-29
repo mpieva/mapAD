@@ -1,17 +1,18 @@
 use std::fs::File;
 
 use either::Either;
-use log::{debug, info};
+use log::info;
 use rand::{
     prelude::{Rng, SeedableRng, StdRng},
     seq::SliceRandom,
 };
+use serde::{Deserialize, Serialize};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
     data_structures::{
-        bwt::{bwt, less, Occ},
-        suffix_array::suffix_array,
+        bwt::{bwt, less, Less, Occ, BWT},
+        suffix_array::{suffix_array, RawSuffixArray},
     },
     io::fasta,
 };
@@ -20,6 +21,9 @@ use crate::{
     errors::Result,
     map::{FastaIdPosition, FastaIdPositions},
 };
+
+// Increase this number once the on-disk index changes
+pub const INDEX_VERSION: u8 = 0;
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 // Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
@@ -34,6 +38,43 @@ const DNA_NOT_A: &[u8; 3] = b"CGT";
 const DNA_NOT_C: &[u8; 3] = b"AGT";
 const DNA_NOT_G: &[u8; 3] = b"ACT";
 const DNA_NOT_T: &[u8; 3] = b"ACG";
+
+// Versioned index data structures
+#[derive(Serialize, Deserialize)]
+pub struct VersionedBwt {
+    pub version: u8,
+    pub data: BWT,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VersionedLess {
+    pub version: u8,
+    pub data: Less,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VersionedOcc {
+    pub version: u8,
+    pub data: Occ,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VersionedRt {
+    pub version: u8,
+    pub data: RankTransform,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VersionedIdPosMap {
+    pub version: u8,
+    pub data: FastaIdPositions,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VersionedSuffixArray {
+    pub version: u8,
+    pub data: RawSuffixArray,
+}
 
 /// Entry point function to launch the indexing process
 pub fn run(reference_path: &str, seed: u64) -> Result<()> {
@@ -119,8 +160,12 @@ fn index<T: Rng>(
         );
 
         info!("Save position map to disk");
+        let versioned_id_pos_map = VersionedIdPosMap {
+            version: INDEX_VERSION,
+            data: identifier_position_map,
+        };
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tpi", name))?);
-        bincode::serialize_into(&mut writer, &identifier_position_map)?;
+        bincode::serialize_into(&mut writer, &versioned_id_pos_map)?;
     }
 
     info!("Add reverse complement and sentinels to reference");
@@ -138,9 +183,13 @@ fn index<T: Rng>(
 
     {
         info!("Save \"RT\" table to disk");
+        let versioned_rt = VersionedRt {
+            version: INDEX_VERSION,
+            data: rank_transform,
+        };
         let mut writer_rank_transform =
             snap::write::FrameEncoder::new(File::create(format!("{}.trt", name))?);
-        bincode::serialize_into(&mut writer_rank_transform, &rank_transform)?;
+        bincode::serialize_into(&mut writer_rank_transform, &versioned_rt)?;
     }
 
     info!("Generate suffix array");
@@ -151,13 +200,14 @@ fn index<T: Rng>(
 
     {
         info!("Save suffix array to disk");
+        let versioned_suffix_array = VersionedSuffixArray {
+            version: INDEX_VERSION,
+            data: suffix_array,
+        };
         let mut writer_suffix_array =
             snap::write::FrameEncoder::new(File::create(format!("{}.tsa", name))?);
-        bincode::serialize_into(&mut writer_suffix_array, &suffix_array)?;
+        bincode::serialize_into(&mut writer_suffix_array, &versioned_suffix_array)?;
     }
-
-    debug!("Drop suffix array");
-    drop(suffix_array);
 
     info!("Generate \"C\" table");
     let less = less(&bwt, &alphabet);
@@ -167,20 +217,32 @@ fn index<T: Rng>(
 
     {
         info!("Save BWT to disk");
+        let versioned_bwt = VersionedBwt {
+            version: INDEX_VERSION,
+            data: bwt,
+        };
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tbw", name))?);
-        bincode::serialize_into(&mut writer, &bwt)?;
+        bincode::serialize_into(&mut writer, &versioned_bwt)?;
     }
 
     {
         info!("Save \"C\" table to disk");
+        let versioned_less = VersionedLess {
+            version: INDEX_VERSION,
+            data: less,
+        };
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tle", name))?);
-        bincode::serialize_into(&mut writer, &less)?;
+        bincode::serialize_into(&mut writer, &versioned_less)?;
     }
 
     {
         info!("Save \"Occ\" table to disk");
+        let versioned_occ = VersionedOcc {
+            version: INDEX_VERSION,
+            data: occ,
+        };
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.toc", name))?);
-        bincode::serialize_into(&mut writer, &occ)?;
+        bincode::serialize_into(&mut writer, &versioned_occ)?;
     }
 
     Ok(())

@@ -1,3 +1,5 @@
+use clap::crate_version;
+
 use core::fmt;
 use std::{error, io, result};
 
@@ -11,6 +13,7 @@ pub enum Error {
     Io(io::Error),
     InvalidInputType,
     InvalidIndex(String),
+    IndexVersionMismatch,
 }
 
 impl fmt::Display for Error {
@@ -21,6 +24,7 @@ impl fmt::Display for Error {
             Error::Io(err) => write!(f, "IO error: {}", err),
             Error::InvalidInputType => write!(f, "Please specify a path to an input file that ends either with \".bam\", \".fq\", or \".fastq\""),
             Error::InvalidIndex(err) => write!(f, "Index is invalid: {}", err),
+            Error::IndexVersionMismatch => write!(f, "The provided index is incompatible with version {} of {}. Please re-create the index.", crate_version!(), crate::map::CRATE_NAME),
         }
     }
 }

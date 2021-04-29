@@ -2,7 +2,6 @@ use std::{
     cell::RefCell,
     cmp::Ordering,
     collections::{binary_heap::BinaryHeap, BTreeMap},
-    fs::File,
     io,
     iter::Map,
     path::Path,
@@ -17,11 +16,7 @@ use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::{smallvec, SmallVec};
 
-use bio::{
-    alphabets::dna,
-    data_structures::suffix_array::{RawSuffixArray, SuffixArray},
-    io::fastq,
-};
+use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
 
 use rust_htslib::{bam, bam::Read};
 use serde::{Deserialize, Serialize};
@@ -32,7 +27,10 @@ use crate::{
     fmd_index::{RtBiInterval, RtFmdIndex},
     mismatch_bounds::MismatchBound,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
-    utils::{load_index_from_path, AlignmentParameters, Record},
+    utils::{
+        load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
+        AlignmentParameters, Record,
+    },
 };
 
 pub const CRATE_NAME: &str = "mapAD";
@@ -649,17 +647,10 @@ pub fn run(
     let fmd_index = load_index_from_path(reference_path)?;
 
     info!("Load suffix array");
-    let suffix_array: RawSuffixArray = {
-        let d_suffix_array =
-            snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
-        bincode::deserialize_from(d_suffix_array)?
-    };
+    let suffix_array = load_suffix_array_from_path(reference_path)?;
 
     info!("Load position map");
-    let identifier_position_map: FastaIdPositions = {
-        let d_pi = snap::read::FrameDecoder::new(File::open(format!("{}.tpi", reference_path))?);
-        bincode::deserialize_from(d_pi)?
-    };
+    let identifier_position_map = load_id_pos_map_from_path(reference_path)?;
 
     info!("Map reads");
     // Static dispatch of the Record type based on the filename extension
