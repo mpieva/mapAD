@@ -195,7 +195,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "The provided input file name contains invalid unicode",
+                    "Cannot access the input file (file path contains invalid UTF-8 unicode)",
                 )
             })? {
             "bam" => {

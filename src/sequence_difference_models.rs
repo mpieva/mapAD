@@ -1,5 +1,8 @@
+use std::{fmt, fmt::Display};
+
 use either::Either;
 use enum_dispatch::enum_dispatch;
+use log::info;
 use serde::{Deserialize, Serialize};
 
 const MAX_ENCODED_BASE_QUALITY: u8 = u8::MAX;
@@ -171,6 +174,28 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
     }
 }
 
+impl Display for SimpleAncientDnaModel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "\"Ordinary\" mismatch: {:.2}",
+            self.get_representative_mismatch_penalty()
+        )?;
+
+        writeln!(f, "Central C->T: {:.2}", self.get(25, 50, b'C', b'T', 37))?;
+
+        write!(f, "5' C->T: ")?;
+        (0..10).try_for_each(|pos| write!(f, "{:.2} ", self.get(pos, 50, b'C', b'T', 37)))?;
+
+        write!(f, "\n3' C->T: ")?;
+        (40..50)
+            .rev()
+            .try_for_each(|pos| write!(f, "{:.2} ", self.get(pos, 50, b'C', b'T', 37)))?;
+
+        Ok(())
+    }
+}
+
 impl SimpleAncientDnaModel {
     pub fn new(
         library_prep: LibraryPrep,
@@ -188,13 +213,19 @@ impl SimpleAncientDnaModel {
                 .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0) / 3.0)
                 .collect::<Vec<_>>()
         };
-        Self {
+        let out = Self {
             library_prep,
             ds_deamination_rate,
             ss_deamination_rate,
             divergence,
             cache,
-        }
+        };
+
+        // Requiring `Display` as a supertrait to `SequenceDifferenceModel` would be a better
+        // solution, but due to the static dispatch tricks it's not that simple.
+        info!("{}", out);
+
+        out
     }
 }
 
@@ -209,15 +240,9 @@ pub struct VindijaPwm {
     observed_substitution_probability_default: f32,
 }
 
-impl VindijaPwm {
-    pub fn new() -> Self {
-        VindijaPwm {
-            // The following values are roughly derived with
-            // the naked eye from Prüfer et al. (2017), Fig. S3.
-            ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
-            position_probability_ct_default: 0.02,
-            observed_substitution_probability_default: 0.0005,
-        }
+impl Display for VindijaPwm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "This is only for testing purposes.")
     }
 }
 
@@ -252,11 +277,29 @@ impl SequenceDifferenceModel for VindijaPwm {
     }
 }
 
+impl VindijaPwm {
+    pub fn new() -> Self {
+        VindijaPwm {
+            // The following values are roughly derived with
+            // the naked eye from Prüfer et al. (2017), Fig. S3.
+            ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],
+            position_probability_ct_default: 0.02,
+            observed_substitution_probability_default: 0.0005,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestDifferenceModel {
     pub deam_score: f32,
     pub mm_score: f32,
     pub match_score: f32,
+}
+
+impl Display for TestDifferenceModel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "This is only for testing purposes.")
+    }
 }
 
 impl SequenceDifferenceModel for TestDifferenceModel {
@@ -1153,5 +1196,21 @@ mod tests {
             adna_model.get(13, 25, b'C', b'C', 40),
             adna_model.get(0, 25, b'C', b'C', 40)
         );
+    }
+
+    #[test]
+    fn display_simple_adna_model() {
+        let adna_model = SimpleAncientDnaModel::new(
+            LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.4,
+                three_prime_overhang: 0.3,
+            },
+            0.02,
+            1.0,
+            0.02 / 3.0,
+            false,
+        );
+
+        println!("{}", adna_model);
     }
 }

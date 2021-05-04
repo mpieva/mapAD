@@ -285,4 +285,35 @@ mod tests {
 
         assert_eq!(comparison, format!("{}", mismatch_bound));
     }
+
+    #[test]
+    fn test_display_2() {
+        let difference_model = SimpleAncientDnaModel::new(
+            LibraryPrep::SingleStranded {
+                five_prime_overhang: 0.4,
+                three_prime_overhang: 0.4,
+            },
+            0.02,
+            1.0,
+            0.02,
+            false,
+        );
+        let representative_mismatch_boundary =
+            difference_model.get_representative_mismatch_penalty();
+        let mismatch_bound = Discrete::new(0.03, 0.02, representative_mismatch_boundary);
+
+        println!("{}", mismatch_bound);
+
+        let comparison = " 17 bp:\t2 mismatches
+ 34 bp:\t3 mismatches
+ 58 bp:\t4 mismatches
+ 86 bp:\t5 mismatches
+116 bp:\t6 mismatches
+147 bp:\t7 mismatches
+180 bp:\t8 mismatches
+213 bp:\t9 mismatches
+248 bp:\t10 mismatches";
+
+        assert_eq!(comparison, format!("{}", mismatch_bound));
+    }
 }

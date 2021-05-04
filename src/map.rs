@@ -371,9 +371,12 @@ impl FastaIdPositions {
     }
 }
 
-/// A reversed FMD-index is used to compute the lower bound of mismatches of a read per position.
-/// This allows for pruning the search tree. The values are minimal expected penalties towards
-/// the respective ends of the query. Like alignment scores, these values are negative.
+/// Compute the lower bound of mismatches of a read per position by aligning perfectly,
+/// starting from the read end and progressing to the center. As soon as the extension of
+/// the alignment is not possible, we found at least one mismatch and record that per
+/// read-position in the so-called D-array. The content of the array is used as "lookahead"
+/// score. This allows for pruning the search tree. The values are minimal expected penalties
+/// towards the respective ends of the query. Like alignment scores, these values are negative.
 #[derive(Debug)]
 struct BiDArray {
     d_backwards: SmallVec<[f32; 64]>,
