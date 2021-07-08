@@ -668,7 +668,7 @@ pub fn run(
             let mut reader = bam::Reader::from_path(reads_path)?;
             let _ = reader.set_threads(4);
             let header = create_bam_header(Some(&reader), &identifier_position_map);
-            let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+            let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::Bam)?;
             let _ = out_file.set_threads(4);
             run_inner(
                 reader
@@ -684,7 +684,7 @@ pub fn run(
         "fastq" | "fq" => {
             let reader = fastq::Reader::from_file(reads_path)?;
             let header = create_bam_header(None, &identifier_position_map);
-            let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::BAM)?;
+            let mut out_file = bam::Writer::from_path(out_file_path, &header, bam::Format::Bam)?;
             let _ = out_file.set_threads(4);
             run_inner(
                 reader

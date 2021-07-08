@@ -62,7 +62,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             b"@HD\tVN:1.0\n@RG\tID:A12345\n@SQ\tSN:chr1\tLN:600\n",
         ));
         let mut input_bam_file =
-            bam::Writer::from_path(&input_bam_path, &input_bam_header, bam::Format::BAM).unwrap();
+            bam::Writer::from_path(&input_bam_path, &input_bam_header, bam::Format::Bam).unwrap();
         for sam_line in sam_content.split(|&byte| byte == b'\n') {
             let bam_record = bam::Record::from_sam(input_bam_file.header(), sam_line).unwrap();
             input_bam_file.write(&bam_record).unwrap();

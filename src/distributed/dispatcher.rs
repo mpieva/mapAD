@@ -203,7 +203,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 let _ = reader.set_threads(4);
                 let header = map::create_bam_header(Some(&reader), &identifier_position_map);
                 let mut out_file =
-                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::BAM)?;
+                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::Bam)?;
                 let _ = out_file.set_threads(4);
                 let mut task_queue = reader
                     .records()
@@ -220,7 +220,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 let reader = fastq::Reader::from_file(self.reads_path)?;
                 let header = map::create_bam_header(None, &identifier_position_map);
                 let mut out_file =
-                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::BAM)?;
+                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::Bam)?;
                 let _ = out_file.set_threads(4);
                 let mut task_queue = reader
                     .records()
