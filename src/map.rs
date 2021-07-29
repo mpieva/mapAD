@@ -780,7 +780,7 @@ pub fn create_bam_header(
                     .filter(|&line| !line.starts_with("@SQ"))
                     .map(|line| format!("{}\n", line))
                     .collect::<String>();
-                bam::Header::from_template(&bam::HeaderView::from_bytes(&template.as_bytes()))
+                bam::Header::from_template(&bam::HeaderView::from_bytes(template.as_bytes()))
             } else {
                 warn!("Input BAM header contains invalid data");
                 bam::Header::new()
@@ -828,7 +828,7 @@ where
     S: SuffixArray,
 {
     if let Some(best_alignment) = intervals.pop() {
-        let mapping_quality = estimate_mapping_quality(&best_alignment, &intervals);
+        let mapping_quality = estimate_mapping_quality(&best_alignment, intervals);
 
         // Calculate length of reference strand ignoring sentinel characters
         let strand_len = (suffix_array.len() - 2) / 2;
@@ -1323,7 +1323,7 @@ pub fn k_mismatch_search(
                         ..stack_frame
                     },
                     pattern,
-                    &parameters,
+                    parameters,
                     EditOperation::Insertion(j as u16),
                     edit_tree,
                     stack,
@@ -1368,7 +1368,7 @@ pub fn k_mismatch_search(
                             ..stack_frame
                         },
                         pattern,
-                        &parameters,
+                        parameters,
                         EditOperation::Deletion(j as u16, c),
                         edit_tree,
                         stack,
@@ -1398,7 +1398,7 @@ pub fn k_mismatch_search(
                             ..stack_frame
                         },
                         pattern,
-                        &parameters,
+                        parameters,
                         if c == pattern[j as usize] {
                             EditOperation::Match(j as u16)
                         } else {
