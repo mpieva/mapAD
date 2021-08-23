@@ -1,3 +1,4 @@
+use anyhow;
 use clap::crate_version;
 
 use core::fmt;
@@ -10,10 +11,12 @@ use std::{error, io, result};
 #[derive(Debug)]
 pub enum Error {
     Hts(rust_htslib::errors::Error),
+    FastQ(bio::io::fastq::Error),
     Io(io::Error),
     InvalidInputType,
     InvalidIndex(String),
     IndexVersionMismatch,
+    AnyhowError(String),
 }
 
 impl fmt::Display for Error {
@@ -25,6 +28,8 @@ impl fmt::Display for Error {
             Error::InvalidInputType => write!(f, "Please specify a path to an input file that ends either with \".bam\", \".fq\", or \".fastq\""),
             Error::InvalidIndex(err) => write!(f, "Index is invalid: {}", err),
             Error::IndexVersionMismatch => write!(f, "The provided index is incompatible with version {} of {}. Please re-create the index.", crate_version!(), crate::map::CRATE_NAME),
+            Error::AnyhowError(err) => write!(f, "Internal error: {}", err),
+            Error::FastQ(_err) => write!(f, "Error reading FASTQ file"),
         }
     }
 }
@@ -50,6 +55,20 @@ impl From<rust_htslib::errors::Error> for Error {
     #[cold]
     fn from(e: rust_htslib::errors::Error) -> Self {
         Self::Hts(e)
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    #[cold]
+    fn from(e: anyhow::Error) -> Self {
+        Error::AnyhowError(e.to_string())
+    }
+}
+
+impl From<bio::io::fastq::Error> for Error {
+    #[cold]
+    fn from(e: bio::io::fastq::Error) -> Self {
+        Error::FastQ(e)
     }
 }
 
