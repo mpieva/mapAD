@@ -640,7 +640,12 @@ pub fn run(
     let fmd_index = load_index_from_path(reference_path)?;
 
     info!("Load suffix array");
-    let suffix_array = load_suffix_array_from_path(reference_path)?;
+    let sampled_suffix_array_owned = load_suffix_array_from_path(reference_path)?;
+    let suffix_array = sampled_suffix_array_owned.into_sampled_suffix_array(
+        &fmd_index.bwt,
+        &fmd_index.less,
+        &fmd_index.occ,
+    );
 
     info!("Load position map");
     let identifier_position_map = load_id_pos_map_from_path(reference_path)?;

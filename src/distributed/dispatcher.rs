@@ -179,12 +179,22 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             })?)?;
 
         info!("Load suffix array");
-        let suffix_array =
+        let sampled_suffix_array_owned =
             load_suffix_array_from_path(self.reference_path.to_str().ok_or_else(|| {
                 Error::InvalidIndex(
                     "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
                 )
             })?)?;
+        let fmd_index = load_index_from_path(self.reference_path.to_str().ok_or_else(|| {
+            Error::InvalidIndex(
+                "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
+            )
+        })?)?;
+        let suffix_array = sampled_suffix_array_owned.into_sampled_suffix_array(
+            &fmd_index.bwt,
+            &fmd_index.less,
+            &fmd_index.occ,
+        );
 
         // Static dispatch of the Record type based on the filename extension
         match self

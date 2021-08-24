@@ -23,6 +23,7 @@ use log::{debug, warn};
 use rust_htslib::{bam, bam::record::Aux};
 use serde::{Deserialize, Serialize};
 
+use crate::index::SampledSuffixArrayOwned;
 use std::{fmt::Debug, fs::File};
 
 /// An owned representation of the `bam::record::Aux` data
@@ -177,7 +178,7 @@ pub struct AlignmentParameters {
     pub stack_limit_abort: bool,
 }
 
-pub fn load_suffix_array_from_path(reference_path: &str) -> Result<RawSuffixArray> {
+pub fn load_suffix_array_from_path(reference_path: &str) -> Result<SampledSuffixArrayOwned> {
     let d_suffix_array =
         snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
     let versioned_suffix_array: VersionedSuffixArray = bincode::deserialize_from(d_suffix_array)?;

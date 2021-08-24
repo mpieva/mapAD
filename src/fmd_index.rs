@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct RtFmdIndex {
-    bwt: BWT,
-    less: Less,
-    occ: Occ,
+    pub bwt: BWT,
+    pub less: Less,
+    pub occ: Occ,
     rank_transform: RankTransform,
     back_transform: Vec<u8>,
 }

@@ -1,6 +1,7 @@
-use std::fs::File;
+use std::{collections::HashMap, fs::File, hash::BuildHasherDefault};
 
 use either::Either;
+use fxhash::FxHasher;
 use log::info;
 use rand::{
     prelude::{Rng, SeedableRng, StdRng},
@@ -12,7 +13,7 @@ use bio::{
     alphabets::{dna, Alphabet, RankTransform},
     data_structures::{
         bwt::{bwt, less, Less, Occ, BWT},
-        suffix_array::{suffix_array, RawSuffixArray},
+        suffix_array::{suffix_array, SuffixArray},
     },
     io::fasta,
 };
@@ -23,7 +24,7 @@ use crate::{
 };
 
 // Increase this number once the on-disk index changes
-pub const INDEX_VERSION: u8 = 0;
+pub const INDEX_VERSION: u8 = 1;
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 // Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
@@ -38,6 +39,123 @@ const DNA_NOT_A: &[u8; 3] = b"CGT";
 const DNA_NOT_C: &[u8; 3] = b"AGT";
 const DNA_NOT_G: &[u8; 3] = b"ACT";
 const DNA_NOT_T: &[u8; 3] = b"ACG";
+
+// HashMap using a fast hasher
+type HashMapFx<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
+
+/// Owned data of sampled suffix array. The borrowed parts need to be be
+/// reconstructed after deserialization.
+#[derive(Serialize, Deserialize)]
+pub struct SampledSuffixArrayOwned {
+    sample: Vec<usize>,
+    s: usize, // Rate of sampling
+    extra_rows: HashMapFx<usize, usize>,
+    sentinel: u8,
+}
+
+impl SampledSuffixArrayOwned {
+    /// Sample the suffix array with the given sample rate.
+    /// This is copied from the `bio` crate because we need more serde flexibility.
+    fn sample<S>(suffix_array: &S, text: &[u8], bwt: &BWT, sampling_rate: usize) -> Self
+    where
+        S: SuffixArray,
+    {
+        let mut sample =
+            Vec::with_capacity((suffix_array.len() as f32 / sampling_rate as f32).ceil() as usize);
+        let mut extra_rows = HashMapFx::default();
+        let &sentinel = text
+            .last()
+            .expect("The text should not be empty at this point");
+
+        for (i, l_row) in bwt.iter().copied().enumerate() {
+            let idx = suffix_array
+                .get(i)
+                .expect("BWT and suffix array have the same length");
+            if (i % sampling_rate) == 0 {
+                sample.push(idx);
+            } else if l_row == sentinel {
+                // If bwt lookup will return a sentinel
+                // Text suffixes that begin right after a sentinel are always saved as extra rows
+                // to help deal with FM index last to front inaccuracy when there are many sentinels
+                extra_rows.insert(i, idx);
+            }
+        }
+
+        Self {
+            sample,
+            s: sampling_rate,
+            extra_rows,
+            sentinel,
+        }
+    }
+
+    pub fn into_sampled_suffix_array<'a, 'b, 'c>(
+        self,
+        bwt: &'a BWT,
+        less: &'b Less,
+        occ: &'c Occ,
+    ) -> SampledSuffixArray<'a, 'b, 'c> {
+        SampledSuffixArray {
+            bwt,
+            less,
+            occ,
+            sample: self.sample,
+            s: self.s,
+            extra_rows: self.extra_rows,
+            sentinel: self.sentinel,
+        }
+    }
+}
+
+/// A sampled suffix array. The code is copied from the `bio`
+/// crate because we need access to private fields.
+pub struct SampledSuffixArray<'a, 'b, 'c> {
+    bwt: &'a BWT,
+    less: &'b Less,
+    occ: &'c Occ,
+    sample: Vec<usize>,
+    s: usize, // Rate of sampling
+    extra_rows: HashMapFx<usize, usize>,
+    sentinel: u8,
+}
+
+impl<'a, 'b, 'c> SuffixArray for SampledSuffixArray<'a, 'b, 'c> {
+    fn get(&self, index: usize) -> Option<usize> {
+        if index < self.len() {
+            let mut pos = index;
+            let mut offset = 0;
+            loop {
+                if pos % self.s == 0 {
+                    return Some(self.sample[pos / self.s] + offset);
+                }
+
+                let c = self.bwt[pos];
+
+                if c == self.sentinel {
+                    // Check if next character in the bwt is the sentinel
+                    // If so, there must be a cached result to workaround FM index last to front
+                    // mapping inaccuracy when there are multiple sentinels
+                    // This branch should rarely be triggered so the performance impact
+                    // of hashmap lookups would be low
+                    return Some(self.extra_rows[&pos] + offset);
+                }
+
+                pos = self.less[c as usize] + self.occ.get(self.bwt, pos - 1, c);
+                offset += 1;
+            }
+        } else {
+            None
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.bwt.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.bwt.is_empty()
+    }
+}
 
 // Versioned index data structures
 #[derive(Serialize, Deserialize)]
@@ -73,7 +191,7 @@ pub struct VersionedIdPosMap {
 #[derive(Serialize, Deserialize)]
 pub struct VersionedSuffixArray {
     pub version: u8,
-    pub data: RawSuffixArray,
+    pub data: SampledSuffixArrayOwned,
 }
 
 /// Entry point function to launch the indexing process
@@ -199,10 +317,14 @@ fn index<T: Rng>(
     let bwt = bwt(&ref_seq, &suffix_array);
 
     {
-        info!("Save suffix array to disk");
+        info!("Compress suffix array");
+        let owned_sampled_suffix_array =
+            SampledSuffixArrayOwned::sample(&suffix_array, &ref_seq, &bwt, 32);
+
+        info!("Save compressed suffix array to disk");
         let versioned_suffix_array = VersionedSuffixArray {
             version: INDEX_VERSION,
-            data: suffix_array,
+            data: owned_sampled_suffix_array,
         };
         let mut writer_suffix_array =
             snap::write::FrameEncoder::new(File::create(format!("{}.tsa", name))?);
