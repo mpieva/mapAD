@@ -206,7 +206,7 @@ pub fn run(reference_path: &str, seed: u64) -> Result<()> {
     Ok(())
 }
 
-/// Index a given reference and write the index to disk.
+/// Index a given reference and write the index.
 /// Ambiguous bases ('N') are converted to random bases unless they occur in stretches.
 /// If they do, they will be converted to 'X'.
 fn index<T: Rng>(
@@ -277,7 +277,7 @@ fn index<T: Rng>(
                 .collect::<Vec<_>>(),
         );
 
-        info!("Save position map to disk");
+        info!("Save position map");
         let versioned_id_pos_map = VersionedIdPosMap {
             version: INDEX_VERSION,
             data: identifier_position_map,
@@ -300,7 +300,7 @@ fn index<T: Rng>(
     let ref_seq = rank_transform.transform(ref_seq);
 
     {
-        info!("Save \"RT\" table to disk");
+        info!("Save \"RT\" table");
         let versioned_rt = VersionedRt {
             version: INDEX_VERSION,
             data: rank_transform,
@@ -321,7 +321,7 @@ fn index<T: Rng>(
         let owned_sampled_suffix_array =
             SampledSuffixArrayOwned::sample(&suffix_array, &ref_seq, &bwt, 32);
 
-        info!("Save compressed suffix array to disk");
+        info!("Save compressed suffix array");
         let versioned_suffix_array = VersionedSuffixArray {
             version: INDEX_VERSION,
             data: owned_sampled_suffix_array,
@@ -338,7 +338,7 @@ fn index<T: Rng>(
     let occ = Occ::new(&bwt, 128, &alphabet);
 
     {
-        info!("Save BWT to disk");
+        info!("Save BWT");
         let versioned_bwt = VersionedBwt {
             version: INDEX_VERSION,
             data: bwt,
@@ -348,7 +348,7 @@ fn index<T: Rng>(
     }
 
     {
-        info!("Save \"C\" table to disk");
+        info!("Save \"C\" table");
         let versioned_less = VersionedLess {
             version: INDEX_VERSION,
             data: less,
@@ -358,7 +358,7 @@ fn index<T: Rng>(
     }
 
     {
-        info!("Save \"Occ\" table to disk");
+        info!("Save \"Occ\" table");
         let versioned_occ = VersionedOcc {
             version: INDEX_VERSION,
             data: occ,
