@@ -102,7 +102,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                     Arg::with_name("poisson_prob")
                         .short("p")
                         .group("allowed_mm")
-                        .help("Minimum probability of the number of mismatches under 0.02 base error rate")
+                        .help("Minimum probability of the number of mismatches under `-D` base error rate")
                         .takes_value(true)
                         .value_name("FLOAT")
                         .validator(probability_validator),
@@ -176,6 +176,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .help("Divergence / base error rate")
                         .takes_value(true)
                         .value_name("FLOAT")
+                        .default_value("0.02")
                         .validator(probability_validator),
                 )
                 .arg(
