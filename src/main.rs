@@ -226,6 +226,15 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .default_value("3130")
                         .value_name("INT")
+                )
+                .arg(
+                    Arg::with_name("num_threads")
+                        .required(true)
+                        .long("num_threads")
+                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", map::CRATE_NAME))
+                        .takes_value(true)
+                        .default_value("0")
+                        .value_name("INT")
                 ),
 
         )
@@ -248,6 +257,15 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .help("Port number of running dispatcher")
                         .takes_value(true)
                         .default_value("3130")
+                        .value_name("INT")
+                )
+                .arg(
+                    Arg::with_name("num_threads")
+                        .required(true)
+                        .long("num_threads")
+                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", map::CRATE_NAME))
+                        .takes_value(true)
+                        .default_value("0")
                         .value_name("INT")
                 ),
         )
@@ -300,6 +318,13 @@ fn start_mapper(map_matches: &ArgMatches) {
         .value_of("output")
         .expect("Presence is ensured by CLI definition");
 
+    let num_threads = value_t!(map_matches.value_of("num_threads"), usize)
+        .expect("Presence is ensured by CLI definition");
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+        .expect("Thread pool should not have been initialized before");
+
     let alignment_parameters = build_alignment_parameters(map_matches);
 
     if let Err(e) = if map_matches.is_present("dispatcher") {
@@ -329,6 +354,13 @@ fn start_worker(arg_matches: &ArgMatches) {
         .value_of("host")
         .expect("Presence is ensured by CLI definition");
     let port = value_t!(arg_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+
+    let num_threads = value_t!(arg_matches.value_of("num_threads"), usize)
+        .expect("Presence is ensured by CLI definition");
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+        .expect("Thread pool should not have been initialized before");
 
     if let Err(e) = worker::Worker::new(host, port).and_then(|mut worker| worker.run()) {
         error!("{}", e);
