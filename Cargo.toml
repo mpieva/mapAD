@@ -3,7 +3,7 @@ name = "mapad"
 version = "0.0.33-alpha.0"
 description = "An aDNA aware short-read mapper"
 authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
-edition = "2018"
+edition = "2021"
 readme = "Readme.md"
 publish = false
 
