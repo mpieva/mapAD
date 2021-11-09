@@ -931,8 +931,7 @@ fn estimate_mapping_quality(
         }
     }
     // Guard against rounding errors
-    .max(0.0)
-    .min(1.0);
+    .clamp(0.0, 1.0);
 
     // Produce Phred score
     (-10.0 * (1.0 - alignment_probability).log10())
