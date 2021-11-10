@@ -1415,6 +1415,7 @@ pub fn k_mismatch_search(
         }
 
         // Only search until we've found a multi-hit
+        // FIXME: We can probably stop searching earlier
         if (hit_intervals.len() > 9)
             || (hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 1)
         {
