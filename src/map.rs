@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cell::RefCell,
     cmp::Ordering,
     collections::{binary_heap::BinaryHeap, BTreeMap},
@@ -825,18 +826,16 @@ where
     R: RngCore,
     S: SuffixArray,
 {
-    if let Some(best_alignment) = intervals.pop() {
-        let mapping_quality = estimate_mapping_quality(&best_alignment, intervals);
-
+    let mut intervals_to_coordinates = |interval: &HitInterval| -> Result<(i32, i64, Direction)> {
         // Calculate length of reference strand ignoring sentinel characters
         let strand_len = (suffix_array.len() - 2) / 2;
         // Get amount of positions in the genome covered by the read
-        let effective_read_len = best_alignment.edit_operations.effective_len();
+        let effective_read_len = interval.edit_operations.effective_len();
 
         let (absolute_pos, strand) = {
             // Find a random genomic position to report. We use an `ExactSizeIterator`
             // to choose a random element from, so this should be a constant time operation.
-            let absolute_pos = best_alignment
+            let absolute_pos = interval
                 .interval
                 .occ_fwd(suffix_array)
                 .choose(rng)
@@ -855,9 +854,39 @@ where
             }
         };
 
+        if let Some((tid, rel_pos)) =
+            identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)
+        {
+            return Ok((tid, rel_pos, strand));
+        }
+        Err(Error::ContigBoundaryOverlap)
+    };
+
+    if let Some(best_alignment) = intervals.pop() {
+        let mapping_quality = estimate_mapping_quality(&best_alignment, intervals);
+
+        let alternative_hits: Cow<str> = if best_alignment.interval.size > 1 {
+            format!("mm,{},;", best_alignment.interval.size).into()
+        } else if intervals.len() > 9 {
+            "pu,,;".into()
+        } else if !intervals.is_empty() {
+            let mut buf = "pu,".to_string();
+            buf.extend(intervals.iter().map(|subopt_intv| {
+                format!(
+                    "{},{:.2};",
+                    subopt_intv.interval.size, subopt_intv.alignment_score
+                )
+            }));
+            buf.into()
+        } else if best_alignment.interval.size == 1 {
+            "uq,,;".into()
+        } else {
+            "".into()
+        };
+
         // Determine relative-to-chromosome position. `None` means that the read overlaps chromosome boundaries
-        match identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len) {
-            Some((tid, relative_pos)) => {
+        match intervals_to_coordinates(&best_alignment) {
+            Ok((tid, relative_pos, strand)) => {
                 return bam_record_helper(
                     input_record,
                     relative_pos,
@@ -866,16 +895,17 @@ where
                     tid,
                     Some(strand),
                     duration,
+                    &alternative_hits,
                 );
             }
-            None => {
-                trace!("Mapped position overlaps chromosome boundaries, report as unmapped");
+            Err(e) => {
+                debug!("{}", e);
             }
         }
     }
 
     // No match found, report unmapped read
-    bam_record_helper(input_record, -1, None, None, -1, None, duration)
+    bam_record_helper(input_record, -1, None, None, -1, None, duration, "")
 }
 
 /// Computes optimal per-base alignment scores for a read,
@@ -943,6 +973,8 @@ fn bam_record_helper(
     tid: i32,
     strand: Option<Direction>,
     duration: Option<&Duration>,
+    // Contains valid content for the `YA` tag
+    alternative_hits: &str,
 ) -> Result<bam::Record> {
     let mut bam_record = bam::record::Record::new();
     bam_record.set_flags(input_record.bam_flags);
@@ -1034,6 +1066,12 @@ fn bam_record_helper(
                 std::str::from_utf8(&md_tag).expect("The tag is constructed internally."),
             ),
         )?;
+    }
+
+    // Our format differs in that we include alignment scores, so we use `YA` instead of `XA`
+    let _ = bam_record.remove_aux(b"YA");
+    if !alternative_hits.is_empty() {
+        bam_record.push_aux(b"YA", bam::record::Aux::String(alternative_hits))?;
     }
 
     let _ = bam_record.remove_aux(b"XD");

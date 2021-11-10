@@ -17,6 +17,7 @@ pub enum Error {
     InvalidIndex(String),
     IndexVersionMismatch,
     AnyhowError(String),
+    ContigBoundaryOverlap,
 }
 
 impl fmt::Display for Error {
@@ -30,6 +31,7 @@ impl fmt::Display for Error {
             Error::IndexVersionMismatch => write!(f, "The provided index is incompatible with version {} of {}. Please re-create the index.", crate_version!(), crate::map::CRATE_NAME),
             Error::AnyhowError(err) => write!(f, "Internal error: {}", err),
             Error::FastQ(_err) => write!(f, "Error reading FASTQ file"),
+            Error::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
         }
     }
 }
