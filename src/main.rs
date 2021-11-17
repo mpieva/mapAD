@@ -235,6 +235,15 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .default_value("0")
                         .value_name("INT")
+                )
+                .arg(
+                    Arg::with_name("gap_dist_ends")
+                        .required(true)
+                        .long("gap_dist_ends")
+                        .help("Disallow allow gaps at read ends (configurable range)")
+                        .takes_value(true)
+                        .default_value("5")
+                        .value_name("INT")
                 ),
 
         )
@@ -422,5 +431,7 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         chunk_size: value_t!(arg_matches.value_of("chunk_size"), usize)
             .unwrap_or_else(|e| e.exit()),
         mismatch_bound,
+        gap_dist_ends: value_t!(arg_matches.value_of("gap_dist_ends"), u8)
+            .unwrap_or_else(|e| e.exit()),
     }
 }

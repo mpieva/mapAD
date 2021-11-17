@@ -1312,6 +1312,7 @@ pub fn k_mismatch_search(
             if !parameters
                 .mismatch_bound
                 .reject(insertion_score + lower_bound, pattern.len())
+                && parameters.gap_dist_ends as i16 <= j.min(pattern.len() as i16 - j)
             {
                 check_and_push_stack_frame(
                     MismatchSearchStackFrame {
@@ -1359,6 +1360,7 @@ pub fn k_mismatch_search(
                 if !parameters
                     .mismatch_bound
                     .reject(deletion_score + lower_bound, pattern.len())
+                    && parameters.gap_dist_ends as i16 <= j.min(pattern.len() as i16 - j)
                 {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
@@ -1467,6 +1469,7 @@ pub mod tests {
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -1516,6 +1519,7 @@ pub mod tests {
             penalty_gap_open: -20.0,
             penalty_gap_extend: -10.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let ref_seq = "GAAAAG".as_bytes().to_owned();
@@ -1576,6 +1580,7 @@ pub mod tests {
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let pattern = b"CCCCCCC";
@@ -1627,6 +1632,7 @@ pub mod tests {
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
@@ -1660,6 +1666,74 @@ pub mod tests {
     }
 
     #[test]
+    fn test_gapped_alignment_read_end() {
+        let difference_model = SequenceDifferenceModelDispatch::from(TestDifferenceModel {
+            deam_score: -10.0,
+            mm_score: -10.0,
+            match_score: 0.0,
+        });
+
+        let parameters = AlignmentParameters {
+            difference_model,
+            mismatch_bound: TestBound { threshold: -5.0 }.into(),
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+            gap_dist_ends: 5,
+        };
+
+        let ref_seq = "AAAAAGGGGAAAAA".as_bytes().to_owned();
+
+        // Reference
+        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
+
+        // Gap in the middle of the read (allowed)
+        let pattern = "AAAAAAAAAA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+            &mut tree_buf,
+        );
+
+        let positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        assert_eq!(positions, vec![0]);
+
+        // Gap near read end (not allowed)
+        let pattern = "AGGGAAAA".as_bytes().to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+            &mut tree_buf,
+        );
+
+        let positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        assert_eq!(positions, vec![]);
+    }
+
+    #[test]
     fn test_vindija_pwm_alignment() {
         let difference_model = SequenceDifferenceModelDispatch::from(VindijaPwm::new());
 
@@ -1670,6 +1744,7 @@ pub mod tests {
             penalty_gap_open: -200.0,
             penalty_gap_extend: -100.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
@@ -1809,6 +1884,7 @@ pub mod tests {
             difference_model,
             chunk_size: 1,
             mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty).into(),
+            gap_dist_ends: 0,
         };
 
         // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
@@ -1870,6 +1946,7 @@ pub mod tests {
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         //
@@ -2034,6 +2111,7 @@ pub mod tests {
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let mut stack_buf = MinMaxHeap::new();
@@ -2075,6 +2153,7 @@ pub mod tests {
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         //
@@ -2123,6 +2202,7 @@ pub mod tests {
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let mut stack_buf = MinMaxHeap::new();
@@ -2241,6 +2321,7 @@ pub mod tests {
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
@@ -2305,6 +2386,7 @@ pub mod tests {
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
@@ -2383,6 +2465,7 @@ pub mod tests {
             penalty_gap_open: 0.001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
+            gap_dist_ends: 0,
         };
 
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
@@ -2550,6 +2633,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
+            gap_dist_ends: 5,
         };
 
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
@@ -2613,7 +2697,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         }
 
         // bench_endogenous_read_1_mm_center
@@ -2633,7 +2717,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         }
 
         // bench_endogenous_read_2_mm_center
@@ -2653,7 +2737,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         }
 
         // bench_endogenous_read_1_deam
@@ -2673,7 +2757,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         }
 
         // bench_endogenous_read_4_deam

@@ -37,6 +37,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
+            gap_dist_ends: 5,
         };
 
         let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
@@ -185,6 +186,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         penalty_gap_open: 0.00001_f32.log2(),
         penalty_gap_extend: representative_mismatch_penalty,
         chunk_size: 1,
+        gap_dist_ends: 5,
     };
 
     let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
@@ -250,7 +252,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         })
     });
 
@@ -271,7 +273,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         })
     });
 
@@ -292,7 +294,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         })
     });
 
@@ -313,7 +315,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
             );
-            assert_eq!(intervals.len(), 2);
+            assert_eq!(intervals.len(), 1);
         })
     });
 

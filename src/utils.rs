@@ -173,6 +173,7 @@ pub struct AlignmentParameters {
     pub penalty_gap_open: f32,
     pub penalty_gap_extend: f32,
     pub chunk_size: usize,
+    pub gap_dist_ends: u8,
 }
 
 pub fn load_suffix_array_from_path(reference_path: &str) -> Result<RawSuffixArray> {
