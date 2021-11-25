@@ -14,7 +14,7 @@ use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
 
@@ -379,8 +379,7 @@ impl FastaIdPositions {
 /// towards the respective ends of the query. Like alignment scores, these values are negative.
 #[derive(Debug)]
 struct BiDArray {
-    d_backwards: SmallVec<[f32; 64]>,
-    d_forwards: SmallVec<[f32; 64]>,
+    d_composite: Vec<f32>,
     split: usize,
 }
 
@@ -397,70 +396,61 @@ impl BiDArray {
         const MAX_OFFSET: u16 = 10;
 
         // Compute a backward-D-iterator for every offset
-        let d_backwards = {
-            let mut offset_d_backward_iterators = (0..MAX_OFFSET as usize)
-                .map(|offset| {
-                    Self::compute_part(
-                        &pattern[..split],
-                        &base_qualities[..split],
-                        Direction::Forward,
-                        pattern.len(),
-                        offset as i16,
-                        alignment_parameters,
-                        fmd_index,
-                    )
-                })
-                .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
+        let mut offset_d_backward_iterators = (0..MAX_OFFSET as usize)
+            .map(|offset| {
+                Self::compute_part(
+                    &pattern[..split],
+                    &base_qualities[..split],
+                    Direction::Forward,
+                    pattern.len(),
+                    offset as i16,
+                    alignment_parameters,
+                    fmd_index,
+                )
+            })
+            .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
 
-            // Construct backward-D-array from minimal (most severe) penalties for each position
-            let mut d_backwards: SmallVec<[f32; 64]> = smallvec!(0.0; split);
-            for d_rev_cell in d_backwards.iter_mut() {
-                *d_rev_cell = offset_d_backward_iterators
-                    .iter_mut()
-                    .map(|offset_d_rev_iter| {
-                        offset_d_rev_iter
-                            .next()
-                            .expect("Iterator is guaranteed to have the right length")
-                    })
-                    .fold(0.0, |min_penalty, penalty| min_penalty.min(penalty));
-            }
-            d_backwards
-        };
+        // Construct backward-D-array from minimal (most severe) penalties for each position
+        let d_backwards = (0..split).map(|_| {
+            offset_d_backward_iterators
+                .iter_mut()
+                .map(|offset_d_rev_iter| {
+                    offset_d_rev_iter
+                        .next()
+                        .expect("Iterator is guaranteed to have the right length")
+                })
+                .fold(0_f32, |min_penalty, penalty| min_penalty.min(penalty))
+        });
 
         // Compute a forward-D-iterator for every offset
-        let d_forwards = {
-            let mut offset_d_forward_iterators = (0..MAX_OFFSET)
-                .map(|offset| {
-                    Self::compute_part(
-                        &pattern[split..],
-                        &base_qualities[split..],
-                        Direction::Backward,
-                        pattern.len(),
-                        offset as i16,
-                        alignment_parameters,
-                        fmd_index,
-                    )
-                })
-                .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
+        let mut offset_d_forward_iterators = (0..MAX_OFFSET)
+            .map(|offset| {
+                Self::compute_part(
+                    &pattern[split..],
+                    &base_qualities[split..],
+                    Direction::Backward,
+                    pattern.len(),
+                    offset as i16,
+                    alignment_parameters,
+                    fmd_index,
+                )
+            })
+            .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
 
-            // Construct forward-D-array from minimal (most severe) penalties for each position
-            let mut d_forwards: SmallVec<[f32; 64]> = smallvec!(0.0; pattern.len() - split);
-            for d_fwd_cell in d_forwards.iter_mut() {
-                *d_fwd_cell = offset_d_forward_iterators
-                    .iter_mut()
-                    .map(|offset_d_fwd_iter| {
-                        offset_d_fwd_iter
-                            .next()
-                            .expect("Iterator is guaranteed to have the right length")
-                    })
-                    .fold(0.0, |min_penalty, penalty| min_penalty.min(penalty));
-            }
-            d_forwards
-        };
+        // Construct forward-D-array from minimal (most severe) penalties for each position
+        let d_forwards = (0..pattern.len() - split).map(|_| {
+            offset_d_forward_iterators
+                .iter_mut()
+                .map(|offset_d_fwd_iter| {
+                    offset_d_fwd_iter
+                        .next()
+                        .expect("Iterator is guaranteed to have the right length")
+                })
+                .fold(0_f32, |min_penalty, penalty| min_penalty.min(penalty))
+        });
 
         Self {
-            d_backwards,
-            d_forwards,
+            d_composite: d_backwards.chain(d_forwards).collect(),
             split,
         }
     }
@@ -544,19 +534,19 @@ impl BiDArray {
     }
 
     fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
-        let inner = || {
-            let forward_index = self
-                .d_forwards
-                .len()
-                .checked_sub(1)?
-                .checked_sub(forward_index as usize - self.split)?;
-            Some(
-                self.d_backwards.get(backward_index as usize)?
-                    + self.d_forwards.get(forward_index)?,
-            )
+        let d_rev = if backward_index < 0 {
+            0.0
+        } else {
+            self.d_composite[backward_index as usize]
         };
-
-        inner().unwrap_or(0.0)
+        let d_fwd =
+            // Cover case forward_index == self.d_composite.len()
+            if forward_index as usize >= self.d_composite.len() {
+                0.0
+            } else {
+                self.d_composite[self.d_composite.len() - 1 - forward_index as usize + self.split]
+            };
+        d_rev + d_fwd
     }
 }
 
@@ -1604,23 +1594,22 @@ pub mod tests {
             &fmd_index,
         );
 
-        assert_eq!(&*bi_d_array.d_backwards, &[0.0, -3.6297126, -5.4444757]);
         assert_eq!(
-            &*bi_d_array.d_forwards,
-            &[0.0, -3.8959491, -3.8959491, -9.413074]
+            &*bi_d_array.d_composite,
+            &[0.0, -3.6297126, -5.4444757, 0.0, -3.8959491, -3.8959491, -9.413074]
         );
 
         assert_eq!(
             bi_d_array.get(1, 4),
-            bi_d_array.d_backwards[1] + bi_d_array.d_forwards[2]
+            bi_d_array.d_composite[1] + bi_d_array.d_composite[bi_d_array.split + 2]
         );
         assert_eq!(
             bi_d_array.get(2, 3),
-            bi_d_array.d_backwards[2] + bi_d_array.d_forwards[3]
+            bi_d_array.d_composite[2] + bi_d_array.d_composite[bi_d_array.split + 3]
         );
         assert_eq!(
             bi_d_array.get(0, 6),
-            bi_d_array.d_backwards[0] + bi_d_array.d_forwards[0]
+            bi_d_array.d_composite[0] + bi_d_array.d_composite[bi_d_array.split + 0]
         );
 
         assert_eq!(bi_d_array.get(0, pattern.len() as i16 - 1), 0.0,);
