@@ -890,7 +890,7 @@ pub fn compute_optimal_scores(
     pattern: &[u8],
     base_qualities: &[u8],
     difference_model: &SequenceDifferenceModelDispatch,
-) -> SmallVec<[f32; 128]> {
+) -> Vec<f32> {
     assert_eq!(pattern.len(), base_qualities.len());
     pattern
         .iter()
@@ -899,7 +899,7 @@ pub fn compute_optimal_scores(
         .map(|(i, (&base, &quality))| {
             difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
         })
-        .collect::<SmallVec<_>>()
+        .collect::<Vec<_>>()
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
