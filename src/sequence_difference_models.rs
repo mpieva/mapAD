@@ -1,14 +1,14 @@
 use std::{fmt, fmt::Display};
 
 use either::Either;
-use enum_dispatch::enum_dispatch;
 use log::info;
 use serde::{Deserialize, Serialize};
 
 const MAX_ENCODED_BASE_QUALITY: u8 = u8::MAX;
 
+/// New models must impl this trait and be included in the `SequenceDifferenceModelDispatch` enum in order to
+/// be usable directly from functions calling `k_mismatch_search::<SDM>()`.
 /// Sequence difference models are expected to yield only non-positive values (and 0.0), for example log probabilities.
-#[enum_dispatch]
 pub trait SequenceDifferenceModel {
     fn get(&self, i: usize, read_length: usize, from: u8, to: u8, base_quality: u8) -> f32;
     fn get_representative_mismatch_penalty(&self) -> f32 {
@@ -59,12 +59,29 @@ pub trait SequenceDifferenceModel {
 /// Used to allow static dispatch. No trait objects needed! Method call speed is not negatively
 /// affected by vtable lookups. Every type implementing `SequenceDifferenceModel` also has to be
 /// added as variant to this enum.
-#[enum_dispatch(SequenceDifferenceModel)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SequenceDifferenceModelDispatch {
-    SimpleAncientDnaModel,
-    VindijaPwm,
-    TestDifferenceModel,
+    SimpleAncientDnaModel(SimpleAncientDnaModel),
+    VindijaPwm(VindijaPwm),
+    TestDifferenceModel(TestDifferenceModel),
+}
+
+impl From<SimpleAncientDnaModel> for SequenceDifferenceModelDispatch {
+    fn from(sdm: SimpleAncientDnaModel) -> Self {
+        Self::SimpleAncientDnaModel(sdm)
+    }
+}
+
+impl From<TestDifferenceModel> for SequenceDifferenceModelDispatch {
+    fn from(sdm: TestDifferenceModel) -> Self {
+        Self::TestDifferenceModel(sdm)
+    }
+}
+
+impl From<VindijaPwm> for SequenceDifferenceModelDispatch {
+    fn from(sdm: VindijaPwm) -> Self {
+        Self::VindijaPwm(sdm)
+    }
 }
 
 /// Library preparation methods commonly used for ancient DNA. Values are overhang probabilities.

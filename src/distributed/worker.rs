@@ -4,6 +4,7 @@ use crate::{
     errors::{Error, Result},
     fmd_index::RtFmdIndex,
     map,
+    sequence_difference_models::SequenceDifferenceModelDispatch,
     utils::{load_index_from_path, AlignmentParameters},
 };
 use log::{debug, info};
@@ -70,16 +71,44 @@ impl Worker {
                                 .map(|record| {
                                     STACK_BUF.with(|stack_buf| {
                                         TREE_BUF.with(|tree_buf| {
-                                            let hit_intervals = map::k_mismatch_search(
-                                                &record.sequence,
-                                                &record.base_qualities,
-                                                alignment_parameters,
-                                                fmd_index,
-                                                &mut stack_buf.borrow_mut(),
-                                                &mut tree_buf.borrow_mut(),
-                                            );
-                                            (record, hit_intervals)
-                                        })
+                                            // Here we call the instances of the generic `k_mismatch_search` function. Currently, only
+                                            // `SimpleAncientDnaModel` is used, the others merely serve as an example.
+                                            let hit_intervals = match &alignment_parameters.difference_model {
+                                                SequenceDifferenceModelDispatch::SimpleAncientDnaModel(sdm) => {
+                                                    map::k_mismatch_search(
+                                                        &record.sequence,
+                                                        &record.base_qualities,
+                                                        alignment_parameters,
+                                                        fmd_index,
+                                                        &mut stack_buf.borrow_mut(),
+                                                        &mut tree_buf.borrow_mut(),
+                                                        sdm,
+                                                    )
+                                                }
+                                                SequenceDifferenceModelDispatch::TestDifferenceModel(sdm) => {
+                                                    map::k_mismatch_search(
+                                                        &record.sequence,
+                                                        &record.base_qualities,
+                                                        alignment_parameters,
+                                                        fmd_index,
+                                                        &mut stack_buf.borrow_mut(),
+                                                        &mut tree_buf.borrow_mut(),
+                                                        sdm,
+                                                    )
+                                                }
+                                                SequenceDifferenceModelDispatch::VindijaPwm(sdm) => {
+                                                    map::k_mismatch_search(
+                                                        &record.sequence,
+                                                        &record.base_qualities,
+                                                        alignment_parameters,
+                                                        fmd_index,
+                                                        &mut stack_buf.borrow_mut(),
+                                                        &mut tree_buf.borrow_mut(),
+                                                        sdm,
+                                                    )
+                                                }
+                                            };
+                                            (record, hit_intervals)})
                                     })
                                 })
                                 .collect::<Vec<_>>();

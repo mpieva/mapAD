@@ -14,7 +14,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("3_mismatch_search", |b| {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
-        let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
+        let difference_model = SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.475,
                 three_prime_overhang: 0.475,
@@ -23,7 +23,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             0.9,
             0.02 / 3.0,
             false,
-        ));
+        );
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
@@ -32,7 +32,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
 
         let parameters = AlignmentParameters {
-            difference_model,
+            difference_model: difference_model.clone().into(),
             mismatch_bound,
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
@@ -56,6 +56,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model,
             );
         })
     });
@@ -164,7 +165,7 @@ GGCTCAACTTGCCAGCGTCCCATGAACTGTACAACCTAATCGTCCCTATCGTTACTGACCGACTGCGATAGAACGCCACC
 GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCGCCCACCTGATACCTAGGTTC\
 ".as_bytes().to_owned();
 
-    let difference_model = SequenceDifferenceModelDispatch::from(SimpleAncientDnaModel::new(
+    let difference_model = SimpleAncientDnaModel::new(
         LibraryPrep::SingleStranded {
             five_prime_overhang: 0.475,
             three_prime_overhang: 0.475,
@@ -173,7 +174,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         0.9,
         0.02 / 3.0,
         false,
-    ));
+    );
 
     let representative_mismatch_penalty = difference_model.get_representative_mismatch_penalty();
 
@@ -181,7 +182,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
 
     let parameters = AlignmentParameters {
-        difference_model,
+        difference_model: difference_model.clone().into(),
         mismatch_bound,
         penalty_gap_open: 0.00001_f32.log2(),
         penalty_gap_extend: representative_mismatch_penalty,
@@ -208,6 +209,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model,
             );
             assert_eq!(intervals.len(), 0);
         })
@@ -230,6 +232,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model
             );
             assert_eq!(intervals.len(), 0);
         })
@@ -251,6 +254,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -272,6 +276,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -293,6 +298,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -314,6 +320,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -335,6 +342,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
+                &difference_model
             );
             assert_eq!(intervals.len(), 1);
         })
