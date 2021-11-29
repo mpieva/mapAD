@@ -1236,7 +1236,6 @@ fn extract_edit_operations(
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
-#[inline(always)]
 fn check_and_push_stack_frame<MB>(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],

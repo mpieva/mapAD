@@ -136,7 +136,6 @@ impl<'a> FmdExtIterator<'a> {
     fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFmdIndex) -> Self {
         /// Finds occurrences of '$' in BWT. Since there are only two occurrences, we can cheaply
         /// store and get both positions from a special cache (avoiding the `Occ` array).
-        #[inline]
         fn sentinel_occ(interval_pos: usize, fmd_index: &RtFmdIndex) -> usize {
             fmd_index
                 .sentinel_occ
