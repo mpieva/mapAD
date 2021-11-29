@@ -1316,7 +1316,7 @@ pub fn k_mismatch_search<SDM, MB>(
     fmd_index: &RtFmdIndex,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     edit_tree: &mut Tree<EditOperation>,
-    sdm: &SDM,
+    sequence_difference_model: &SDM,
     mismatch_bound: &MB,
 ) -> BinaryHeap<HitInterval>
 where
@@ -1330,10 +1330,11 @@ where
         center_of_read,
         parameters,
         fmd_index,
-        sdm,
+        sequence_difference_model,
     );
 
-    let optimal_penalties = compute_optimal_scores(pattern, base_qualities, sdm);
+    let optimal_penalties =
+        compute_optimal_scores(pattern, base_qualities, sequence_difference_model);
     let mut hit_intervals = BinaryHeap::new();
 
     let mut stack_size_limit_reported = false;
@@ -1394,7 +1395,7 @@ where
                     parameters.penalty_gap_open
                 } + stack_frame.alignment_score;
                 for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
-                    *score = sdm.get(
+                    *score = sequence_difference_model.get(
                         j as usize,
                         pattern.len(),
                         dna::complement(base),
@@ -1428,7 +1429,7 @@ where
                     parameters.penalty_gap_open
                 } + stack_frame.alignment_score;
                 for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
-                    *score = sdm.get(
+                    *score = sequence_difference_model.get(
                         j as usize,
                         pattern.len(),
                         base,
