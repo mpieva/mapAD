@@ -28,12 +28,11 @@ fn criterion_benchmark(c: &mut Criterion) {
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound =
-            MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
+        let mismatch_bound = Discrete::new(0.02, 0.02, representative_mismatch_penalty);
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound,
+            mismatch_bound: mismatch_bound.clone().into(),
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -57,6 +56,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
         })
     });
@@ -178,12 +178,11 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
 
     let representative_mismatch_penalty = difference_model.get_representative_mismatch_penalty();
 
-    let mismatch_bound =
-        MismatchBoundDispatch::from(Discrete::new(0.02, 0.02, representative_mismatch_penalty));
+    let mismatch_bound = Discrete::new(0.02, 0.02, representative_mismatch_penalty);
 
     let parameters = AlignmentParameters {
         difference_model: difference_model.clone().into(),
-        mismatch_bound,
+        mismatch_bound: mismatch_bound.clone().into(),
         penalty_gap_open: 0.00001_f32.log2(),
         penalty_gap_extend: representative_mismatch_penalty,
         chunk_size: 1,
@@ -210,6 +209,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound
             );
             assert_eq!(intervals.len(), 0);
         })
@@ -232,7 +232,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-                &difference_model
+                &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 0);
         })
@@ -254,7 +255,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-                &difference_model
+                &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -276,7 +278,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-                &difference_model
+                &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -298,7 +301,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-                &difference_model
+                &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -320,7 +324,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-                &difference_model
+                &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         })
@@ -342,7 +347,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &fmd_index,
                 &mut stack,
                 &mut tree,
-                &difference_model
+                &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         })

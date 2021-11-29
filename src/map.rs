@@ -26,7 +26,7 @@ use crate::{
     backtrack_tree::{NodeId, Tree},
     errors::{Error, Result},
     fmd_index::{RtBiInterval, RtFmdIndex},
-    mismatch_bounds::MismatchBound,
+    mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
     utils::{
         load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
@@ -742,36 +742,107 @@ where
                         // `SimpleAncientDnaModel` is used, the others merely serve as an example.
                         let hit_intervals = match &alignment_parameters.difference_model {
                             SequenceDifferenceModelDispatch::SimpleAncientDnaModel(sdm) => {
-                                k_mismatch_search(
-                                    &record.sequence,
-                                    &record.base_qualities,
-                                    alignment_parameters,
-                                    fmd_index,
-                                    &mut stack_buf.borrow_mut(),
-                                    &mut tree_buf.borrow_mut(),
-                                    sdm,
-                                )
+                                match &alignment_parameters.mismatch_bound {
+                                    MismatchBoundDispatch::Discrete(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                    MismatchBoundDispatch::Continuous(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                    MismatchBoundDispatch::TestBound(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                }
                             }
                             SequenceDifferenceModelDispatch::TestDifferenceModel(sdm) => {
-                                k_mismatch_search(
-                                    &record.sequence,
-                                    &record.base_qualities,
-                                    alignment_parameters,
-                                    fmd_index,
-                                    &mut stack_buf.borrow_mut(),
-                                    &mut tree_buf.borrow_mut(),
-                                    sdm,
-                                )
+                                match &alignment_parameters.mismatch_bound {
+                                    MismatchBoundDispatch::Discrete(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                    MismatchBoundDispatch::Continuous(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                    MismatchBoundDispatch::TestBound(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                }
                             }
-                            SequenceDifferenceModelDispatch::VindijaPwm(sdm) => k_mismatch_search(
-                                &record.sequence,
-                                &record.base_qualities,
-                                alignment_parameters,
-                                fmd_index,
-                                &mut stack_buf.borrow_mut(),
-                                &mut tree_buf.borrow_mut(),
-                                sdm,
-                            ),
+                            SequenceDifferenceModelDispatch::VindijaPwm(sdm) => {
+                                match &alignment_parameters.mismatch_bound {
+                                    MismatchBoundDispatch::Discrete(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                    MismatchBoundDispatch::Continuous(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                    MismatchBoundDispatch::TestBound(mb) => k_mismatch_search(
+                                        &record.sequence,
+                                        &record.base_qualities,
+                                        alignment_parameters,
+                                        fmd_index,
+                                        &mut stack_buf.borrow_mut(),
+                                        &mut tree_buf.borrow_mut(),
+                                        sdm,
+                                        mb,
+                                    ),
+                                }
+                            }
                         };
                         let duration = start.elapsed();
 
@@ -1166,21 +1237,23 @@ fn extract_edit_operations(
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
 #[inline(always)]
-fn check_and_push_stack_frame(
+fn check_and_push_stack_frame<MB>(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
-    alignment_parameters: &AlignmentParameters,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<EditOperation>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
-) {
+    mismatch_bound: &MB,
+) where
+    MB: MismatchBound,
+{
     // TODO: Check performance impact
     // This is technically redundant. Our micro-benchmarks suggest
     // that having this here improves the performance but it might
     // be that actually the opposite is true for large real data.
     if let Some(best_scoring_interval) = intervals.peek() {
-        if alignment_parameters.mismatch_bound.reject_iterative(
+        if mismatch_bound.reject_iterative(
             stack_frame.alignment_score,
             best_scoring_interval.alignment_score,
         ) {
@@ -1236,7 +1309,7 @@ fn print_debug(
 
 /// Finds all suffix array intervals for the current pattern
 /// w.r.t. supplied alignment parameters
-pub fn k_mismatch_search<SDM>(
+pub fn k_mismatch_search<SDM, MB>(
     pattern: &[u8],
     base_qualities: &[u8],
     parameters: &AlignmentParameters,
@@ -1244,9 +1317,11 @@ pub fn k_mismatch_search<SDM>(
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     edit_tree: &mut Tree<EditOperation>,
     sdm: &SDM,
+    mismatch_bound: &MB,
 ) -> BinaryHeap<HitInterval>
 where
     SDM: SequenceDifferenceModel,
+    MB: MismatchBound,
 {
     let center_of_read = pattern.len() / 2;
     let bi_d_array = BiDArray::new(
@@ -1373,7 +1448,7 @@ where
         // Since we operate on a priority stack, we can assume that there are no
         // better scoring frames on the stack, so we are going to stop the search.
         if let Some(best_scoring_interval) = hit_intervals.peek() {
-            if parameters.mismatch_bound.reject_iterative(
+            if mismatch_bound.reject_iterative(
                 stack_frame.alignment_score + lower_bound,
                 best_scoring_interval.alignment_score,
             ) {
@@ -1385,9 +1460,7 @@ where
         // Insertion in read / deletion in reference
         //
         {
-            if !parameters
-                .mismatch_bound
-                .reject(insertion_score + lower_bound, pattern.len())
+            if !mismatch_bound.reject(insertion_score + lower_bound, pattern.len())
                 && parameters.gap_dist_ends as i16 <= j.min(pattern.len() as i16 - j)
             {
                 check_and_push_stack_frame(
@@ -1402,11 +1475,11 @@ where
                         ..stack_frame
                     },
                     pattern,
-                    parameters,
                     EditOperation::Insertion(j as u16),
                     edit_tree,
                     stack,
                     &mut hit_intervals,
+                    mismatch_bound,
                 );
             }
         }
@@ -1433,9 +1506,7 @@ where
             // Deletion in read / insertion in reference
             //
             {
-                if !parameters
-                    .mismatch_bound
-                    .reject(deletion_score + lower_bound, pattern.len())
+                if !mismatch_bound.reject(deletion_score + lower_bound, pattern.len())
                     && parameters.gap_dist_ends as i16 <= j.min(pattern.len() as i16 - j)
                 {
                     check_and_push_stack_frame(
@@ -1448,11 +1519,11 @@ where
                             ..stack_frame
                         },
                         pattern,
-                        parameters,
                         EditOperation::Deletion(j as u16, c),
                         edit_tree,
                         stack,
                         &mut hit_intervals,
+                        mismatch_bound,
                     );
                 }
             }
@@ -1461,10 +1532,7 @@ where
             // Match/mismatch
             //
             {
-                if !parameters
-                    .mismatch_bound
-                    .reject(mm_score + lower_bound, pattern.len())
-                {
+                if !mismatch_bound.reject(mm_score + lower_bound, pattern.len()) {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
                             current_interval: interval_prime,
@@ -1478,7 +1546,6 @@ where
                             ..stack_frame
                         },
                         pattern,
-                        parameters,
                         if c == pattern[j as usize] {
                             EditOperation::Match(j as u16)
                         } else {
@@ -1487,6 +1554,7 @@ where
                         edit_tree,
                         stack,
                         &mut hit_intervals,
+                        mismatch_bound,
                     );
                 }
             }
@@ -1542,10 +1610,11 @@ pub mod tests {
             mm_score: -1.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: -1.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -1.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1573,6 +1642,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1594,10 +1664,11 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 1.0,
         };
+        let mmb = TestBound { threshold: -1.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -1.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -20.0,
             penalty_gap_extend: -10.0,
             chunk_size: 1,
@@ -1625,6 +1696,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let mut positions: Vec<usize> = intervals
@@ -1710,10 +1782,11 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: -2.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -2.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1741,6 +1814,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let mut positions: Vec<usize> = intervals
@@ -1759,10 +1833,11 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: -5.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -5.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -1790,6 +1865,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let positions: Vec<usize> = intervals
@@ -1813,6 +1889,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let positions: Vec<usize> = intervals
@@ -1826,11 +1903,12 @@ pub mod tests {
     #[test]
     fn test_vindija_pwm_alignment() {
         let difference_model = VindijaPwm::new();
+        let mmb = TestBound { threshold: -30.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
             // Disable gaps
-            mismatch_bound: TestBound { threshold: -30.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -200.0,
             penalty_gap_extend: -100.0,
             chunk_size: 1,
@@ -1858,6 +1936,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1885,6 +1964,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1922,6 +2002,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
@@ -1971,13 +2052,14 @@ pub mod tests {
     fn test_corner_cases() {
         let difference_model = VindijaPwm::new();
         let repr_mm_penalty = difference_model.get_representative_mismatch_penalty();
+        let mmb = Discrete::new(0.01, 0.02, repr_mm_penalty);
 
         let parameters = AlignmentParameters {
             penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
             penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
             difference_model: difference_model.clone().into(),
             chunk_size: 1,
-            mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty).into(),
+            mismatch_bound: mmb.clone().into(),
             gap_dist_ends: 0,
             stack_limit_abort: false,
         };
@@ -2006,6 +2088,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let alignment_scores = intervals
@@ -2035,10 +2118,11 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: -3.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -3.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2069,6 +2153,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2105,6 +2190,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let best_hit = intervals.pop().unwrap();
@@ -2143,6 +2229,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2180,6 +2267,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2206,9 +2294,11 @@ pub mod tests {
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
+        let mmb = TestBound { threshold: -4.0 };
+
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -4.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2227,6 +2317,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2249,10 +2340,11 @@ pub mod tests {
             mm_score: -2.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: -1.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -1.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2283,6 +2375,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2301,9 +2394,11 @@ pub mod tests {
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
+        let mmb = TestBound { threshold: -3.0 };
+
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -3.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -2.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2322,6 +2417,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2351,6 +2447,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let best_hit = intervals.pop().unwrap();
@@ -2381,6 +2478,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2410,6 +2508,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
         let best_hit = intervals.pop().unwrap();
         let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
@@ -2424,10 +2523,11 @@ pub mod tests {
             mm_score: -1.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: 0.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: 0.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2455,6 +2555,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let positions = if let Some(best_alignment) = intervals.pop() {
@@ -2491,10 +2592,11 @@ pub mod tests {
             mm_score: -1.0,
             match_score: 0.0,
         };
+        let mmb = TestBound { threshold: -1.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: -1.0 }.into(),
+            mismatch_bound: mmb.clone().into(),
             penalty_gap_open: -3.0,
             penalty_gap_extend: -1.0,
             chunk_size: 1,
@@ -2522,6 +2624,7 @@ pub mod tests {
             &mut stack_buf,
             &mut tree_buf,
             &difference_model,
+            &mmb,
         );
 
         let best_alignment = intervals.peek().unwrap();
@@ -2571,11 +2674,11 @@ pub mod tests {
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound = MismatchBoundDispatch::from(TestBound { threshold: -14.0 });
+        let mismatch_bound = TestBound { threshold: -14.0 };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound,
+            mismatch_bound: mismatch_bound.clone().into(),
             penalty_gap_open: 0.001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -2600,6 +2703,7 @@ pub mod tests {
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 0);
         }
@@ -2618,6 +2722,7 @@ pub mod tests {
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         }
@@ -2741,12 +2846,11 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound =
-            MismatchBoundDispatch::from(Discrete::new(0.04, 0.02, representative_mismatch_penalty));
+        let mismatch_bound = Discrete::new(0.04, 0.02, representative_mismatch_penalty);
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound,
+            mismatch_bound: mismatch_bound.clone().into(),
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -2774,6 +2878,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 0);
         }
@@ -2796,6 +2901,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 0);
         }
@@ -2817,6 +2923,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         }
@@ -2838,6 +2945,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         }
@@ -2859,6 +2967,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         }
@@ -2880,6 +2989,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         }
@@ -2901,6 +3011,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mut stack,
                 &mut tree,
                 &difference_model,
+                &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
         }

@@ -4,6 +4,7 @@ use crate::{
     errors::{Error, Result},
     fmd_index::RtFmdIndex,
     map,
+    mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
     utils::{load_index_from_path, AlignmentParameters},
 };
@@ -72,41 +73,112 @@ impl Worker {
                                     STACK_BUF.with(|stack_buf| {
                                         TREE_BUF.with(|tree_buf| {
                                             // Here we call the instances of the generic `k_mismatch_search` function. Currently, only
-                                            // `SimpleAncientDnaModel` is used, the others merely serve as an example.
+                                            // `SimpleAncientDnaModel` is used, as well as `Discrete` and `Continuuous` `MismatchBound`s.
+                                            // The others merely serve as an example.
+                                            // TODO: I wonder if there's a less-boilerplate way of dispatching.
                                             let hit_intervals = match &alignment_parameters.difference_model {
                                                 SequenceDifferenceModelDispatch::SimpleAncientDnaModel(sdm) => {
-                                                    map::k_mismatch_search(
-                                                        &record.sequence,
-                                                        &record.base_qualities,
-                                                        alignment_parameters,
-                                                        fmd_index,
-                                                        &mut stack_buf.borrow_mut(),
-                                                        &mut tree_buf.borrow_mut(),
-                                                        sdm,
-                                                    )
+                                                    match &alignment_parameters.mismatch_bound {
+                                                        MismatchBoundDispatch::Discrete(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                        MismatchBoundDispatch::Continuous(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                        MismatchBoundDispatch::TestBound(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                    }
                                                 }
                                                 SequenceDifferenceModelDispatch::TestDifferenceModel(sdm) => {
-                                                    map::k_mismatch_search(
-                                                        &record.sequence,
-                                                        &record.base_qualities,
-                                                        alignment_parameters,
-                                                        fmd_index,
-                                                        &mut stack_buf.borrow_mut(),
-                                                        &mut tree_buf.borrow_mut(),
-                                                        sdm,
-                                                    )
-                                                }
+                                                    match &alignment_parameters.mismatch_bound {
+                                                        MismatchBoundDispatch::Discrete(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                        MismatchBoundDispatch::Continuous(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                        MismatchBoundDispatch::TestBound(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                    }
+                                                },
                                                 SequenceDifferenceModelDispatch::VindijaPwm(sdm) => {
-                                                    map::k_mismatch_search(
-                                                        &record.sequence,
-                                                        &record.base_qualities,
-                                                        alignment_parameters,
-                                                        fmd_index,
-                                                        &mut stack_buf.borrow_mut(),
-                                                        &mut tree_buf.borrow_mut(),
-                                                        sdm,
-                                                    )
-                                                }
+                                                    match &alignment_parameters.mismatch_bound {
+                                                        MismatchBoundDispatch::Discrete(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                        MismatchBoundDispatch::Continuous(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                        MismatchBoundDispatch::TestBound(mb) => map::k_mismatch_search(
+                                                            &record.sequence,
+                                                            &record.base_qualities,
+                                                            alignment_parameters,
+                                                            fmd_index,
+                                                            &mut stack_buf.borrow_mut(),
+                                                            &mut tree_buf.borrow_mut(),
+                                                            sdm,
+                                                            mb,
+                                                        ),
+                                                    }
+                                                },
                                             };
                                             (record, hit_intervals)})
                                     })

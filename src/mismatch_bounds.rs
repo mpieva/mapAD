@@ -1,4 +1,3 @@
-use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -8,7 +7,6 @@ use std::{
 
 const MAX_CACHED_READ_LENGTH: usize = 256;
 
-#[enum_dispatch]
 pub trait MismatchBound {
     fn reject(&self, value: f32, read_length: usize) -> bool;
 
@@ -21,12 +19,29 @@ pub trait MismatchBound {
 /// Used to allow static dispatch. No trait objects needed! Method call speed is not negatively
 /// affected by vtable lookups. Every type implementing `MismatchBound` also has to be
 /// added as variant to this enum.
-#[enum_dispatch(MismatchBound)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MismatchBoundDispatch {
-    Continuous,
-    Discrete,
-    TestBound,
+    Continuous(Continuous),
+    Discrete(Discrete),
+    TestBound(TestBound),
+}
+
+impl From<Continuous> for MismatchBoundDispatch {
+    fn from(value: Continuous) -> Self {
+        MismatchBoundDispatch::Continuous(value)
+    }
+}
+
+impl From<Discrete> for MismatchBoundDispatch {
+    fn from(value: Discrete) -> Self {
+        MismatchBoundDispatch::Discrete(value)
+    }
+}
+
+impl From<TestBound> for MismatchBoundDispatch {
+    fn from(value: TestBound) -> Self {
+        MismatchBoundDispatch::TestBound(value)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
