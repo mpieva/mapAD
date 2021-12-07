@@ -169,8 +169,8 @@ fn index<T: Rng>(
     }
 
     info!("Add reverse complement and sentinels to reference");
-    ref_seq.extend_from_slice(b"$");
     let ref_seq_rev_compl = dna::revcomp(&ref_seq);
+    ref_seq.extend_from_slice(b"$");
     ref_seq.extend_from_slice(&ref_seq_rev_compl);
     drop(ref_seq_rev_compl);
     ref_seq.extend_from_slice(b"$");
