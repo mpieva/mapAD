@@ -13,6 +13,7 @@ pub struct RtFmdIndex {
     pub bwt: BWT,
     pub less: Less,
     pub occ: Occ,
+    sentinel_occ: [usize; 2],
     rank_transform: RankTransform,
     back_transform: Vec<u8>,
 }
@@ -33,6 +34,17 @@ impl FMIndexable for RtFmdIndex {
 /// FMD-Index (Li, 2012) that operates on ranks of symbols instead of their ASCII representations
 impl RtFmdIndex {
     pub fn new(bwt: BWT, less: Less, occ: Occ, rank_transform: RankTransform) -> Self {
+        let mut sentinel_occ = [0; 2];
+        sentinel_occ
+            .iter_mut()
+            .zip(
+                bwt.iter()
+                    .enumerate()
+                    .filter(|(_i, &symbol)| symbol == 0)
+                    .map(|(i, _symbol)| i),
+            )
+            .for_each(|(target, src)| *target = src);
+
         let mut back_transform = rank_transform
             .ranks
             .keys()
@@ -44,6 +56,7 @@ impl RtFmdIndex {
             bwt,
             less,
             occ,
+            sentinel_occ,
             rank_transform,
             back_transform,
         }
@@ -121,16 +134,29 @@ impl<'a> ExactSizeIterator for FmdExtIterator<'a> {}
 
 impl<'a> FmdExtIterator<'a> {
     fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFmdIndex) -> Self {
-        let mut initial_state = Self {
-            s: 0,
+        /// Finds occurrences of '$' in BWT. Since there are only two occurrences, we can cheaply
+        /// store and get both positions from a special cache (avoiding the `Occ` array).
+        #[inline]
+        fn sentinel_occ(interval_pos: usize, fmd_index: &RtFmdIndex) -> usize {
+            fmd_index
+                .sentinel_occ
+                .iter()
+                .position(|&sentinel_pos| interval_pos < sentinel_pos)
+                .unwrap_or(fmd_index.sentinel_occ.len())
+        }
+        let o = if interval.lower == 0 {
+            0
+        } else {
+            sentinel_occ(interval.lower - 1, fmd_index)
+        };
+
+        Self {
+            s: sentinel_occ(interval.lower + interval.size - 1, fmd_index) - o,
             l: interval.lower_rev,
-            c: 0,
+            c: 5,
             input_interval: interval,
             fmd_index,
-        };
-        initial_state.extend_once_internal();
-        initial_state.c = 5;
-        initial_state
+        }
     }
 
     fn extend_once_internal(&mut self) -> RtBiInterval {
