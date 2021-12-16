@@ -116,7 +116,7 @@ impl Worker {
 
         // Read (blocking) and decode message
         self.connection
-            .read_exact(&mut self.network_buffer.buf_mut_unfilled())?;
+            .read_exact(self.network_buffer.buf_mut_unfilled())?;
         self.network_buffer.decode_and_reset().map_err(|_e| {
             io::Error::new(io::ErrorKind::InvalidData, "Could not decode task message").into()
         })
