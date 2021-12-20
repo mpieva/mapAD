@@ -1427,21 +1427,25 @@ pub fn k_mismatch_search(
 
         // Limit stack size
         if stack.len() > STACK_LIMIT as usize || edit_tree.len() > EDIT_TREE_LIMIT as usize {
-            if !stack_size_limit_reported {
-                trace!(
+            if parameters.stack_limit_abort {
+                return hit_intervals;
+            } else {
+                if !stack_size_limit_reported {
+                    trace!(
                     "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (stack size: {}, edit tree size: {}).",
                     pattern.len(),
                     stack.len(),
                     edit_tree.len(),
                 );
-                stack_size_limit_reported = true;
-            }
+                    stack_size_limit_reported = true;
+                }
 
-            for _ in 0..(stack.len().saturating_sub(STACK_LIMIT as usize))
-                .max(edit_tree.len().saturating_sub(EDIT_TREE_LIMIT as usize))
-            {
-                let poor_frame = stack.pop_min().expect("This is not expected to fail");
-                edit_tree.remove(poor_frame.edit_node_id);
+                for _ in 0..(stack.len().saturating_sub(STACK_LIMIT as usize))
+                    .max(edit_tree.len().saturating_sub(EDIT_TREE_LIMIT as usize))
+                {
+                    let poor_frame = stack.pop_min().expect("This is not expected to fail");
+                    edit_tree.remove(poor_frame.edit_node_id);
+                }
             }
         }
     }
@@ -1471,6 +1475,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -1521,6 +1526,7 @@ pub mod tests {
             penalty_gap_extend: -10.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "GAAAAG".as_bytes().to_owned();
@@ -1582,6 +1588,7 @@ pub mod tests {
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let pattern = b"CCCCCCC";
@@ -1634,6 +1641,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
@@ -1681,6 +1689,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 5,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "AAAAAGGGGAAAAA".as_bytes().to_owned();
@@ -1746,6 +1755,7 @@ pub mod tests {
             penalty_gap_extend: -100.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
@@ -1886,6 +1896,7 @@ pub mod tests {
             chunk_size: 1,
             mismatch_bound: Discrete::new(0.01, 0.02, repr_mm_penalty).into(),
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
@@ -1948,6 +1959,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         //
@@ -2113,6 +2125,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let mut stack_buf = MinMaxHeap::new();
@@ -2155,6 +2168,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         //
@@ -2204,6 +2218,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let mut stack_buf = MinMaxHeap::new();
@@ -2323,6 +2338,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
@@ -2388,6 +2404,7 @@ pub mod tests {
             penalty_gap_extend: -1.0,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
@@ -2467,6 +2484,7 @@ pub mod tests {
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
             gap_dist_ends: 0,
+            stack_limit_abort: false,
         };
 
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
@@ -2635,6 +2653,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
             gap_dist_ends: 5,
+            stack_limit_abort: false,
         };
 
         let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);

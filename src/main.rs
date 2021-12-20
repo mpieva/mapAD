@@ -244,6 +244,12 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .default_value("5")
                         .value_name("INT")
+                )
+                .arg(
+                    Arg::with_name("stack_limit_abort")
+                        .long("stack_limit_abort")
+                        .help("Abort alignment when stack size limit is reached instead of trying to recover.")
+                        .takes_value(false)
                 ),
 
         )
@@ -433,5 +439,6 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         mismatch_bound,
         gap_dist_ends: value_t!(arg_matches.value_of("gap_dist_ends"), u8)
             .unwrap_or_else(|e| e.exit()),
+        stack_limit_abort: arg_matches.is_present("stack_limit_abort"),
     }
 }

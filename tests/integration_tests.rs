@@ -90,6 +90,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             penalty_gap_extend: representative_mm_penalty,
             chunk_size: 1,
             gap_dist_ends: 5,
+            stack_limit_abort: false,
         };
         map::run(
             input_bam_path.to_str().unwrap(),
