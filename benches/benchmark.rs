@@ -1,6 +1,6 @@
 use bio::alphabets;
 use criterion::{criterion_group, criterion_main, Criterion};
-use min_max_heap::MinMaxHeap;
+use radix_heap::RadixHeapMap;
 
 use mapad::{
     backtrack_tree::Tree,
@@ -46,7 +46,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let pattern = "GTTT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             k_mismatch_search(
@@ -200,7 +200,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(
@@ -224,7 +224,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(
@@ -247,7 +247,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(
@@ -270,7 +270,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(
@@ -293,7 +293,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(
@@ -316,7 +316,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(
@@ -339,7 +339,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack = MinMaxHeap::new();
+        let mut stack = RadixHeapMap::new();
         let mut tree = Tree::new();
         b.iter(|| {
             let intervals = k_mismatch_search(

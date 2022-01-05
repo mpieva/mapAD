@@ -93,7 +93,7 @@ dependencies = [
  "newtype_derive",
  "num-integer",
  "num-traits",
- "ordered-float",
+ "ordered-float 1.1.1",
  "petgraph",
  "rand",
  "regex",
@@ -636,8 +636,9 @@ dependencies = [
  "either",
  "fxhash",
  "log",
- "min-max-heap",
  "mio",
+ "ordered-float 2.10.0",
+ "radix-heap",
  "rand",
  "rayon",
  "rust-htslib",
@@ -678,11 +679,6 @@ checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
 dependencies = [
  "autocfg",
 ]
-
-[[package]]
-name = "min-max-heap"
-version = "1.3.1-alpha.0"
-source = "git+https://github.com/tov/min-max-heap-rs?branch=master#76a2141ad8a4047d107c459f282ee9a293e7a33e"
 
 [[package]]
 name = "mio"
@@ -841,6 +837,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "2.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7940cf2ca942593318d07fcf2596cdca60a85c9e7fab408a5e21a4f9dcd40d87"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -948,6 +953,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47aa80447ce4daf1717500037052af176af5d38cc3e571d9ec1c7353fc10c87d"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "radix-heap"
+version = "0.4.1"
+source = "git+https://github.com/jch-13/radix-heap.git?branch=pop_min#ca5588eb8c5d5ff28baa66af4f8e59ccee226fda"
+dependencies = [
+ "ordered-float 2.10.0",
 ]
 
 [[package]]
