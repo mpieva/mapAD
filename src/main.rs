@@ -292,8 +292,10 @@ fn handle_arguments(matches: ArgMatches) {
             1 => log::LevelFilter::Debug,
             _ => log::LevelFilter::Trace,
         })
+        .with_utc_timestamps()
         .init()
         .expect("This is not expected to fail");
+    info!("Use UTC timestamps for log entries");
 
     match matches.subcommand() {
         ("index", Some(arg_matches)) => {
