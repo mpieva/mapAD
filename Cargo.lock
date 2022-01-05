@@ -711,7 +711,7 @@ dependencies = [
 [[package]]
 name = "min-max-heap"
 version = "1.3.1-alpha.0"
-source = "git+https://github.com/jch-13/min-max-heap-rs.git?branch=PRs#c7865a25edddfa478f80470ad7ce90f02d805fa1"
+source = "git+https://github.com/tov/min-max-heap-rs?branch=master#76a2141ad8a4047d107c459f282ee9a293e7a33e"
 
 [[package]]
 name = "mio"

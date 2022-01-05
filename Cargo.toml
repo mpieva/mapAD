@@ -23,7 +23,7 @@ either = "1.6.1"
 rayon = "1.5.1"
 mio = { version = "0.7.13", features = ["os-poll", "tcp"] }
 enum_dispatch = "0.3.7"
-min-max-heap = { git = "https://github.com/jch-13/min-max-heap-rs.git", branch = "PRs"}
+min-max-heap = { git = "https://github.com/tov/min-max-heap-rs", branch = "master"}
 slab = "0.4.4"
 anyhow = "1.0.43"
 
