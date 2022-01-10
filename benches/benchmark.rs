@@ -37,6 +37,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
             gap_dist_ends: 5,
+            stack_limit_abort: false,
         };
 
         let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
@@ -187,6 +188,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         penalty_gap_extend: representative_mismatch_penalty,
         chunk_size: 1,
         gap_dist_ends: 5,
+        stack_limit_abort: false,
     };
 
     let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
