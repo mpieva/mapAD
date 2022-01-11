@@ -398,7 +398,7 @@ impl BiDArray {
     {
         // This value is never actually used as `u16` but this type
         // restricts the values to the valid range.
-        const MAX_OFFSET: u16 = 10;
+        const MAX_OFFSET: u16 = 15;
 
         // Compute a backward-D-iterator for every offset
         let mut offset_d_backward_iterators = (0..MAX_OFFSET as usize)
