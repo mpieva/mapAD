@@ -20,7 +20,7 @@ pub struct RtFmdIndex {
 
 impl FMIndexable for RtFmdIndex {
     fn occ(&self, r: usize, a: u8) -> usize {
-        self.occ.get(&self.bwt, r, a)
+        self.occ.get_small_k(&self.bwt, r, a)
     }
     fn less(&self, a: u8) -> usize {
         self.less[a as usize]
