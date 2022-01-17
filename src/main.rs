@@ -1,7 +1,7 @@
 use clap::{
     crate_description, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use simple_logger::SimpleLogger;
 
 use mapad::{
@@ -295,7 +295,7 @@ fn handle_arguments(matches: ArgMatches) {
         .with_utc_timestamps()
         .init()
         .expect("This is not expected to fail");
-    info!("Use UTC timestamps for log entries");
+    warn!("Use UTC timestamps for log entries");
 
     match matches.subcommand() {
         ("index", Some(arg_matches)) => {
