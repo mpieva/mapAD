@@ -15,7 +15,7 @@ image: "rust:latest"
 # You will often need this when you (or any of your dependencies) depends on C code.
 before_script:
   - apt-get update -yqq
-  - apt-get install -yqq --no-install-recommends build-essential
+  - apt-get install -yqq --no-install-recommends build-essential cmake
   - apt-get install -yqq --no-install-recommends clang libclang-dev
 
 # Use cargo to test the project
