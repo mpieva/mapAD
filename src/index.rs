@@ -226,6 +226,8 @@ fn index<T: Rng>(
         .collect::<Result<Vec<_>>>()?;
 
     // Replace single occurrences of ambiguous base symbols with random ones, leave runs alone
+    // Calling `unwrap()` here will never panic panics because the slices to `choose()` from are
+    // `const`.
     let randomly_replace_ambiguous = |base| match base {
         b'U' => b'T',
         b'R' => *DNA_PURINE.choose(rng).unwrap(),
