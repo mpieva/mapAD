@@ -3,7 +3,6 @@ use bio::{
     data_structures::{
         bwt::{Less, Occ, BWT},
         fmindex::{FMIndexable, Interval},
-        suffix_array::SuffixArray,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -210,34 +209,8 @@ impl RtBiInterval {
         }
     }
 
-    fn interval_to_pos<S>(
-        interval: Interval,
-        suffix_array: &S,
-    ) -> impl ExactSizeIterator<Item = usize> + '_
-    where
-        S: SuffixArray,
-    {
-        (interval.lower..interval.upper).map(move |pos| {
-            suffix_array
-                .get(pos)
-                .expect("Interval out of range of suffix array")
-        })
-    }
-
-    pub fn occ_fwd<'a, S>(&self, suffix_array: &'a S) -> impl ExactSizeIterator<Item = usize> + 'a
-    where
-        S: SuffixArray,
-    {
-        Self::interval_to_pos(self.forward(), suffix_array)
-    }
-
-    pub fn occ_revcomp<'a, S>(
-        &self,
-        suffix_array: &'a S,
-    ) -> impl ExactSizeIterator<Item = usize> + 'a
-    where
-        S: SuffixArray,
-    {
-        Self::interval_to_pos(self.revcomp(), suffix_array)
+    pub fn range_fwd(&self) -> impl ExactSizeIterator<Item = usize> {
+        let interval = self.forward();
+        interval.lower..interval.upper
     }
 }

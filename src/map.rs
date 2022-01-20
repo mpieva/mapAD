@@ -921,8 +921,9 @@ where
             // to choose a random element from, so this should be a constant time operation.
             let absolute_pos = interval
                 .interval
-                .occ_fwd(suffix_array)
+                .range_fwd()
                 .choose(rng)
+                .and_then(|sar_pos| suffix_array.get(sar_pos))
                 .ok_or_else(|| {
                     Error::InvalidIndex("Could not find reference position".to_string())
                 })?;
