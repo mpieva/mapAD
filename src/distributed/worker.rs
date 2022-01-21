@@ -9,8 +9,7 @@ use crate::{
     utils::{load_index_from_path, AlignmentParameters},
 };
 use log::{debug, info};
-use ordered_float::NotNan;
-use radix_heap::RadixHeapMap;
+use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 use std::{
     cell::RefCell,
@@ -39,7 +38,7 @@ impl Worker {
 
     pub fn run(&mut self) -> Result<()> {
         thread_local! {
-            static STACK_BUF: RefCell<RadixHeapMap<NotNan<f32>, map::MismatchSearchStackFrame>> = RefCell::new(RadixHeapMap::new_at(0.0.try_into().expect("0.0 != NaN")));
+            static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT as usize + 9));
             static TREE_BUF: RefCell<Tree<map::EditOperation>> = RefCell::new(Tree::with_capacity(map::EDIT_TREE_LIMIT + 9));
         }
 

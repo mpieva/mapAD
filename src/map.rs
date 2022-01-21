@@ -12,8 +12,7 @@ use std::{
 use clap::{crate_name, crate_version};
 use either::Either;
 use log::{debug, info, trace, warn};
-use ordered_float::NotNan;
-use radix_heap::RadixHeapMap;
+use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -307,8 +306,31 @@ pub struct MismatchSearchStackFrame {
     direction: Direction,
     gap_forwards: GapState,
     gap_backwards: GapState,
+    alignment_score: f32,
     edit_node_id: NodeId,
 }
+
+impl PartialOrd for MismatchSearchStackFrame {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for MismatchSearchStackFrame {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.alignment_score
+            .partial_cmp(&other.alignment_score)
+            .expect("This is not expected to fail")
+    }
+}
+
+impl PartialEq for MismatchSearchStackFrame {
+    fn eq(&self, other: &Self) -> bool {
+        self.alignment_score.eq(&other.alignment_score)
+    }
+}
+
+impl Eq for MismatchSearchStackFrame {}
 
 /// For multi-identifier reference sequences like the human genome (that is split by chromosome)
 /// this struct is used to keep a map of IDs and positions
@@ -704,7 +726,7 @@ where
     T: Iterator<Item = Result<Record>>,
 {
     thread_local! {
-        static STACK_BUF: RefCell<RadixHeapMap<NotNan<f32>, MismatchSearchStackFrame>> = RefCell::new(RadixHeapMap::new_at(0.0.try_into().expect("0.0 != NaN")));
+        static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT as usize + 9));
         static TREE_BUF: RefCell<Tree<EditOperation>> = RefCell::new(Tree::with_capacity(EDIT_TREE_LIMIT + 9));
     }
 
@@ -1218,10 +1240,9 @@ fn extract_edit_operations(
 fn check_and_push_stack_frame<MB>(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
-    alignment_score: f32,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<EditOperation>,
-    stack: &mut RadixHeapMap<NotNan<f32>, MismatchSearchStackFrame>,
+    stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
     mismatch_bound: &MB,
 ) where
@@ -1232,7 +1253,10 @@ fn check_and_push_stack_frame<MB>(
     // that having this here improves the performance but it might
     // be that actually the opposite is true for large real data.
     if let Some(best_scoring_interval) = intervals.peek() {
-        if mismatch_bound.reject_iterative(alignment_score, best_scoring_interval.alignment_score) {
+        if mismatch_bound.reject_iterative(
+            stack_frame.alignment_score,
+            best_scoring_interval.alignment_score,
+        ) {
             return;
         }
     }
@@ -1247,14 +1271,14 @@ fn check_and_push_stack_frame<MB>(
             extract_edit_operations(stack_frame.edit_node_id, edit_tree, pattern.len());
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
-            alignment_score,
+            alignment_score: stack_frame.alignment_score,
             edit_operations,
         });
         print_debug(&stack_frame, intervals, edit_tree); // FIXME
         return;
     }
 
-    stack.push(alignment_score.try_into().expect("Never NaN"), stack_frame);
+    stack.push(stack_frame);
 }
 
 /// FIXME
@@ -1272,7 +1296,9 @@ fn print_debug(
         };
 
         eprintln!(
-            "{}\t{}\t{}\t{:?}",
+            "{}\t{}\t{}\t{}\t{}\t{:?}",
+            stack_frame.alignment_score,
+            stack_frame.alignment_score,
             stack_frame.backward_index,
             stack_frame.forward_index,
             best_as,
@@ -1288,7 +1314,7 @@ pub fn k_mismatch_search<SDM, MB>(
     base_qualities: &[u8],
     parameters: &AlignmentParameters,
     fmd_index: &RtFmdIndex,
-    stack: &mut RadixHeapMap<NotNan<f32>, MismatchSearchStackFrame>,
+    stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     edit_tree: &mut Tree<EditOperation>,
     sequence_difference_model: &SDM,
     mismatch_bound: &MB,
@@ -1315,22 +1341,18 @@ where
     stack.clear();
     let root_node = edit_tree.clear();
 
-    stack.push(
-        0.0.try_into().expect("0.0 != NaN"),
-        MismatchSearchStackFrame {
-            current_interval: fmd_index.init_interval(),
-            backward_index: center_of_read as i16 - 1,
-            forward_index: center_of_read as i16,
-            direction: Direction::Forward,
-            gap_backwards: GapState::Closed,
-            gap_forwards: GapState::Closed,
-            edit_node_id: root_node,
-        },
-    );
+    stack.push(MismatchSearchStackFrame {
+        current_interval: fmd_index.init_interval(),
+        backward_index: center_of_read as i16 - 1,
+        forward_index: center_of_read as i16,
+        direction: Direction::Forward,
+        gap_backwards: GapState::Closed,
+        gap_forwards: GapState::Closed,
+        alignment_score: 0.0,
+        edit_node_id: root_node,
+    });
 
-    while let Some((alignment_score, stack_frame)) = stack.pop() {
-        let alignment_score = alignment_score.into_inner();
-
+    while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
         let (
             j,
@@ -1366,12 +1388,12 @@ where
                 } else {
                     parameters.penalty_gap_open
                 } - optimal_penalty
-                    + alignment_score;
+                    + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_forwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                } + alignment_score;
+                } + stack_frame.alignment_score;
                 for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
                     *score = sequence_difference_model.get(
                         j as usize,
@@ -1380,7 +1402,7 @@ where
                         pattern[j as usize],
                         base_qualities[j as usize],
                     ) - optimal_penalty
-                        + alignment_score;
+                        + stack_frame.alignment_score;
                 }
             }
             Direction::Backward => {
@@ -1400,12 +1422,12 @@ where
                 } else {
                     parameters.penalty_gap_open
                 } - optimal_penalty
-                    + alignment_score;
+                    + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_backwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                } + alignment_score;
+                } + stack_frame.alignment_score;
                 for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
                     *score = sequence_difference_model.get(
                         j as usize,
@@ -1414,7 +1436,7 @@ where
                         pattern[j as usize],
                         base_qualities[j as usize],
                     ) - optimal_penalty
-                        + alignment_score;
+                        + stack_frame.alignment_score;
                 }
             }
         };
@@ -1428,7 +1450,7 @@ where
         // better scoring frames on the stack, so we are going to stop the search.
         if let Some(best_scoring_interval) = hit_intervals.peek() {
             if mismatch_bound.reject_iterative(
-                alignment_score + lower_bound,
+                stack_frame.alignment_score + lower_bound,
                 best_scoring_interval.alignment_score,
             ) {
                 break;
@@ -1450,10 +1472,10 @@ where
                         // Mark opened gap at the corresponding end
                         gap_backwards: next_insertion_backward,
                         gap_forwards: next_insertion_forward,
+                        alignment_score: insertion_score,
                         ..stack_frame
                     },
                     pattern,
-                    insertion_score,
                     EditOperation::Insertion(j as u16),
                     edit_tree,
                     stack,
@@ -1494,10 +1516,10 @@ where
                             // Mark open gap at the corresponding end
                             gap_backwards: next_deletion_backward,
                             gap_forwards: next_deletion_forward,
+                            alignment_score: deletion_score,
                             ..stack_frame
                         },
                         pattern,
-                        deletion_score,
                         EditOperation::Deletion(j as u16, c),
                         edit_tree,
                         stack,
@@ -1521,10 +1543,10 @@ where
                             // Mark closed gap at the corresponding end
                             gap_backwards: next_closed_gap_backward,
                             gap_forwards: next_closed_gap_forward,
+                            alignment_score: *mm_score,
                             ..stack_frame
                         },
                         pattern,
-                        *mm_score,
                         if c == pattern[j as usize] {
                             EditOperation::Match(j as u16)
                         } else {
@@ -1565,7 +1587,7 @@ where
                 for _ in 0..(stack.len().saturating_sub(STACK_LIMIT as usize))
                     .max(edit_tree.len().saturating_sub(EDIT_TREE_LIMIT as usize))
                 {
-                    let (_as, poor_frame) = stack.pop_min().expect("This is not expected to fail");
+                    let poor_frame = stack.pop_min().expect("This is not expected to fail");
                     edit_tree.remove(poor_frame.edit_node_id);
                 }
             }
@@ -1585,7 +1607,7 @@ pub mod tests {
     #[test]
     fn test_inexact_search() {
         let difference_model = TestDifferenceModel {
-            deam_score: -0.5,
+            deam_score: 0.5,
             mm_score: -1.0,
             match_score: 0.0,
         };
@@ -1610,7 +1632,7 @@ pub mod tests {
         let pattern = "GTTC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1641,7 +1663,7 @@ pub mod tests {
         let difference_model = TestDifferenceModel {
             deam_score: -10.0,
             mm_score: -10.0,
-            match_score: 0.0,
+            match_score: 1.0,
         };
         let mmb = TestBound { threshold: -1.0 };
 
@@ -1664,7 +1686,7 @@ pub mod tests {
         let pattern = "TTTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1782,7 +1804,7 @@ pub mod tests {
         let pattern = "TT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1834,7 +1856,7 @@ pub mod tests {
         let pattern = "AAAAAAAAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1858,7 +1880,7 @@ pub mod tests {
         let pattern = "AGGGAAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1904,7 +1926,7 @@ pub mod tests {
         let pattern = "TTCCCT".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1932,7 +1954,7 @@ pub mod tests {
         let pattern = "CCCCCC".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1970,7 +1992,7 @@ pub mod tests {
         let pattern = "AAGAAA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -1986,6 +2008,45 @@ pub mod tests {
 
         let alignment_score: Vec<f32> = intervals.iter().map(|f| f.alignment_score).collect();
         assert_approx_eq!(alignment_score[0], -10.965062);
+    }
+
+    #[test]
+    fn test_ord_impl() {
+        let mut edit_tree: Tree<usize> = Tree::new();
+        let root_id = edit_tree.clear();
+
+        let map_params_large = MismatchSearchStackFrame {
+            alignment_score: -5.0,
+            current_interval: RtBiInterval {
+                lower: 5,
+                lower_rev: 5,
+                size: 5,
+            },
+            backward_index: 5,
+            forward_index: 5,
+            direction: Direction::Backward,
+            gap_forwards: GapState::Closed,
+            gap_backwards: GapState::Closed,
+            edit_node_id: root_id,
+        };
+        let map_params_small = MismatchSearchStackFrame {
+            alignment_score: -20.0,
+            current_interval: RtBiInterval {
+                lower: 5,
+                lower_rev: 5,
+                size: 5,
+            },
+            backward_index: 5,
+            forward_index: 5,
+            direction: Direction::Backward,
+            gap_forwards: GapState::Closed,
+            gap_backwards: GapState::Closed,
+            edit_node_id: root_id,
+        };
+
+        assert!(map_params_large > map_params_small);
+        assert!(!(map_params_large < map_params_small));
+        assert_ne!(map_params_large, map_params_small);
     }
 
     #[test]
@@ -2018,7 +2079,7 @@ pub mod tests {
             .to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -2082,7 +2143,7 @@ pub mod tests {
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2119,7 +2180,7 @@ pub mod tests {
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2158,7 +2219,7 @@ pub mod tests {
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2196,7 +2257,7 @@ pub mod tests {
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2246,7 +2307,7 @@ pub mod tests {
             stack_limit_abort: false,
         };
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2304,7 +2365,7 @@ pub mod tests {
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2346,7 +2407,7 @@ pub mod tests {
             stack_limit_abort: false,
         };
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2376,7 +2437,7 @@ pub mod tests {
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2407,7 +2468,7 @@ pub mod tests {
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2437,7 +2498,7 @@ pub mod tests {
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2484,7 +2545,7 @@ pub mod tests {
         let pattern = "TTT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let mut intervals = k_mismatch_search(
             &pattern,
@@ -2553,7 +2614,7 @@ pub mod tests {
         let pattern = "TAGT".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mut stack_buf = RadixHeapMap::new();
+        let mut stack_buf = MinMaxHeap::new();
         let mut tree_buf = Tree::new();
         let intervals = k_mismatch_search(
             &pattern,
@@ -2633,7 +2694,7 @@ pub mod tests {
             let pattern = "NNNNNNNNNN".as_bytes().to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2652,7 +2713,7 @@ pub mod tests {
             let pattern = "AGATNACAG".as_bytes().to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2808,7 +2869,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2831,7 +2892,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2853,7 +2914,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2875,7 +2936,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2897,7 +2958,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2919,7 +2980,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
@@ -2941,7 +3002,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
-            let mut stack = RadixHeapMap::new();
+            let mut stack = MinMaxHeap::new();
             let mut tree = Tree::new();
             let intervals = k_mismatch_search(
                 &pattern,
