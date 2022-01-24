@@ -1587,8 +1587,11 @@ where
                 for _ in 0..(stack.len() as isize - STACK_LIMIT as isize)
                     .max(edit_tree.len() as isize - EDIT_TREE_LIMIT as isize)
                 {
-                    let poor_frame = stack.pop_min().expect("This is not expected to fail");
-                    edit_tree.remove(poor_frame.edit_node_id);
+                    // The stack should never be empty at this point, so we boldly ignore the
+                    // `None` case here
+                    if let Some(min_stack_frame) = stack.pop_min() {
+                        edit_tree.remove(min_stack_frame.edit_node_id);
+                    }
                 }
             }
         }
