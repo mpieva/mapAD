@@ -1,9 +1,10 @@
-use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     fmt::{Display, Formatter},
     iter::once,
 };
+
+use serde::{Deserialize, Serialize};
 
 const MAX_CACHED_READ_LENGTH: usize = 256;
 

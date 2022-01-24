@@ -1,8 +1,9 @@
-use crate::{
-    distributed::*,
-    errors::{Error, Result},
-    map,
-    utils::*,
+use std::{
+    collections::{BinaryHeap, HashMap},
+    io::{self, Read, Write},
+    iter::Map,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
 };
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
@@ -11,13 +12,11 @@ use mio::{net::TcpListener, *};
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
 
-use std::{
-    collections::{BinaryHeap, HashMap},
-    io,
-    io::{Read, Write},
-    iter::Map,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::Path,
+use crate::{
+    distributed::*,
+    errors::{Error, Result},
+    map,
+    utils::*,
 };
 
 enum TransportState {

@@ -1,14 +1,5 @@
 use std::{collections::HashMap, fs::File, hash::BuildHasherDefault};
 
-use either::Either;
-use fxhash::FxHasher;
-use log::info;
-use rand::{
-    prelude::{Rng, SeedableRng, StdRng},
-    seq::SliceRandom,
-};
-use serde::{Deserialize, Serialize};
-
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
     data_structures::{
@@ -17,6 +8,14 @@ use bio::{
     },
     io::fasta,
 };
+use either::Either;
+use fxhash::FxHasher;
+use log::info;
+use rand::{
+    prelude::{Rng, SeedableRng, StdRng},
+    seq::SliceRandom,
+};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     errors::Result,

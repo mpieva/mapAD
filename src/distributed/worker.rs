@@ -1,3 +1,14 @@
+use std::{
+    cell::RefCell,
+    io,
+    io::{Read, Write},
+    net::TcpStream,
+};
+
+use log::{debug, info};
+use min_max_heap::MinMaxHeap;
+use rayon::prelude::*;
+
 use crate::{
     backtrack_tree::Tree,
     distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
@@ -7,15 +18,6 @@ use crate::{
     mismatch_bounds::MismatchBoundDispatch,
     sequence_difference_models::SequenceDifferenceModelDispatch,
     utils::{load_index_from_path, AlignmentParameters},
-};
-use log::{debug, info};
-use min_max_heap::MinMaxHeap;
-use rayon::prelude::*;
-use std::{
-    cell::RefCell,
-    io,
-    io::{Read, Write},
-    net::TcpStream,
 };
 
 pub struct Worker {

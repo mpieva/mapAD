@@ -1,13 +1,15 @@
 pub mod dispatcher;
 pub mod worker;
 
+use std::collections::BinaryHeap;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
     errors::Result,
     map::HitInterval,
     utils::{AlignmentParameters, Record},
 };
-use serde::{Deserialize, Serialize};
-use std::collections::BinaryHeap;
 
 trait Message {
     const PROTO_LEN: usize = 8;

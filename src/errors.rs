@@ -1,8 +1,8 @@
-use anyhow;
-use clap::crate_version;
-
 use core::fmt;
 use std::{error, io, result};
+
+use anyhow;
+use clap::crate_version;
 
 /// Internally, we only use this Error type and a newtype wrapper around `std::result::Result<T, E>`
 /// where `E` is fixed. When, for example, an additional input file type machinery is added,

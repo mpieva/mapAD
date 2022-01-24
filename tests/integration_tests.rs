@@ -1,13 +1,14 @@
+use std::{fs::File, io::Write};
+
+use rust_htslib::{bam, bam::Read};
+use tempfile::tempdir;
+
 use mapad::{
     index, map,
     mismatch_bounds::Discrete,
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
     utils,
 };
-
-use rust_htslib::{bam, bam::Read};
-use std::{fs::File, io::Write};
-use tempfile::tempdir;
 
 #[test]
 fn integration_1() {

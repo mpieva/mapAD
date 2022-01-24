@@ -1,14 +1,4 @@
-use crate::{
-    errors::{Error, Result},
-    fmd_index::RtFmdIndex,
-    index::{
-        VersionedBwt, VersionedIdPosMap, VersionedLess, VersionedOcc, VersionedRt,
-        VersionedSuffixArray, INDEX_VERSION,
-    },
-    map::FastaIdPositions,
-    mismatch_bounds::MismatchBoundDispatch,
-    sequence_difference_models::SequenceDifferenceModelDispatch,
-};
+use std::{fmt::Debug, fs::File};
 
 use bio::{
     alphabets,
@@ -23,8 +13,17 @@ use log::{debug, warn};
 use rust_htslib::{bam, bam::record::Aux};
 use serde::{Deserialize, Serialize};
 
-use crate::index::SampledSuffixArrayOwned;
-use std::{fmt::Debug, fs::File};
+use crate::{
+    errors::{Error, Result},
+    fmd_index::RtFmdIndex,
+    index::{
+        SampledSuffixArrayOwned, VersionedBwt, VersionedIdPosMap, VersionedLess, VersionedOcc,
+        VersionedRt, VersionedSuffixArray, INDEX_VERSION,
+    },
+    map::FastaIdPositions,
+    mismatch_bounds::MismatchBoundDispatch,
+    sequence_difference_models::SequenceDifferenceModelDispatch,
+};
 
 /// An owned representation of the `bam::record::Aux` data
 #[derive(Debug, Clone, Serialize, Deserialize)]

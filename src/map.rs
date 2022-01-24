@@ -9,18 +9,16 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
 use clap::{crate_name, crate_version};
 use either::Either;
 use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use rand::{seq::IteratorRandom, RngCore};
 use rayon::prelude::*;
-use smallvec::SmallVec;
-
-use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
-
 use rust_htslib::{bam, bam::Read};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 use crate::{
     backtrack_tree::{NodeId, Tree},
