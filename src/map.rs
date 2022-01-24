@@ -1584,8 +1584,8 @@ where
                     stack_size_limit_reported = true;
                 }
 
-                for _ in 0..(stack.len().saturating_sub(STACK_LIMIT as usize))
-                    .max(edit_tree.len().saturating_sub(EDIT_TREE_LIMIT as usize))
+                for _ in 0..(stack.len() as isize - STACK_LIMIT as isize)
+                    .max(edit_tree.len() as isize - EDIT_TREE_LIMIT as isize)
                 {
                     let poor_frame = stack.pop_min().expect("This is not expected to fail");
                     edit_tree.remove(poor_frame.edit_node_id);
