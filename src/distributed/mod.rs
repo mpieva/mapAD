@@ -130,7 +130,7 @@ impl ResultRxBuffer {
     fn new() -> Self {
         Self {
             buf: vec![0; ResultSheet::PROTO_LEN],
-            // Actually, we expect a size of ResultSheet::PROTO_LEN,
+            // Actually, we expect a size of `ResultSheet::PROTO_LEN`,
             // but the value is not read before it gets replaced with
             // the decoded message size
             expected_size: 0,
@@ -142,7 +142,7 @@ impl ResultRxBuffer {
         self.buf.clear();
         self.buf
             .extend(std::iter::repeat(0).take(ResultSheet::PROTO_LEN));
-        // Actually, we expect a size of ResultSheet::PROTO_LEN,
+        // Actually, we expect a size of `ResultSheet::PROTO_LEN`,
         // but the value is not read before it gets replaced with
         // the decoded message size
         self.already_read = 0;
