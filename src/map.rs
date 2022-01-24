@@ -1576,7 +1576,7 @@ where
             } else {
                 if !stack_size_limit_reported {
                     trace!(
-                    "Stack size limit reached (read length: {} bp). Remove poor partial alignments from stack (stack size: {}, edit tree size: {}).",
+                    "Stack size limit exceeded (read length: {} bp). Remove highly penalized partial alignments from stack (stack size: {}, edit tree size: {}).",
                     pattern.len(),
                     stack.len(),
                     edit_tree.len(),
