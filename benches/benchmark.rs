@@ -6,6 +6,7 @@ use mapad::{
     backtrack_tree::Tree,
     map::k_mismatch_search,
     mismatch_bounds::*,
+    prrange::PrRange,
     sequence_difference_models::*,
     utils::{build_auxiliary_structures, AlignmentParameters},
 };
@@ -353,6 +354,22 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
                 &mismatch_bound,
             );
             assert_eq!(intervals.len(), 1);
+        })
+    });
+
+    c.bench_function("bench_randrange_last", |b| {
+        let range = 3700000000_usize..3700001000;
+        b.iter(|| {
+            let last = PrRange::try_from_range(&range, 1234).unwrap().last();
+            assert!(last.is_some());
+        })
+    });
+
+    c.bench_function("bench_randrange_first", |b| {
+        let range = 3700000000_usize..3700001000;
+        b.iter(|| {
+            let last = PrRange::try_from_range(&range, 1234).unwrap().next();
+            assert!(last.is_some());
         })
     });
 }

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bio::{
     alphabets::{dna, RankTransform},
     data_structures::{
@@ -209,7 +211,7 @@ impl RtBiInterval {
         }
     }
 
-    pub fn range_fwd(&self) -> impl ExactSizeIterator<Item = usize> {
+    pub fn range_fwd(&self) -> Range<usize> {
         let interval = self.forward();
         interval.lower..interval.upper
     }

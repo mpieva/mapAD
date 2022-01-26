@@ -14,7 +14,7 @@ use clap::{crate_name, crate_version};
 use either::Either;
 use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
-use rand::{seq::IteratorRandom, RngCore};
+use rand::RngCore;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read};
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,7 @@ use crate::{
     errors::{Error, Result},
     fmd_index::{RtBiInterval, RtFmdIndex},
     mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
+    prrange::PrRange,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
     utils::{
         load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
@@ -936,38 +937,45 @@ where
         // Get amount of positions in the genome covered by the read
         let effective_read_len = interval.edit_operations.effective_len();
 
-        let (absolute_pos, strand) = {
-            // Find a random genomic position to report. We use an `ExactSizeIterator`
-            // to choose a random element from, so this should be a constant time operation.
-            let absolute_pos = interval
-                .interval
-                .range_fwd()
-                .choose(rng)
-                .and_then(|sar_pos| suffix_array.get(sar_pos))
-                .ok_or_else(|| {
-                    Error::InvalidIndex("Could not find reference position".to_string())
-                })?;
-
-            // Determine strand
-            if absolute_pos < strand_len {
-                (absolute_pos, Direction::Forward)
-            } else {
-                (
-                    suffix_array.len() - absolute_pos - effective_read_len - 1,
-                    Direction::Backward,
-                )
-            }
-        };
-
-        if let Some((tid, rel_pos)) =
-            identifier_position_map.get_reference_identifier(absolute_pos, effective_read_len)
-        {
-            return Ok((tid, rel_pos, strand));
-        }
-        Err(Error::ContigBoundaryOverlap)
+        // If this function returns an error that's likely because the best-scoring interval mappings
+        // overlap contig boundaries. In that case, we can drop the best-scoring interval and
+        // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
+        PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
+            .ok_or_else(|| {
+                Error::InvalidIndex("Could not enumerate possible reference positions".to_string())
+            })?
+            .find_map(|sar_pos| {
+                suffix_array
+                    .get(sar_pos)
+                    // Determine strand
+                    .map(|absolute_pos| {
+                        if absolute_pos < strand_len {
+                            (absolute_pos, Direction::Forward)
+                        } else {
+                            (
+                                suffix_array.len() - absolute_pos - effective_read_len - 1,
+                                Direction::Backward,
+                            )
+                        }
+                    })
+                    // Convert to relative coordinates
+                    .and_then(|(absolute_pos, strand)| {
+                        if let Some((tid, rel_pos)) = identifier_position_map
+                            .get_reference_identifier(absolute_pos, effective_read_len)
+                        {
+                            Some((tid, rel_pos, strand))
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .ok_or_else(|| Error::InvalidIndex("Could not find reference position".to_string()))
     };
 
+    // TODO: We should keep popping (in case the best interval has a length of 1 and overlaps a contig boundary)
+    // TODO: Also, we should special-case two-hit-best-intervals in case one of the hits turns out to be invalid
     if let Some(best_alignment) = intervals.pop() {
+        // TODO: We need to pass the length of the best interval separately in case that has been updated
         let mapping_quality = estimate_mapping_quality(&best_alignment, intervals);
 
         let alternative_hits: Cow<str> = if best_alignment.interval.size > 1 {
