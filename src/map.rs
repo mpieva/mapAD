@@ -931,80 +931,86 @@ where
     R: RngCore,
     S: SuffixArray,
 {
-    let mut intervals_to_coordinates = |interval: &HitInterval| -> Result<(i32, i64, Direction)> {
-        // Calculate length of reference strand ignoring sentinel characters
-        let strand_len = (suffix_array.len() - 2) / 2;
-        // Get amount of positions in the genome covered by the read
-        let effective_read_len = interval.edit_operations.effective_len();
+    let mut intervals_to_coordinates =
+        |interval: &HitInterval| -> Result<(usize, i32, i64, Direction)> {
+            // Calculate length of reference strand ignoring sentinel characters
+            let strand_len = (suffix_array.len() - 2) / 2;
+            // Get amount of positions in the genome covered by the read
+            let effective_read_len = interval.edit_operations.effective_len();
 
-        // If this function returns an error that's likely because the best-scoring interval mappings
-        // overlap contig boundaries. In that case, we can drop the best-scoring interval and
-        // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
-        PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
-            .ok_or_else(|| {
-                Error::InvalidIndex("Could not enumerate possible reference positions".to_string())
-            })?
-            .find_map(|sar_pos| {
-                suffix_array
-                    .get(sar_pos)
-                    // Determine strand
-                    .map(|absolute_pos| {
-                        if absolute_pos < strand_len {
-                            (absolute_pos, Direction::Forward)
-                        } else {
-                            (
-                                suffix_array.len() - absolute_pos - effective_read_len - 1,
-                                Direction::Backward,
-                            )
-                        }
-                    })
-                    // Convert to relative coordinates
-                    .and_then(|(absolute_pos, strand)| {
-                        if let Some((tid, rel_pos)) = identifier_position_map
-                            .get_reference_identifier(absolute_pos, effective_read_len)
-                        {
-                            Some((tid, rel_pos, strand))
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .ok_or_else(|| Error::InvalidIndex("Could not find reference position".to_string()))
-    };
-
-    // TODO: We should keep popping (in case the best interval has a length of 1 and overlaps a contig boundary)
-    // TODO: Also, we should special-case two-hit-best-intervals in case one of the hits turns out to be invalid
-    if let Some(best_alignment) = intervals.pop() {
-        // TODO: We need to pass the length of the best interval separately in case that has been updated
-        let mapping_quality = estimate_mapping_quality(&best_alignment, intervals);
-
-        let alternative_hits: Cow<str> = if best_alignment.interval.size > 1 {
-            format!("mm,{},;", best_alignment.interval.size).into()
-        } else if intervals.len() > 9 {
-            "pu,,;".into()
-        } else if !intervals.is_empty() {
-            let mut buf = "pu,".to_string();
-            buf.extend(intervals.iter().map(|subopt_intv| {
-                format!(
-                    "{},{:.2};",
-                    subopt_intv.interval.size, subopt_intv.alignment_score
-                )
-            }));
-            buf.into()
-        } else if best_alignment.interval.size == 1 {
-            "uq,,;".into()
-        } else {
-            "".into()
+            // If this function returns an error that's likely because the best-scoring interval mappings
+            // overlap contig boundaries. In that case, we can drop the best-scoring interval and
+            // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
+            PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
+                .ok_or_else(|| {
+                    Error::InvalidIndex(
+                        "Could not enumerate possible reference positions".to_string(),
+                    )
+                })?
+                .enumerate()
+                .find_map(|(i, sar_pos)| {
+                    suffix_array
+                        .get(sar_pos)
+                        // Determine strand
+                        .map(|absolute_pos| {
+                            if absolute_pos < strand_len {
+                                (absolute_pos, Direction::Forward)
+                            } else {
+                                (
+                                    suffix_array.len() - absolute_pos - effective_read_len - 1,
+                                    Direction::Backward,
+                                )
+                            }
+                        })
+                        // Convert to relative coordinates
+                        .and_then(|(absolute_pos, strand)| {
+                            if let Some((tid, rel_pos)) = identifier_position_map
+                                .get_reference_identifier(absolute_pos, effective_read_len)
+                            {
+                                Some((i, tid, rel_pos, strand))
+                            } else {
+                                None
+                            }
+                        })
+                })
+                .ok_or_else(|| Error::InvalidIndex("Could not find reference position".to_string()))
         };
 
-        // Determine relative-to-chromosome position. `None` means that the read overlaps chromosome boundaries
+    while let Some(best_alignment) = intervals.pop() {
+        // Determine relative-to-chromosome position
         match intervals_to_coordinates(&best_alignment) {
-            Ok((tid, relative_pos, strand)) => {
+            Ok((num_failed, tid, relative_pos, strand)) => {
+                let updated_best_alignment_interval_size =
+                    best_alignment.interval.size - num_failed;
+
+                let alternative_hits: Cow<str> = if updated_best_alignment_interval_size > 1 {
+                    format!("mm,{},;", updated_best_alignment_interval_size).into()
+                } else if intervals.len() > 9 {
+                    "pu,,;".into()
+                } else if !intervals.is_empty() {
+                    let mut buf = "pu,".to_string();
+                    buf.extend(intervals.iter().map(|subopt_intv| {
+                        format!(
+                            "{},{:.2};",
+                            subopt_intv.interval.size, subopt_intv.alignment_score
+                        )
+                    }));
+                    buf.into()
+                } else if updated_best_alignment_interval_size == 1 {
+                    "uq,,;".into()
+                } else {
+                    "".into()
+                };
                 return bam_record_helper(
                     input_record,
                     relative_pos,
                     Some(&best_alignment),
-                    Some(mapping_quality),
+                    Some(estimate_mapping_quality(
+                        &best_alignment,
+                        updated_best_alignment_interval_size,
+                        intervals,
+                        alignment_parameters,
+                    )),
                     tid,
                     Some(strand),
                     duration,
@@ -1047,15 +1053,16 @@ where
 /// and its base qualities
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
+    best_alignment_interval_size: usize,
     other_alignments: &BinaryHeap<HitInterval>,
 ) -> u8 {
     const MAX_MAPQ: f32 = 37.0;
 
     let alignment_probability = {
         let ratio_best = 2_f32.powf(best_alignment.alignment_score);
-        if best_alignment.interval.size > 1 {
+        if best_alignment_interval_size > 1 {
             // Multi-mapping
-            1.0 / best_alignment.interval.size as f32
+            1.0 / best_alignment_interval_size as f32
         } else if other_alignments.is_empty() {
             // Unique mapping
             1.0
