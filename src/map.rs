@@ -124,17 +124,14 @@ impl EditOperationsTrack {
     /// Calculates the amount of positions in the genome
     /// that are covered by this read
     pub fn effective_len(&self) -> usize {
-        self.0
-            .iter()
-            .fold(0, |acc, edit_operation| {
-                acc + match edit_operation {
-                    EditOperation::Insertion(_) => 0,
-                    EditOperation::Deletion(_, _) => 1,
-                    EditOperation::Match(_) => 1,
-                    EditOperation::Mismatch(_, _) => 1,
-                }
-            })
-            .max(0) as usize
+        self.0.iter().fold(0, |acc, edit_operation| {
+            acc + match edit_operation {
+                EditOperation::Insertion(_) => 0,
+                EditOperation::Deletion(_, _) => 1,
+                EditOperation::Match(_) => 1,
+                EditOperation::Mismatch(_, _) => 1,
+            }
+        })
     }
 
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
@@ -282,6 +279,25 @@ impl EditOperationsTrack {
         } else {
             distance + 1
         }
+    }
+
+    pub fn read_len(&self) -> usize {
+        self.0.iter().fold(0, |acc, edit_operation| {
+            acc + match edit_operation {
+                EditOperation::Insertion(_) => 1,
+                EditOperation::Deletion(_, _) => 0,
+                EditOperation::Match(_) => 1,
+                EditOperation::Mismatch(_, _) => 1,
+            }
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -858,6 +874,7 @@ where
                         suffix_array,
                         identifier_position_map,
                         Some(&duration),
+                        alignment_parameters,
                         &mut rng,
                     )
                 },
@@ -925,6 +942,7 @@ pub fn intervals_to_bam<R, S>(
     suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
     duration: Option<&Duration>,
+    alignment_parameters: &AlignmentParameters,
     rng: &mut R,
 ) -> Result<bam::Record>
 where
@@ -947,6 +965,7 @@ where
                         "Could not enumerate possible reference positions".to_string(),
                     )
                 })?
+                // This is to count the number of skipped invalid positions
                 .enumerate()
                 .find_map(|(i, sar_pos)| {
                     suffix_array
@@ -1055,8 +1074,11 @@ fn estimate_mapping_quality(
     best_alignment: &HitInterval,
     best_alignment_interval_size: usize,
     other_alignments: &BinaryHeap<HitInterval>,
+    alignment_parameters: &AlignmentParameters,
 ) -> u8 {
-    const MAX_MAPQ: f32 = 37.0;
+    const MAX_MAPQ: u8 = 37;
+    const MIN_MAPQ_UNIQ: u8 = 25;
+    assert!(MIN_MAPQ_UNIQ <= MAX_MAPQ);
 
     let alignment_probability = {
         let ratio_best = 2_f32.powf(best_alignment.alignment_score);
@@ -1082,9 +1104,29 @@ fn estimate_mapping_quality(
     .clamp(0.0, 1.0);
 
     // Produce Phred score
-    (-10.0 * (1.0 - alignment_probability).log10())
-        .min(MAX_MAPQ)
-        .round() as u8
+    let mapping_quality = (-10.0 * (1.0 - alignment_probability).log10())
+        .min(MAX_MAPQ as f32)
+        .round() as u8;
+
+    // When we found a best-scoring hit, we search up until `AS + mm_penalty` to find suboptimal
+    // hits in order to estimate the mapping quality. However, we don't ever search beyond the
+    // `mismatch_bound` limit. So when we are closer than `mm_penalty` to the `mismatch_bound`,
+    // the mapping quality needs to be scaled down to reflect the fact that we are less likely to
+    // find suboptimal alignments within these narrowed bounds.
+    if mapping_quality == MAX_MAPQ {
+        let scaled_mq = MIN_MAPQ_UNIQ as f32
+            + ((MAX_MAPQ - MIN_MAPQ_UNIQ) as f32
+                * alignment_parameters
+                    .mismatch_bound
+                    .remaining_frac_of_repr_mm(
+                        best_alignment.alignment_score,
+                        best_alignment.edit_operations.read_len(),
+                    )
+                    .min(1.0));
+        return scaled_mq.round() as u8;
+    }
+
+    mapping_quality
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
@@ -1627,7 +1669,10 @@ pub mod tests {
             mm_score: -1.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: -1.0 };
+        let mmb = TestBound {
+            threshold: -1.0,
+            representative_mm_bound: -1.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -1681,7 +1726,10 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 1.0,
         };
-        let mmb = TestBound { threshold: -1.0 };
+        let mmb = TestBound {
+            threshold: -1.0,
+            representative_mm_bound: -10.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -1749,7 +1797,11 @@ pub mod tests {
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound { threshold: 0.0 }.into(),
+            mismatch_bound: TestBound {
+                threshold: 0.0,
+                representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
+            }
+            .into(),
             penalty_gap_open: 0.00001_f32.log2(),
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
@@ -1799,7 +1851,10 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: -2.0 };
+        let mmb = TestBound {
+            threshold: -2.0,
+            representative_mm_bound: -10.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -1850,7 +1905,10 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: -5.0 };
+        let mmb = TestBound {
+            threshold: -5.0,
+            representative_mm_bound: -10.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -1920,7 +1978,10 @@ pub mod tests {
     #[test]
     fn test_vindija_pwm_alignment() {
         let difference_model = VindijaPwm::new();
-        let mmb = TestBound { threshold: -30.0 };
+        let mmb = TestBound {
+            threshold: -30.0,
+            representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2135,7 +2196,10 @@ pub mod tests {
             mm_score: -10.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: -3.0 };
+        let mmb = TestBound {
+            threshold: -3.0,
+            representative_mm_bound: -10.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2311,7 +2375,10 @@ pub mod tests {
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mmb = TestBound { threshold: -4.0 };
+        let mmb = TestBound {
+            threshold: -4.0,
+            representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2357,7 +2424,10 @@ pub mod tests {
             mm_score: -2.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: -1.0 };
+        let mmb = TestBound {
+            threshold: -1.0,
+            representative_mm_bound: -2.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2411,7 +2481,10 @@ pub mod tests {
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
 
-        let mmb = TestBound { threshold: -3.0 };
+        let mmb = TestBound {
+            threshold: -3.0,
+            representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2540,7 +2613,10 @@ pub mod tests {
             mm_score: -1.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: 0.0 };
+        let mmb = TestBound {
+            threshold: 0.0,
+            representative_mm_bound: -1.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2609,7 +2685,10 @@ pub mod tests {
             mm_score: -1.0,
             match_score: 0.0,
         };
-        let mmb = TestBound { threshold: -1.0 };
+        let mmb = TestBound {
+            threshold: -1.0,
+            representative_mm_bound: -1.0,
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),
@@ -2691,7 +2770,10 @@ pub mod tests {
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
 
-        let mismatch_bound = TestBound { threshold: -14.0 };
+        let mismatch_bound = TestBound {
+            threshold: -14.0,
+            representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
+        };
 
         let parameters = AlignmentParameters {
             difference_model: difference_model.clone().into(),

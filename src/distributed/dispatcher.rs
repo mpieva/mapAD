@@ -325,6 +325,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                         results.results,
                                         suffix_array,
                                         identifier_position_map,
+                                        self.alignment_parameters,
                                         out_file,
                                     )?;
                                     debug!("Finished task {}", results.chunk_id,);
@@ -424,6 +425,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         mut hits: Vec<(Record, BinaryHeap<map::HitInterval>)>,
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
+        alignment_parameters: &AlignmentParameters,
         out_file: &mut bam::Writer,
     ) -> Result<()>
     where
@@ -439,6 +441,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     suffix_array,
                     identifier_position_map,
                     None,
+                    alignment_parameters,
                     &mut rng,
                 )
             })

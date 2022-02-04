@@ -15,6 +15,9 @@ pub trait MismatchBound {
     /// for hits with a minimal expected scored worse than z + representative_mismatch
     /// to speed up the alignment of endogenous reads.
     fn reject_iterative(&self, value: f32, reference: f32) -> bool;
+
+    /// Returns the remaining mismatch budget as fraction of the representative mismatch penalty
+    fn remaining_frac_of_repr_mm(&self, value: f32, read_length: usize) -> f32;
 }
 
 /// Used to allow static dispatch. No trait objects needed! Method call speed is not negatively
@@ -45,6 +48,32 @@ impl From<TestBound> for MismatchBoundDispatch {
     }
 }
 
+impl MismatchBound for MismatchBoundDispatch {
+    fn reject(&self, value: f32, read_length: usize) -> bool {
+        match self {
+            Self::Continuous(mmb) => mmb.reject(value, read_length),
+            Self::Discrete(mmb) => mmb.reject(value, read_length),
+            Self::TestBound(mmb) => mmb.reject(value, read_length),
+        }
+    }
+
+    fn reject_iterative(&self, value: f32, reference: f32) -> bool {
+        match self {
+            Self::Continuous(mmb) => mmb.reject_iterative(value, reference),
+            Self::Discrete(mmb) => mmb.reject_iterative(value, reference),
+            Self::TestBound(mmb) => mmb.reject_iterative(value, reference),
+        }
+    }
+
+    fn remaining_frac_of_repr_mm(&self, value: f32, read_length: usize) -> f32 {
+        match self {
+            Self::Continuous(mmb) => mmb.remaining_frac_of_repr_mm(value, read_length),
+            Self::Discrete(mmb) => mmb.remaining_frac_of_repr_mm(value, read_length),
+            Self::TestBound(mmb) => mmb.remaining_frac_of_repr_mm(value, read_length),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Continuous {
     cutoff: f32,
@@ -55,16 +84,17 @@ pub struct Continuous {
 
 impl MismatchBound for Continuous {
     fn reject(&self, value: f32, read_length: usize) -> bool {
-        let scaled_read_length = self
-            .cache
-            .get(read_length)
-            .copied()
-            .unwrap_or_else(|| (read_length as f32).powf(self.exponent));
-        (value / scaled_read_length) < self.cutoff
+        (value / self.scale_read_length(read_length)) < self.cutoff
     }
 
     fn reject_iterative(&self, value: f32, reference: f32) -> bool {
         value < reference + self.representative_mismatch_penalty
+    }
+
+    fn remaining_frac_of_repr_mm(&self, value: f32, read_length: usize) -> f32 {
+        let scaled_read_len = self.scale_read_length(read_length);
+        (self.cutoff - value / scaled_read_len)
+            / (self.representative_mismatch_penalty / scaled_read_len)
     }
 }
 
@@ -80,6 +110,13 @@ impl Continuous {
             representative_mismatch_penalty,
             cache,
         }
+    }
+
+    fn scale_read_length(&self, read_length: usize) -> f32 {
+        self.cache
+            .get(read_length)
+            .copied()
+            .unwrap_or_else(|| (read_length as f32).powf(self.exponent))
     }
 }
 
@@ -99,6 +136,11 @@ impl MismatchBound for Discrete {
 
     fn reject_iterative(&self, value: f32, reference: f32) -> bool {
         value < reference + self.representative_mismatch_penalty
+    }
+
+    fn remaining_frac_of_repr_mm(&self, value: f32, read_length: usize) -> f32 {
+        (self.get(read_length) * self.representative_mismatch_penalty - value)
+            / self.representative_mismatch_penalty
     }
 }
 
@@ -219,6 +261,7 @@ impl Discrete {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TestBound {
     pub threshold: f32,
+    pub representative_mm_bound: f32,
 }
 
 impl MismatchBound for TestBound {
@@ -228,6 +271,10 @@ impl MismatchBound for TestBound {
 
     fn reject_iterative(&self, _value: f32, _reference: f32) -> bool {
         false
+    }
+
+    fn remaining_frac_of_repr_mm(&self, value: f32, _read_length: usize) -> f32 {
+        (self.threshold - value) / self.representative_mm_bound
     }
 }
 
