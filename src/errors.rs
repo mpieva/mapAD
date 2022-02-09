@@ -14,7 +14,7 @@ pub enum Error {
     FastQ(bio::io::fastq::Error),
     Io(io::Error),
     InvalidInputType,
-    InvalidIndex(String),
+    InvalidIndex(&'static str),
     IndexVersionMismatch,
     AnyhowError(String),
     ContigBoundaryOverlap,
@@ -48,7 +48,7 @@ impl From<bincode::Error> for Error {
     fn from(e: bincode::Error) -> Self {
         match *e {
             bincode::ErrorKind::Io(e) => Error::Io(e),
-            _ => Error::InvalidIndex("Invalid encoding".to_string()),
+            _ => Error::InvalidIndex("Invalid encoding"),
         }
     }
 }

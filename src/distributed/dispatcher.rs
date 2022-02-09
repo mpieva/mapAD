@@ -171,24 +171,20 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         // are set up here to allow static dispatch
         info!("Load position map");
         let identifier_position_map =
-            load_id_pos_map_from_path(self.reference_path.to_str().ok_or_else(|| {
-                Error::InvalidIndex(
-                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
-                )
-            })?)?;
+            load_id_pos_map_from_path(self.reference_path.to_str().ok_or(Error::InvalidIndex(
+                "Cannot access the index (file paths contain invalid UTF-8 unicode)",
+            ))?)?;
 
         info!("Load suffix array");
-        let sampled_suffix_array_owned =
-            load_suffix_array_from_path(self.reference_path.to_str().ok_or_else(|| {
-                Error::InvalidIndex(
-                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
-                )
-            })?)?;
-        let fmd_index = load_index_from_path(self.reference_path.to_str().ok_or_else(|| {
-            Error::InvalidIndex(
-                "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
-            )
-        })?)?;
+        let sampled_suffix_array_owned = load_suffix_array_from_path(
+            self.reference_path.to_str().ok_or(Error::InvalidIndex(
+                "Cannot access the index (file paths contain invalid UTF-8 unicode)",
+            ))?,
+        )?;
+        let fmd_index =
+            load_index_from_path(self.reference_path.to_str().ok_or(Error::InvalidIndex(
+                "Cannot access the index (file paths contain invalid UTF-8 unicode)",
+            ))?)?;
         let suffix_array = sampled_suffix_array_owned.into_sampled_suffix_array(
             &fmd_index.bwt,
             &fmd_index.less,

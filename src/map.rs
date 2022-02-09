@@ -960,11 +960,9 @@ where
             // overlap contig boundaries. In that case, we can drop the best-scoring interval and
             // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
             PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
-                .ok_or_else(|| {
-                    Error::InvalidIndex(
-                        "Could not enumerate possible reference positions".to_string(),
-                    )
-                })?
+                .ok_or(Error::InvalidIndex(
+                    "Could not enumerate possible reference positions",
+                ))?
                 // This is to count the number of skipped invalid positions
                 .enumerate()
                 .find_map(|(i, sar_pos)| {
@@ -992,7 +990,7 @@ where
                             }
                         })
                 })
-                .ok_or_else(|| Error::InvalidIndex("Could not find reference position".to_string()))
+                .ok_or(Error::ContigBoundaryOverlap)
         };
 
     while let Some(best_alignment) = intervals.pop() {
