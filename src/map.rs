@@ -993,6 +993,8 @@ where
                 .ok_or(Error::ContigBoundaryOverlap)
         };
 
+    let hits_found = !intervals.is_empty();
+
     while let Some(best_alignment) = intervals.pop() {
         // Determine relative-to-chromosome position
         match intervals_to_coordinates(&best_alignment) {
@@ -1035,9 +1037,16 @@ where
                 );
             }
             Err(e) => {
-                debug!("{}", e);
+                debug!("{}. Try again with next best hit.", e);
             }
         }
+    }
+
+    if hits_found {
+        debug!(
+            "Hit could not be mapped to valid coordinates. Report {} as unmapped.",
+            std::str::from_utf8(&input_record.name).expect("Read names are validated elsewhere")
+        );
     }
 
     // No match found, report unmapped read
