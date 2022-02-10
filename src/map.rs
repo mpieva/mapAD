@@ -1044,7 +1044,7 @@ where
 
     if hits_found {
         debug!(
-            "Hit could not be mapped to valid coordinates. Report {} as unmapped.",
+            "Hits could not be mapped to valid coordinates. Report read \"{}\" as unmapped.",
             std::str::from_utf8(&input_record.name).expect("Read names are validated elsewhere")
         );
     }
