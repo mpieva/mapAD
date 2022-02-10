@@ -7,7 +7,7 @@ use std::{
 };
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use mio::{net::TcpListener, *};
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::Read as BamRead};
@@ -31,6 +31,8 @@ enum TransportState {
 }
 
 /// Keeps track of the processing state of chunks of reads
+///
+/// Very basic error checking, reporting, and recovery happens here.
 struct TaskQueue<T> {
     chunk_id: usize,
     chunk_size: usize,
@@ -42,27 +44,41 @@ impl<T> Iterator for TaskQueue<T>
 where
     T: Iterator<Item = Result<Record>>,
 {
-    type Item = Result<TaskSheet>;
+    type Item = TaskSheet;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(task) = self.requeried_tasks.pop() {
             info!("Retrying previously failed task {}", task.chunk_id);
-            return Some(Ok(task));
+            return Some(task);
         }
 
         let chunk = self
             .records
             .by_ref()
+            .filter_map(|record| {
+                if let Err(ref e) = record {
+                    error!("Skip record due to an error: {}", e);
+                }
+                record.ok()
+            })
+            .filter(|record| {
+                let length_check = record.sequence.len() == record.base_qualities.len();
+                if !length_check {
+                    error!(
+                        "Skip record \"{}\" due to different length of sequence and quality strings",
+                        String::from_utf8_lossy(&record.name)
+                    );
+                }
+                length_check
+            })
             .take(self.chunk_size)
-            .collect::<Result<Vec<_>>>();
+            .collect::<Vec<_>>();
         self.chunk_id += 1;
 
-        match chunk {
-            Ok(inner) if !inner.is_empty() => {
-                Some(Ok(TaskSheet::from_records(self.chunk_id - 1, inner, None)))
-            }
-            Ok(_) => None,
-            Err(e) => Some(Err(e)),
+        if chunk.is_empty() {
+            None
+        } else {
+            Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
         }
     }
 }
@@ -543,8 +559,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         let send_buffer = &mut connection.tx_buffer;
 
         if send_buffer.is_ready() {
-            if let Some(task) = task_queue.next() {
-                let mut task = task?;
+            if let Some(mut task) = task_queue.next() {
                 task.reference_path = Some(self.reference_path.to_string_lossy().into_owned());
                 task.alignment_parameters = Some(self.alignment_parameters.to_owned());
 

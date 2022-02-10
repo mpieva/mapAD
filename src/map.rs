@@ -12,7 +12,7 @@ use std::{
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
 use clap::{crate_name, crate_version};
 use either::Either;
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use rand::RngCore;
 use rayon::prelude::*;
@@ -575,6 +575,8 @@ impl BiDArray {
 }
 
 /// Reads chunks of configurable size from source Iterator
+///
+/// Very basic error checking, reporting, and recovery happens here.
 struct ChunkIterator<T> {
     chunk_size: usize,
     records: T,
@@ -584,20 +586,34 @@ impl<T> Iterator for ChunkIterator<T>
 where
     T: Iterator<Item = Result<Record>>,
 {
-    type Item = Result<Vec<Record>>;
+    type Item = Vec<Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let chunk = self
             .records
             .by_ref()
+            .filter_map(|record| {
+                if let Err(ref e) = record {
+                    error!("Skip record due to an error: {}", e);
+                }
+                record.ok()
+            })
+            .filter(|record| {
+                let length_check = record.sequence.len() == record.base_qualities.len();
+                if !length_check {
+                    error!(
+                        "Skip record \"{}\" due to different length of sequence and quality strings",
+                        String::from_utf8_lossy(&record.name)
+                    );
+                }
+                length_check
+            })
             .take(self.chunk_size)
-            .collect::<Result<Vec<_>>>();
+            .collect::<Vec<_>>();
 
         // If the underlying iterator is exhausted return None, too
-        if let Ok(ref inner) = chunk {
-            if inner.is_empty() {
-                return None;
-            }
+        if chunk.is_empty() {
+            return None;
         }
 
         Some(chunk)
@@ -747,7 +763,7 @@ where
 
     for chunk in records {
         debug!("Map chunk of reads");
-        let results = chunk?
+        let results = chunk
             .par_iter()
             .map(|record| {
                 STACK_BUF.with(|stack_buf| {
@@ -1064,7 +1080,6 @@ pub fn compute_optimal_scores<SDM>(
 where
     SDM: SequenceDifferenceModel,
 {
-    assert_eq!(pattern.len(), base_qualities.len());
     pattern
         .iter()
         .zip(base_qualities)
