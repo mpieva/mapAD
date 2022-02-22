@@ -10,7 +10,7 @@ use bio::{
     io::fastq,
 };
 use log::{debug, warn};
-use rust_htslib::{bam, bam::record::Aux};
+use noodles::bam;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -27,7 +27,7 @@ use crate::{
 
 /// An owned representation of the `bam::record::Aux` data
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum BamTag {
+pub enum BamAuxField {
     Char(u8),
     I8(i8),
     U8(u8),
@@ -48,52 +48,56 @@ pub enum BamTag {
     ArrayFloat(Vec<f32>),
 }
 
-impl From<Aux<'_>> for BamTag {
-    fn from(input: Aux) -> Self {
+// We (currently) only get references to the internal fields of `noodles::bam::Record`s,
+// so we have to copy/clone data over
+impl From<&bam::record::data::field::Value> for BamAuxField {
+    fn from(input: &bam::record::data::field::Value) -> Self {
+        use bam::record::data::field::Value;
         match input {
-            Aux::Char(v) => BamTag::Char(v),
-            Aux::I8(v) => BamTag::I8(v),
-            Aux::U8(v) => BamTag::U8(v),
-            Aux::I16(v) => BamTag::I16(v),
-            Aux::U16(v) => BamTag::U16(v),
-            Aux::I32(v) => BamTag::I32(v),
-            Aux::U32(v) => BamTag::U32(v),
-            Aux::Float(v) => BamTag::Float(v),
-            Aux::Double(v) => BamTag::Double(v),
-            Aux::String(v) => BamTag::String(v.to_owned()),
-            Aux::HexByteArray(v) => BamTag::HexByteArray(v.to_owned()),
-            Aux::ArrayI8(v) => BamTag::ArrayI8(v.iter().collect()),
-            Aux::ArrayU8(v) => BamTag::ArrayU8(v.iter().collect()),
-            Aux::ArrayI16(v) => BamTag::ArrayI16(v.iter().collect()),
-            Aux::ArrayU16(v) => BamTag::ArrayU16(v.iter().collect()),
-            Aux::ArrayI32(v) => BamTag::ArrayI32(v.iter().collect()),
-            Aux::ArrayU32(v) => BamTag::ArrayU32(v.iter().collect()),
-            Aux::ArrayFloat(v) => BamTag::ArrayFloat(v.iter().collect()),
+            Value::Char(v) => BamAuxField::Char(*v as u8),
+            Value::Int8(v) => BamAuxField::I8(*v),
+            Value::UInt8(v) => BamAuxField::U8(*v),
+            Value::Int16(v) => BamAuxField::I16(*v),
+            Value::UInt16(v) => BamAuxField::U16(*v),
+            Value::Int32(v) => BamAuxField::I32(*v),
+            Value::UInt32(v) => BamAuxField::U32(*v),
+            Value::Float(v) => BamAuxField::Float(*v),
+            //Value::Double(v) => BamTag::Double(*v),
+            Value::String(v) => BamAuxField::String(v.to_owned()),
+            Value::Hex(v) => BamAuxField::HexByteArray(v.to_owned()),
+            Value::Int8Array(v) => BamAuxField::ArrayI8(v.to_owned()),
+            Value::UInt8Array(v) => BamAuxField::ArrayU8(v.to_owned()),
+            Value::Int16Array(v) => BamAuxField::ArrayI16(v.to_owned()),
+            Value::UInt16Array(v) => BamAuxField::ArrayU16(v.to_owned()),
+            Value::Int32Array(v) => BamAuxField::ArrayI32(v.to_owned()),
+            Value::UInt32Array(v) => BamAuxField::ArrayU32(v.to_owned()),
+            Value::FloatArray(v) => BamAuxField::ArrayFloat(v.to_owned()),
         }
     }
 }
 
-impl<'a> From<&'a BamTag> for Aux<'a> {
-    fn from(input: &'a BamTag) -> Self {
+impl From<BamAuxField> for bam::record::data::field::Value {
+    fn from(input: BamAuxField) -> Self {
+        use bam::record::data::field::Value;
         match input {
-            BamTag::Char(v) => Aux::Char(*v),
-            BamTag::I8(v) => Aux::I8(*v),
-            BamTag::U8(v) => Aux::U8(*v),
-            BamTag::I16(v) => Aux::I16(*v),
-            BamTag::U16(v) => Aux::U16(*v),
-            BamTag::I32(v) => Aux::I32(*v),
-            BamTag::U32(v) => Aux::U32(*v),
-            BamTag::Float(v) => Aux::Float(*v),
-            BamTag::Double(v) => Aux::Double(*v),
-            BamTag::String(v) => Aux::String(v),
-            BamTag::HexByteArray(v) => Aux::HexByteArray(v),
-            BamTag::ArrayI8(v) => Aux::ArrayI8(v.into()),
-            BamTag::ArrayU8(v) => Aux::ArrayU8(v.into()),
-            BamTag::ArrayI16(v) => Aux::ArrayI16(v.into()),
-            BamTag::ArrayU16(v) => Aux::ArrayU16(v.into()),
-            BamTag::ArrayI32(v) => Aux::ArrayI32(v.into()),
-            BamTag::ArrayU32(v) => Aux::ArrayU32(v.into()),
-            BamTag::ArrayFloat(v) => Aux::ArrayFloat(v.into()),
+            BamAuxField::Char(v) => Value::Char(v.into()),
+            BamAuxField::I8(v) => Value::Int8(v),
+            BamAuxField::U8(v) => Value::UInt8(v),
+            BamAuxField::I16(v) => Value::Int16(v),
+            BamAuxField::U16(v) => Value::UInt16(v),
+            BamAuxField::I32(v) => Value::Int32(v),
+            BamAuxField::U32(v) => Value::UInt32(v),
+            BamAuxField::Float(v) => Value::Float(v),
+            BamAuxField::Double(v) => Value::Float(v as f32), // FIXME
+            BamAuxField::String(v) => Value::String(v),
+            BamAuxField::HexByteArray(v) => Value::Hex(v),
+            BamAuxField::ArrayI8(v) => Value::Int8Array(v),
+            BamAuxField::ArrayU8(v) => Value::UInt8Array(v),
+            BamAuxField::ArrayI16(v) => Value::Int16Array(v),
+            BamAuxField::ArrayU16(v) => Value::UInt16Array(v),
+            BamAuxField::ArrayI32(v) => Value::Int32Array(v),
+            BamAuxField::ArrayU32(v) => Value::UInt32Array(v),
+            BamAuxField::ArrayFloat(v) => Value::FloatArray(v),
         }
     }
 }
@@ -103,35 +107,33 @@ pub struct Record {
     pub sequence: Vec<u8>,
     pub base_qualities: Vec<u8>,
     pub name: Vec<u8>,
-    pub bam_tags: Vec<([u8; 2], BamTag)>,
+    pub bam_tags: Vec<([u8; 2], BamAuxField)>,
     pub bam_flags: u16,
 }
 
 impl From<bam::Record> for Record {
     fn from(input: bam::Record) -> Self {
-        let (sequence, base_qualities) = {
-            let sequence = input.seq().as_bytes().to_ascii_uppercase();
-            // No need to subtract offsets here
-            let base_qualities = input.qual().to_owned();
-            if input.is_reverse() {
-                (
-                    dna::revcomp(sequence),
-                    base_qualities.into_iter().rev().collect(),
-                )
-            } else {
-                (sequence, base_qualities)
-            }
+        let mut sequence = input.sequence().to_string().into_bytes();
+
+        let mut base_qualities = input
+            .quality_scores()
+            .chars()
+            .map(|score| score as u8 - 33)
+            .collect::<Vec<_>>();
+
+        if input.flags().is_reverse_complemented() {
+            base_qualities.reverse();
+            sequence = dna::revcomp(sequence);
         };
 
-        let input_tags = input
-            .aux_iter()
+        let input_tags = input.data().values()
             .map(|maybe_tag| {
                 maybe_tag
-                    .map(|(tag, value)| ([tag[0], tag[1]], value.into()))
+                    .map(|field|(field.tag().as_ref().to_owned(), field.value().into()))
                     .map_err(|e| {
                         warn!(
-                            "Error reading auxiliary data of record {}. Auxiliary data will be incomplete.",
-                            String::from_utf8_lossy(input.qname())
+                            "Error reading auxiliary data of record \"{}\". Auxiliary data will be incomplete.",
+                            String::from_utf8_lossy(input.read_name())
                         );
                         e.into()
                     })
@@ -142,9 +144,9 @@ impl From<bam::Record> for Record {
         Self {
             sequence,
             base_qualities,
-            name: input.qname().to_owned(),
+            name: input.read_name().to_owned(),
             bam_tags: input_tags,
-            bam_flags: input.flags(),
+            bam_flags: input.flags().bits(),
         }
     }
 }

@@ -1,6 +1,7 @@
 use std::{
     collections::{BinaryHeap, HashMap},
-    io::{self, Read, Write},
+    fs::{File, OpenOptions},
+    io::{self, BufReader, Read, Write},
     iter::Map,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
@@ -9,8 +10,8 @@ use std::{
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, error, info, warn};
 use mio::{net::TcpListener, *};
+use noodles::bam;
 use rayon::prelude::*;
-use rust_htslib::{bam, bam::Read as BamRead};
 
 use crate::{
     distributed::*,
@@ -161,13 +162,6 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             )
             .into());
         }
-        if out_file_path.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "The given output file already exists",
-            )
-            .into());
-        }
         Ok(Self {
             reads_path,
             reference_path: Path::new(reference_path),
@@ -187,24 +181,36 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         // are set up here to allow static dispatch
         info!("Load position map");
         let identifier_position_map =
-            load_id_pos_map_from_path(self.reference_path.to_str().ok_or(Error::InvalidIndex(
-                "Cannot access the index (file paths contain invalid UTF-8 unicode)",
-            ))?)?;
+            load_id_pos_map_from_path(self.reference_path.to_str().ok_or_else(|| {
+                Error::InvalidIndex(
+                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
+                )
+            })?)?;
 
         info!("Load suffix array");
-        let sampled_suffix_array_owned = load_suffix_array_from_path(
-            self.reference_path.to_str().ok_or(Error::InvalidIndex(
-                "Cannot access the index (file paths contain invalid UTF-8 unicode)",
-            ))?,
-        )?;
-        let fmd_index =
-            load_index_from_path(self.reference_path.to_str().ok_or(Error::InvalidIndex(
-                "Cannot access the index (file paths contain invalid UTF-8 unicode)",
-            ))?)?;
+        let sampled_suffix_array_owned =
+            load_suffix_array_from_path(self.reference_path.to_str().ok_or_else(|| {
+                Error::InvalidIndex(
+                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
+                )
+            })?)?;
+        let fmd_index = load_index_from_path(self.reference_path.to_str().ok_or_else(|| {
+            Error::InvalidIndex(
+                "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
+            )
+        })?)?;
         let suffix_array = sampled_suffix_array_owned.into_sampled_suffix_array(
             &fmd_index.bwt,
             &fmd_index.less,
             &fmd_index.occ,
+        );
+
+        let mut out_file = bam::Writer::new(
+            OpenOptions::new()
+                .read(false)
+                .write(true)
+                .create_new(true)
+                .open(self.out_file_path)?,
         );
 
         // Static dispatch of the Record type based on the filename extension
@@ -220,12 +226,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 )
             })? {
             "bam" => {
-                let mut reader = bam::Reader::from_path(self.reads_path)?;
-                let _ = reader.set_threads(4);
-                let header = map::create_bam_header(Some(&reader), &identifier_position_map);
-                let mut out_file =
-                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::Bam)?;
-                let _ = out_file.set_threads(4);
+                let mut reader = bam::Reader::new(File::open(self.reads_path)?);
+                let header = map::create_bam_header(Some(&mut reader), &identifier_position_map)?;
+                out_file.write_header(&header)?;
+                out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader
                     .records()
                     .into_tasks(self.alignment_parameters.chunk_size);
@@ -239,10 +243,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             }
             "fastq" | "fq" => {
                 let reader = fastq::Reader::from_file(self.reads_path)?;
-                let header = map::create_bam_header(None, &identifier_position_map);
-                let mut out_file =
-                    bam::Writer::from_path(self.out_file_path, &header, bam::Format::Bam)?;
-                let _ = out_file.set_threads(4);
+                let header =
+                    map::create_bam_header::<BufReader<File>>(None, &identifier_position_map)?;
+                out_file.write_header(&header)?;
+                out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader
                     .records()
                     .into_tasks(self.alignment_parameters.chunk_size);
@@ -260,17 +264,18 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     /// This part has been extracted from the main run() function to allow static dispatch based on the
     /// input file type
-    fn run_inner<S, T>(
+    fn run_inner<S, T, W>(
         &mut self,
         task_queue: &mut TaskQueue<T>,
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
         listener: &mut TcpListener,
-        out_file: &mut bam::Writer,
+        out_file: &mut bam::Writer<W>,
     ) -> Result<()>
     where
         S: SuffixArray + Send + Sync,
         T: Iterator<Item = Result<Record>>,
+        W: Write,
     {
         let mut max_token = Self::DISPATCHER_TOKEN.0;
 
@@ -432,20 +437,21 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         }
     }
 
-    fn write_results<S>(
+    fn write_results<S, W>(
         &self,
-        mut hits: Vec<(Record, BinaryHeap<map::HitInterval>)>,
+        hits: Vec<(Record, BinaryHeap<map::HitInterval>)>,
         suffix_array: &S,
         identifier_position_map: &map::FastaIdPositions,
         alignment_parameters: &AlignmentParameters,
-        out_file: &mut bam::Writer,
+        out_file: &mut bam::Writer<W>,
     ) -> Result<()>
     where
         S: SuffixArray + Sync,
+        W: Write,
     {
         debug!("Translate suffix array intervals to genomic positions");
         let bam_records = hits
-            .par_iter_mut()
+            .into_par_iter()
             .map_init(rand::thread_rng, |mut rng, (record, hit_interval)| {
                 map::intervals_to_bam(
                     record,
@@ -461,7 +467,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         debug!("Write to output file");
         for record in bam_records.iter() {
-            out_file.write(record)?;
+            out_file.write_record(record)?;
         }
 
         Ok(())

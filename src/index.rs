@@ -62,7 +62,7 @@ impl SampledSuffixArrayOwned {
         let mut sample =
             Vec::with_capacity((suffix_array.len() as f32 / sampling_rate as f32).ceil() as usize);
         let mut extra_rows = HashMapFx::default();
-        let &sentinel = text
+        let sentinel = *text
             .last()
             .expect("The text should not be empty at this point");
 
