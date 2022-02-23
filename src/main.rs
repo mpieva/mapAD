@@ -2,6 +2,8 @@ use clap::{
     crate_description, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand,
 };
 use log::{error, info, warn};
+#[cfg(all(target_env = "musl"))]
+use mimalloc::MiMalloc;
 use simple_logger::SimpleLogger;
 
 use mapad::{
@@ -11,6 +13,11 @@ use mapad::{
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
     utils::AlignmentParameters,
 };
+
+// Use mimalloc only for musl target
+#[cfg(all(target_env = "musl"))]
+#[global_allocator]
+static ALLOC: MiMalloc = MiMalloc;
 
 fn main() {
     handle_arguments(define_cli());
