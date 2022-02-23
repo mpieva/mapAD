@@ -1,6 +1,6 @@
 # mapAD
 
-This is another attempt to write a fast experimental ancient DNA damage aware short read mapper. 
+This is another attempt to write a _fast enough_ experimental ancient DNA damage aware short read mapper. 
 This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate 
 ([Köster, 2016](https://doi.org/10.1093/bioinformatics/btv573)). 
 
@@ -192,19 +192,22 @@ Mapping quality is defined as the PHRED-scaled probability that an alignment is 
 are PHRED-scaled, and, for better compatibility with `BWA`, confined to the interval 
 <img src="https://render.githubusercontent.com/render/math?math=[0..37]">.
 
+<!--- FIXME: Needs to be updated with current numbers
 ## Hardware Requirements
 
 - The standalone program needs ~100GB RAM when running on 32 cores to align against the human reference genome `hg19`. 
   The mapping speed is roughly comparable to `bwa aln` using "ancient parameters" (`-l 16500 -o 2 -n 0.01`). 
   To parallelize alignments, `mapAD` will use all idle CPU cores on the machine it is run on (this behaviour can be 
-  controlled via the `RAYON_NUM_THREADS` environment variable).
+  controlled via `--threads`).
   
 - When using the distributed mapping feature (dispatcher/workers), each worker needs around 
   `(10 + 0.5 * |threads|)` GB of RAM while the dispatcher node uses around 70GB RAM since it keeps the suffix array in memory.
  
 - Indexing `hg19`, however, needs around 160GB of RAM. This will be improved in future versions.
+-->
 
 ## Known Issues
+
 - Memory consumption of both mapping and indexing (see [Hardware Requirements](#hardware-requirements))
 - No awareness of paired-end sequencing (pairs need to be merged before mapping)
 - No seeding (it's not very effective for short reads, but could easily be implemented for longer ones. Probably 
