@@ -52,6 +52,11 @@ Please note that the resulting binary is not portable.
 
 `mapad -vv index ...` or `mapad -vv map ...`
 
+- `mapAD` can be built as a fully static binary with `musl` libc:
+  1. Install target platform requirements: `rustup target add x86_64-unknown-linux-musl`
+  2. Install `musl-gcc` on the building system (Ubuntu: `sudo apt install musl-tools`)
+  3. Build: `RUSTFLAGS="-C target-feature=+crt-static -C link-self-contained=yes" cargo build --release --target x86_64-unknown-linux-musl`
+
 ## Usage
 
 The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively. 
