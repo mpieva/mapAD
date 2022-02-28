@@ -744,8 +744,6 @@ version = "0.19.0"
 source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
 dependencies = [
  "noodles-bam",
- "noodles-fasta",
- "noodles-fastq",
  "noodles-sam",
 ]
 
@@ -789,21 +787,6 @@ dependencies = [
  "byteorder",
  "noodles-bgzf",
 ]
-
-[[package]]
-name = "noodles-fasta"
-version = "0.7.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
-dependencies = [
- "memchr",
- "noodles-bgzf",
- "noodles-core",
-]
-
-[[package]]
-name = "noodles-fastq"
-version = "0.5.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
 
 [[package]]
 name = "noodles-sam"
