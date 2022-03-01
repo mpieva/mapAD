@@ -987,14 +987,13 @@ where
         }
 
         // @PG chain of old entries
+        for (_id, pg) in src_header.programs().iter() {
+            header_builder = header_builder.add_program(pg.clone());
+        }
+
         // We traverse the index map in insertion order, so we can assume that the last entry is
         // the most recently run program
-        let mut pg_prev_id = "";
-        for (id, pg) in src_header.programs().iter() {
-            header_builder = header_builder.add_program(pg.clone());
-            pg_prev_id = id;
-        }
-        if !pg_prev_id.is_empty() {
+        if let Some((pg_prev_id, _pg_prev)) = src_header.programs().iter().last() {
             program_builder = program_builder.set_previous_id(pg_prev_id);
         }
 
