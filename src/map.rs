@@ -949,6 +949,8 @@ where
     let mut header_header_builder = sam::header::header::Header::builder();
     header_header_builder =
         header_header_builder.set_version(sam::header::header::Version::new(1, 6));
+    header_header_builder =
+        header_header_builder.set_sort_order(sam::header::header::SortOrder::Unsorted);
 
     const PG_ID: &str = crate_name!();
 
