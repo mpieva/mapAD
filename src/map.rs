@@ -993,10 +993,13 @@ where
             header_builder = header_builder.add_program(pg.clone());
         }
 
-        // We traverse the index map in insertion order, so we can assume that the last entry is
-        // the most recently run program
-        if let Some((pg_prev_id, _pg_prev)) = src_header.programs().iter().last() {
-            program_builder = program_builder.set_previous_id(pg_prev_id);
+        // Append our program line to the latest end of a chain
+        for pg_id in src_header.programs().keys().rev() {
+            // Ensure it's really the end of a chain
+            if !src_header.programs().values().filter_map(|pg| pg.previous_id()).any(|x| x == pg_id.as_str()) {
+                program_builder = program_builder.set_previous_id(pg_id);
+                break;
+            }
         }
 
         // Ensure @PG/ID is unique

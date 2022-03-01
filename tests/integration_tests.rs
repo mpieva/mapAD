@@ -65,7 +65,8 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
 
         let input_bam_header =
             sam::Header::from_str("\
-            @HD\tVN:1.0\n@RG\tID:A12345\n\
+            @HD\tVN:1.0\n\
+            @RG\tID:A12345\tSM:Sample1\n\
             @SQ\tSN:chr1\tLN:600\n\
             @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
             @PG\tID:mapad\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
