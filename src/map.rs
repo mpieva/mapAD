@@ -1623,8 +1623,7 @@ where
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                } - optimal_penalty
-                    + stack_frame.alignment_score;
+                } + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_forwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
@@ -1657,8 +1656,7 @@ where
                     parameters.penalty_gap_extend
                 } else {
                     parameters.penalty_gap_open
-                } - optimal_penalty
-                    + stack_frame.alignment_score;
+                } + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_backwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
@@ -2354,7 +2352,7 @@ pub mod tests {
             .iter()
             .map(|f| f.alignment_score)
             .collect::<Vec<_>>();
-        assert_eq!(alignment_scores, vec![-10.936638, -38.376995, -10.965062]);
+        assert_eq!(alignment_scores, vec![-10.936638, -38.377716, -10.965062]);
 
         let mut positions: Vec<usize> = intervals
             .iter()
