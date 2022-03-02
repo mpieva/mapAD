@@ -26,7 +26,7 @@ slab = "0.4.5"
 anyhow = "1.0.52"
 fxhash = "0.2.1"
 mimalloc = { version = "0.1.28", default-features = false }
-noodles = { git = "https://github.com/zaeleus/noodles.git", features = ["bam", "sam"] }
+noodles = { version = "0.20.0", features = ["bam", "sam"] }
 
 [dev-dependencies]
 criterion = "0.3.5"

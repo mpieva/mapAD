@@ -740,8 +740,9 @@ dependencies = [
 
 [[package]]
 name = "noodles"
-version = "0.19.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "388ef87567c627363464b2a9cdb657d30e2feedcf3e33ebf220f5f053533c11b"
 dependencies = [
  "noodles-bam",
  "noodles-sam",
@@ -749,8 +750,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-bam"
-version = "0.15.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f67203c3e8b5498b03e3c1384dd964bd32ac93026011e65fec644c3c0ecaed44"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -763,8 +765,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-bgzf"
-version = "0.9.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94745a1cf9ca1f711a8ad5bc3d8154244b34dbd85c9abc9796cc01c2c57c83f5"
 dependencies = [
  "byteorder",
  "flate2",
@@ -772,16 +775,18 @@ dependencies = [
 
 [[package]]
 name = "noodles-core"
-version = "0.4.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "315bd1041c73bb5e6b6e9ddadc23e700f290077c940d81806aa3959c524d9c27"
 dependencies = [
  "noodles-sam",
 ]
 
 [[package]]
 name = "noodles-csi"
-version = "0.5.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50a4f6bbc7b79aaf05c43dc58a95d077ae09304663b86380bfd6c1ae7b749dc1"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -790,8 +795,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-sam"
-version = "0.12.0"
-source = "git+https://github.com/zaeleus/noodles.git#d8d28e3763fef9ef925187ab270f590be423560a"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "006b808bf1777c8c30123bca65daf38e917be3710b5bddb298d4683579d5acd5"
 dependencies = [
  "bitflags",
  "indexmap",
