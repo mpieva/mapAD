@@ -94,16 +94,17 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                 five_prime_overhang: 0.6,
                 three_prime_overhang: 0.55,
             },
-            1.0,
             0.01,
+            1.0,
             base_error_rate,
             false,
         );
         let representative_mm_penalty = adna_scoring_model.get_representative_mismatch_penalty();
+        let mismatch_bound = Discrete::new(0.03, base_error_rate, representative_mm_penalty);
         let alignment_parameters = utils::AlignmentParameters {
             difference_model: adna_scoring_model.into(),
-            mismatch_bound: Discrete::new(0.03, base_error_rate, representative_mm_penalty).into(),
-            penalty_gap_open: representative_mm_penalty * 3.0,
+            mismatch_bound: mismatch_bound.into(),
+            penalty_gap_open: representative_mm_penalty * 2.0,
             penalty_gap_extend: representative_mm_penalty,
             chunk_size: 1,
             gap_dist_ends: 5,
