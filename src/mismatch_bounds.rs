@@ -361,8 +361,6 @@ mod tests {
             difference_model.get_representative_mismatch_penalty();
         let mismatch_bound = Discrete::new(0.03, 0.02, representative_mismatch_boundary);
 
-        println!("{}", mismatch_bound);
-
         let comparison = " 17 bp:\t2 mismatches
  34 bp:\t3 mismatches
  58 bp:\t4 mismatches

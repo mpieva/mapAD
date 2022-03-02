@@ -192,21 +192,59 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
 
 impl Display for SimpleAncientDnaModel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        const BASE_QUALITY: u8 = 37;
+        const READ_LEN: usize = 50;
+
+        // "Ordinary" mismatch penalty
         writeln!(
             f,
             "\"Ordinary\" mismatch: {:.2}",
             self.get_representative_mismatch_penalty()
         )?;
 
-        writeln!(f, "Central C->T: {:.2}", self.get(25, 50, b'C', b'T', 37))?;
+        // Central cheap mismatches
+        writeln!(
+            f,
+            "Central C->T / G->A: {:.2}",
+            self.get(READ_LEN / 2, READ_LEN, b'C', b'T', BASE_QUALITY)
+        )?;
 
+        // 5' end
         write!(f, "5' C->T: ")?;
-        (0..10).try_for_each(|pos| write!(f, "{:.2} ", self.get(pos, 50, b'C', b'T', 37)))?;
+        (0..10).try_for_each(|pos| {
+            write!(
+                f,
+                "{:.2} ",
+                self.get(pos, READ_LEN, b'C', b'T', BASE_QUALITY)
+            )
+        })?;
+        write!(f, "...")?;
 
-        write!(f, "\n3' C->T: ")?;
-        (40..50)
-            .rev()
-            .try_for_each(|pos| write!(f, "{:.2} ", self.get(pos, 50, b'C', b'T', 37)))?;
+        // 3' end
+        let three_prime_end = (READ_LEN - 10)..READ_LEN;
+        match &self.library_prep {
+            LibraryPrep::SingleStranded { .. } => {
+                write!(f, "\n3' C->T: ")?;
+                three_prime_end.rev().try_for_each(|pos| {
+                    write!(
+                        f,
+                        "{:.2} ",
+                        self.get(pos, READ_LEN, b'C', b'T', BASE_QUALITY)
+                    )
+                })?;
+            }
+            LibraryPrep::DoubleStranded(_) => {
+                write!(f, "\n3' G->A: ")?;
+                three_prime_end.rev().try_for_each(|pos| {
+                    write!(
+                        f,
+                        "{:.2} ",
+                        self.get(pos, READ_LEN, b'G', b'A', BASE_QUALITY)
+                    )
+                })?;
+            }
+        }
+        write!(f, "...")?;
 
         Ok(())
     }
@@ -1216,7 +1254,7 @@ mod tests {
 
     #[test]
     fn display_simple_adna_model() {
-        let adna_model = SimpleAncientDnaModel::new(
+        let adna_model_sist = SimpleAncientDnaModel::new(
             LibraryPrep::SingleStranded {
                 five_prime_overhang: 0.4,
                 three_prime_overhang: 0.3,
@@ -1227,6 +1265,26 @@ mod tests {
             false,
         );
 
-        println!("{}", adna_model);
+        let sist_display = "\"Ordinary\" mismatch: -7.20\n\
+Central C->T / G->A: -5.25\n\
+5' C->T: -1.29 -2.48 -3.52 -4.30 -4.80 -5.05 -5.17 -5.22 -5.24 -5.25 ...\n\
+3' C->T: -1.68 -3.16 -4.27 -4.88 -5.13 -5.22 -5.24 -5.25 -5.25 -5.25 ...";
+
+        assert_eq!(sist_display, format!("{}", adna_model_sist));
+
+        let adna_model_ds = SimpleAncientDnaModel::new(
+            LibraryPrep::DoubleStranded(0.4),
+            0.02,
+            1.0,
+            0.02 / 3.0,
+            false,
+        );
+
+        let ds_display = "\"Ordinary\" mismatch: -7.20\n\
+Central C->T / G->A: -5.25\n\
+5' C->T: -1.29 -2.48 -3.52 -4.30 -4.80 -5.05 -5.17 -5.22 -5.24 -5.25 ...\n\
+3' G->A: -1.29 -2.48 -3.52 -4.30 -4.80 -5.05 -5.17 -5.22 -5.24 -5.25 ...";
+
+        assert_eq!(ds_display, format!("{}", adna_model_ds));
     }
 }
