@@ -145,13 +145,62 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             .unwrap();
 
         let comp = vec![
-            (0, 269, 28, 0, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
-            (0, 269, 28, 585, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
-            (0, 269, 28, 0, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
-            (0, 269, 28, 16, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
-            (0, 269, 27, 16, "TTAACAATGAACTTGGGAACGACCAGG".into(), "14M1D13M".into()),
-            (0, 269, 29, 16, "TTAACAATGAACTTAAGGGAACGACCAGG".into(), "15M1I13M".into()),
-            (0, 269, 28, 0, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
+            (
+                0,
+                269,
+                28,
+                0,
+                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
+                "28M".into(),
+            ),
+            (
+                0,
+                269,
+                28,
+                585,
+                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
+                "28M".into(),
+            ),
+            (
+                0,
+                269,
+                28,
+                0,
+                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
+                "28M".into(),
+            ),
+            (
+                0,
+                269,
+                28,
+                16,
+                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
+                "28M".into(),
+            ),
+            (
+                0,
+                269,
+                27,
+                16,
+                "TTAACAATGAACTTGGGAACGACCAGG".into(),
+                "14M1D13M".into(),
+            ),
+            (
+                0,
+                269,
+                29,
+                16,
+                "TTAACAATGAACTTAAGGGAACGACCAGG".into(),
+                "15M1I13M".into(),
+            ),
+            (
+                0,
+                269,
+                28,
+                0,
+                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
+                "28M".into(),
+            ),
         ];
         assert_eq!(comp, result_sample);
     }
