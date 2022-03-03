@@ -124,8 +124,8 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
         let mut bam_reader = bam::Reader::new(File::open(&output_bam_path).unwrap());
 
         // Move cursor to the right place
-        let _ = bam_reader.read_header();
-        let _ = bam_reader.read_reference_sequences();
+        let _header = bam_reader.read_header().unwrap();
+        let _header_reference_sequences = bam_reader.read_reference_sequences().unwrap();
 
         let result_sample = bam_reader
             .records()
