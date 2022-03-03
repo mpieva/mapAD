@@ -134,6 +134,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                     (
                         record.reference_sequence_id().unwrap().into(),
                         record.position().unwrap().into(),
+                        record.mapping_quality().unwrap(),
                         record.sequence().len(),
                         record.flags().bits(),
                         record.sequence().to_string(),
@@ -148,6 +149,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                37_u8.try_into().unwrap(),
                 28,
                 0,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
@@ -156,6 +158,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                37_u8.try_into().unwrap(),
                 28,
                 585,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
@@ -164,6 +167,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                37_u8.try_into().unwrap(),
                 28,
                 0,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
@@ -172,6 +176,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                37_u8.try_into().unwrap(),
                 28,
                 16,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
@@ -180,6 +185,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                3_u8.try_into().unwrap(),
                 27,
                 16,
                 "TTAACAATGAACTTGGGAACGACCAGG".into(),
@@ -188,6 +194,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                3_u8.try_into().unwrap(),
                 29,
                 16,
                 "TTAACAATGAACTTAAGGGAACGACCAGG".into(),
@@ -196,6 +203,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             (
                 0,
                 269,
+                37_u8.try_into().unwrap(),
                 28,
                 0,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
