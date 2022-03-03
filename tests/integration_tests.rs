@@ -136,7 +136,8 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         record.position().unwrap().into(),
                         record.sequence().len(),
                         record.flags().bits(),
-                        record.sequence().to_string().into_bytes(),
+                        record.sequence().to_string(),
+                        record.cigar().to_string(),
                     )
                 })
             })
@@ -144,13 +145,13 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             .unwrap();
 
         let comp = vec![
-            (0, 269, 28, 0, b"TTAACAATGAACTTAGGGAACGACCAGG".to_vec()),
-            (0, 269, 28, 585, b"TTAACAATGAACTTAGGGAACGACCAGG".to_vec()),
-            (0, 269, 28, 0, b"TTAACAATGAACTTAGGGAACGACCAGG".to_vec()),
-            (0, 269, 28, 16, b"TTAACAATGAACTTAGGGAACGACCAGG".to_vec()),
-            (0, 269, 27, 16, b"TTAACAATGAACTTGGGAACGACCAGG".to_vec()),
-            (0, 269, 29, 16, b"TTAACAATGAACTTAAGGGAACGACCAGG".to_vec()),
-            (0, 269, 28, 0, b"TTAACAATGAACTTAGGGAACGACCAGG".to_vec()),
+            (0, 269, 28, 0, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
+            (0, 269, 28, 585, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
+            (0, 269, 28, 0, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
+            (0, 269, 28, 16, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
+            (0, 269, 27, 16, "TTAACAATGAACTTGGGAACGACCAGG".into(), "14M1D13M".into()),
+            (0, 269, 29, 16, "TTAACAATGAACTTAAGGGAACGACCAGG".into(), "15M1I13M".into()),
+            (0, 269, 28, 0, "TTAACAATGAACTTAGGGAACGACCAGG".into(), "28M".into()),
         ];
         assert_eq!(comp, result_sample);
     }
