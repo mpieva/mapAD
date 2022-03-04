@@ -4,6 +4,8 @@ use std::{error, io, result, str};
 use anyhow;
 use clap::crate_version;
 
+use crate::CRATE_NAME;
+
 /// Internally, we only use this Error type and a newtype wrapper around `std::result::Result<T, E>`
 /// where `E` is fixed. When, for example, an additional input file type machinery is added,
 /// additional `From<E> for Error` impls might be needed to allow to plug in an `Record`-yielding
@@ -33,7 +35,7 @@ impl fmt::Display for Error {
             Error::ParseError(err) => write!(f, "Parse error: {}", err),
             Error::InvalidInputType => write!(f, "Please specify a path to an input file that ends either with \".bam\", \".fq\", or \".fastq\""),
             Error::InvalidIndex(err) => write!(f, "Index is invalid: {}", err),
-            Error::IndexVersionMismatch => write!(f, "The provided index is incompatible with version {} of {}. Please re-create the index.", crate_version!(), crate::map::CRATE_NAME),
+            Error::IndexVersionMismatch => write!(f, "The provided index is incompatible with version {} of {}. Please re-create the index.", crate_version!(), CRATE_NAME),
             Error::AnyhowError(err) => write!(f, "Internal error: {}", err),
             Error::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
         }

@@ -12,6 +12,7 @@ use mapad::{
     mismatch_bounds::{Continuous, Discrete},
     sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
     utils::AlignmentParameters,
+    CRATE_NAME,
 };
 
 // Use mimalloc only for musl target
@@ -37,7 +38,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
         }
     };
 
-    App::new(map::CRATE_NAME)
+    App::new(CRATE_NAME)
         .about(crate_description!())
         .version(crate_version!())
         .setting(AppSettings::SubcommandRequiredElseHelp)
@@ -236,7 +237,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                     Arg::with_name("num_threads")
                         .required(true)
                         .long("threads")
-                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", map::CRATE_NAME))
+                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
                         .takes_value(true)
                         .default_value("0")
                         .value_name("INT")
@@ -283,7 +284,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                     Arg::with_name("num_threads")
                         .required(true)
                         .long("num_threads")
-                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", map::CRATE_NAME))
+                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
                         .takes_value(true)
                         .default_value("0")
                         .value_name("INT")

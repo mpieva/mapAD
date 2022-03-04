@@ -33,9 +33,8 @@ use crate::{
         load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
         AlignmentParameters, Record,
     },
+    CRATE_NAME,
 };
-
-pub const CRATE_NAME: &str = "mapAD";
 
 // These settings lead to a memory consumption of ~245 MiB per thread
 pub const STACK_LIMIT: u32 = 2_000_000;
