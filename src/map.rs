@@ -12,7 +12,7 @@ use std::{
 };
 
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
-use clap::{crate_description, crate_name, crate_version};
+use clap::{crate_description, crate_version};
 use either::Either;
 use log::{debug, error, info, trace, warn};
 use min_max_heap::MinMaxHeap;
@@ -952,7 +952,7 @@ where
     header_header_builder =
         header_header_builder.set_sort_order(sam::header::header::SortOrder::Unsorted);
 
-    const PG_ID: &str = crate_name!();
+    const PG_ID: &str = CRATE_NAME;
 
     let mut program_builder = {
         let cmdline = {

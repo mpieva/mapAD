@@ -69,8 +69,8 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             @RG\tID:A12345\tSM:Sample1\n\
             @SQ\tSN:chr1\tLN:600\n\
             @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
-            @PG\tID:mapad\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
-            @PG\tID:mapad.1\tPN:mapAD\tCL:mapad map\tPP:mapad\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
+            @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
+            @PG\tID:mapAD.1\tPN:mapAD\tCL:mapad map\tPP:mapAD\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
             ").unwrap();
 
         let mut input_bam_file = bam::Writer::new(File::create(&input_bam_path).unwrap());
