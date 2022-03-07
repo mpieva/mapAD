@@ -1161,7 +1161,16 @@ where
     }
 
     // No match found, report unmapped read
-    bam_record_helper(input_record, -1, None, None, -1, None, duration, "".into())
+    bam_record_helper(
+        input_record,
+        -1,
+        None,
+        Some(0),
+        -1,
+        None,
+        duration,
+        "".into(),
+    )
 }
 
 /// Computes optimal per-base alignment scores for a read,

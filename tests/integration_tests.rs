@@ -55,13 +55,14 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
     // Create test reads and store them in a BAM file
     {
         let sam_content = "\
-        A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
-        A00234_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t589\t*\t0\t0\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
-        A00345_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t16\t*\t0\t0\t28M\t*\t0\t0\tCCTGGTCGTTCCCTAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
-        A00456_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t16\t*\t0\t0\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
-        A00567_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t28M\t*\t0\t0\tCCTGGTCGTTCCCAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
-        A00678_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t28M\t*\t0\t0\tCCTGGTCGTTCCCTTAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
-        A00789_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t0\tchr1\t269\t37\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\tAS:i:0\tNM:i:0\tMD:Z:28\tXD:i:195";
+        A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
+        A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t589\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
+        A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t16\t*\t0\t0\t28M\t*\t0\t0\tCCTGGTCGTTCCCTAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
+        A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t16\t*\t0\t0\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
+        A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCCTGGTCGTTCCCAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
+        A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCCTGGTCGTTCCCTTAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
+        A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t0\tchr1\t269\t37\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\tAS:i:0\tNM:i:0\tMD:Z:28\tXD:i:195\n\
+        A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tGATTGGTGCACGGACGCGCGTTGAAAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
 
         let input_bam_header =
             sam::Header::from_str("\
@@ -132,9 +133,9 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             .map(|maybe_record| {
                 maybe_record.map(|record| {
                     (
-                        record.reference_sequence_id().unwrap().into(),
-                        record.position().unwrap().into(),
-                        record.mapping_quality().unwrap(),
+                        record.reference_sequence_id(),
+                        record.position(),
+                        record.mapping_quality(),
                         record.sequence().len(),
                         record.flags().bits(),
                         record.sequence().to_string(),
@@ -147,67 +148,76 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
 
         let comp = vec![
             (
-                0,
-                269,
-                37_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(37_u8.try_into().unwrap()),
                 28,
                 0,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
                 "28M".into(),
             ),
             (
-                0,
-                269,
-                37_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(37_u8.try_into().unwrap()),
                 28,
                 585,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
                 "28M".into(),
             ),
             (
-                0,
-                269,
-                37_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(37_u8.try_into().unwrap()),
                 28,
                 0,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
                 "28M".into(),
             ),
             (
-                0,
-                269,
-                37_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(37_u8.try_into().unwrap()),
                 28,
                 16,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
                 "28M".into(),
             ),
             (
-                0,
-                269,
-                3_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(3_u8.try_into().unwrap()),
                 27,
                 16,
                 "TTAACAATGAACTTGGGAACGACCAGG".into(),
                 "14M1D13M".into(),
             ),
             (
-                0,
-                269,
-                3_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(3_u8.try_into().unwrap()),
                 29,
                 16,
                 "TTAACAATGAACTTAAGGGAACGACCAGG".into(),
                 "15M1I13M".into(),
             ),
             (
-                0,
-                269,
-                37_u8.try_into().unwrap(),
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(37_u8.try_into().unwrap()),
                 28,
                 0,
                 "TTAACAATGAACTTAGGGAACGACCAGG".into(),
                 "28M".into(),
+            ),
+            (
+                None,
+                None,
+                Some(0_u8.try_into().unwrap()),
+                28,
+                4,
+                "GATTGGTGCACGGACGCGCGTTGAAAGG".into(),
+                "".into(),
             ),
         ];
         assert_eq!(comp, result_sample);
