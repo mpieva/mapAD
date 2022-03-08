@@ -1061,7 +1061,7 @@ where
     S: SuffixArray,
 {
     let mut intervals_to_coordinates =
-        |interval: &HitInterval| -> Result<(usize, i32, i64, Direction)> {
+        |interval: &HitInterval| -> Result<(usize, u32, u64, Direction)> {
             // Calculate length of reference strand ignoring sentinel characters
             let strand_len = (suffix_array.len() - 2) / 2;
             // Get amount of positions in the genome covered by the read
@@ -1133,7 +1133,7 @@ where
                 };
                 return bam_record_helper(
                     input_record,
-                    relative_pos,
+                    Some(relative_pos),
                     Some(&best_alignment),
                     Some(estimate_mapping_quality(
                         &best_alignment,
@@ -1141,7 +1141,7 @@ where
                         &intervals,
                         alignment_parameters,
                     )),
-                    tid,
+                    Some(tid),
                     Some(strand),
                     duration,
                     alternative_hits,
@@ -1163,10 +1163,10 @@ where
     // No match found, report unmapped read
     bam_record_helper(
         input_record,
-        -1,
+        None,
         None,
         Some(0),
-        -1,
+        None,
         None,
         duration,
         "".into(),
@@ -1258,10 +1258,10 @@ fn estimate_mapping_quality(
 /// Create and return a BAM record of either a hit or an unmapped read
 fn bam_record_helper(
     input_record: Record,
-    position: i64,
+    position: Option<u64>,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
-    tid: i32,
+    tid: Option<u32>,
     strand: Option<Direction>,
     duration: Option<&Duration>,
     // Contains valid content for the `YA` tag
@@ -1280,20 +1280,19 @@ fn bam_record_helper(
 
     // Copy flags from input record
     let mut flags = sam::record::Flags::from(input_record.bam_flags);
-    // Unmapped read
-    if position == -1 {
-        flags.insert(sam::record::Flags::UNMAPPED);
-        flags.remove(sam::record::Flags::REVERSE_COMPLEMENTED);
-        flags.remove(sam::record::Flags::PROPERLY_ALIGNED);
-    } else {
-        flags.remove(sam::record::Flags::UNMAPPED);
 
+    if let Some(position) = position {
+        flags.remove(sam::record::Flags::UNMAPPED);
         bam_builder = bam_builder.set_position(
             i32::try_from(position + 1)
                 .ok()
                 .and_then(|pos32| pos32.try_into().ok())
                 .ok_or_else(|| Error::InvalidIndex("Could not compute valid coordinate".into()))?,
         )
+    } else {
+        flags.insert(sam::record::Flags::UNMAPPED);
+        flags.remove(sam::record::Flags::REVERSE_COMPLEMENTED);
+        flags.remove(sam::record::Flags::PROPERLY_ALIGNED);
     }
 
     // Flag read that maps to reverse strand
@@ -1310,11 +1309,12 @@ fn bam_record_helper(
 
     // Add optional fields (or do not)
 
-    if tid > -1 {
-        bam_builder = bam_builder.set_reference_sequence_id(
-            tid.try_into()
-                .map_err(|e| Error::InvalidIndex(format!("{}", e)))?,
-        );
+    if let Some(tid) = tid {
+        let tid = i32::try_from(tid)
+            .ok()
+            .and_then(|tid| tid.try_into().ok())
+            .ok_or_else(|| Error::InvalidIndex("Invalid reference map".into()))?;
+        bam_builder = bam_builder.set_reference_sequence_id(tid);
     }
 
     // Some (not all) fields need to be reversed when the read maps to the reverse strand
