@@ -1,10 +1,9 @@
 use std::{
     fs::File,
     io::{self, Write},
-    str::FromStr,
 };
 
-use noodles::{bam, sam};
+use noodles::bam;
 use tempfile::tempdir;
 
 use mapad::{
@@ -65,14 +64,14 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
         A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tGATTGGTGCACGGACGCGCGTTGAAAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
 
         let input_bam_header =
-            sam::Header::from_str("\
+            "\
             @HD\tVN:1.0\n\
             @RG\tID:A12345\tSM:Sample1\n\
             @SQ\tSN:chr1\tLN:600\n\
             @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
             @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
             @PG\tID:mapAD.1\tPN:mapAD\tCL:mapad map\tPP:mapAD\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
-            ").unwrap();
+            ".parse().unwrap();
 
         let mut input_bam_file = bam::Writer::new(File::create(&input_bam_path).unwrap());
         input_bam_file.write_header(&input_bam_header).unwrap();
@@ -80,7 +79,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             .write_reference_sequences(input_bam_header.reference_sequences())
             .unwrap();
         for sam_line in sam_content.lines() {
-            let sam_record = sam::Record::from_str(sam_line).unwrap();
+            let sam_record = sam_line.parse().unwrap();
             input_bam_file
                 .write_sam_record(input_bam_header.reference_sequences(), &sam_record)
                 .unwrap();

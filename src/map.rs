@@ -7,7 +7,6 @@ use std::{
     io::{self, BufReader, Read, Write},
     iter::Map,
     path::Path,
-    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -976,7 +975,7 @@ where
             bam_reader
                 .read_header()
                 .ok()
-                .and_then(|head| sam::Header::from_str(&head).ok())
+                .and_then(|header| header.parse::<sam::Header>().ok())
                 .or_else(|| {
                     warn!("Could not read input file header. Instead, create output header from scratch. Some metadata might be lost.");
                     None
