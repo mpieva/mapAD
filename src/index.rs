@@ -18,7 +18,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    errors::Result,
+    errors::{Error, Result},
     map::{FastaIdPosition, FastaIdPositions},
 };
 
@@ -158,39 +158,27 @@ impl<'a, 'b, 'c> SuffixArray for SampledSuffixArray<'a, 'b, 'c> {
 
 // Versioned index data structures
 #[derive(Serialize, Deserialize)]
-pub struct VersionedBwt {
-    pub version: u8,
-    pub data: BWT,
+pub struct VersionedIndexItem<T> {
+    version: u8,
+    data: T,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct VersionedLess {
-    pub version: u8,
-    pub data: Less,
-}
+impl<T> VersionedIndexItem<T> {
+    pub fn new(data: T) -> Self {
+        Self {
+            version: INDEX_VERSION,
+            data,
+        }
+    }
 
-#[derive(Serialize, Deserialize)]
-pub struct VersionedOcc {
-    pub version: u8,
-    pub data: Occ,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct VersionedRt {
-    pub version: u8,
-    pub data: RankTransform,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct VersionedIdPosMap {
-    pub version: u8,
-    pub data: FastaIdPositions,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct VersionedSuffixArray {
-    pub version: u8,
-    pub data: SampledSuffixArrayOwned,
+    /// Returns inner data if the version of the deserialized Struct is compatible
+    pub fn try_take(self) -> Result<T> {
+        if self.version == INDEX_VERSION {
+            Ok(self.data)
+        } else {
+            Err(Error::IndexVersionMismatch)
+        }
+    }
 }
 
 /// Entry point function to launch the indexing process
@@ -279,10 +267,7 @@ fn index<T: Rng>(
         );
 
         info!("Save position map");
-        let versioned_id_pos_map = VersionedIdPosMap {
-            version: INDEX_VERSION,
-            data: identifier_position_map,
-        };
+        let versioned_id_pos_map = VersionedIndexItem::new(identifier_position_map);
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tpi", name))?);
         bincode::serialize_into(&mut writer, &versioned_id_pos_map)?;
     }
@@ -302,10 +287,7 @@ fn index<T: Rng>(
 
     {
         info!("Save \"RT\" table");
-        let versioned_rt = VersionedRt {
-            version: INDEX_VERSION,
-            data: rank_transform,
-        };
+        let versioned_rt = VersionedIndexItem::new(rank_transform);
         let mut writer_rank_transform =
             snap::write::FrameEncoder::new(File::create(format!("{}.trt", name))?);
         bincode::serialize_into(&mut writer_rank_transform, &versioned_rt)?;
@@ -323,10 +305,7 @@ fn index<T: Rng>(
             SampledSuffixArrayOwned::sample(&suffix_array, &ref_seq, &bwt, 32);
 
         info!("Save compressed suffix array");
-        let versioned_suffix_array = VersionedSuffixArray {
-            version: INDEX_VERSION,
-            data: owned_sampled_suffix_array,
-        };
+        let versioned_suffix_array = VersionedIndexItem::new(owned_sampled_suffix_array);
         let mut writer_suffix_array =
             snap::write::FrameEncoder::new(File::create(format!("{}.tsa", name))?);
         bincode::serialize_into(&mut writer_suffix_array, &versioned_suffix_array)?;
@@ -340,7 +319,7 @@ fn index<T: Rng>(
 
     {
         info!("Save BWT");
-        let versioned_bwt = VersionedBwt {
+        let versioned_bwt = VersionedIndexItem::<BWT> {
             version: INDEX_VERSION,
             data: bwt,
         };
@@ -350,20 +329,14 @@ fn index<T: Rng>(
 
     {
         info!("Save \"C\" table");
-        let versioned_less = VersionedLess {
-            version: INDEX_VERSION,
-            data: less,
-        };
+        let versioned_less = VersionedIndexItem::new(less);
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tle", name))?);
         bincode::serialize_into(&mut writer, &versioned_less)?;
     }
 
     {
         info!("Save \"Occ\" table");
-        let versioned_occ = VersionedOcc {
-            version: INDEX_VERSION,
-            data: occ,
-        };
+        let versioned_occ = VersionedIndexItem::new(occ);
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.toc", name))?);
         bincode::serialize_into(&mut writer, &versioned_occ)?;
     }
