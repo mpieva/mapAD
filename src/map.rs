@@ -376,8 +376,8 @@ impl Eq for MismatchSearchStackFrame {}
 /// this struct is used to keep a map of IDs and positions
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FastaIdPosition {
-    pub start: usize,
-    pub end: usize,
+    pub start: u64,
+    pub end: u64,
     pub identifier: String,
 }
 
@@ -401,14 +401,18 @@ impl FastaIdPositions {
         &self,
         position: usize,
         pattern_length: usize,
-    ) -> Option<(i32, i64)> {
+    ) -> Option<(u32, u64)> {
+        let position = position as u64;
         self.id_position
             .iter()
             .enumerate()
             .find(|(_, identifier)| {
-                (identifier.start <= position) && (position + pattern_length - 1 <= identifier.end)
+                (identifier.start <= position)
+                    && (position + pattern_length as u64 - 1 <= identifier.end)
             })
-            .map(|(index, identifier)| (index as i32, (position - identifier.start) as i64))
+            .and_then(|(index, identifier)| {
+                Some((u32::try_from(index).ok()?, position - identifier.start))
+            })
     }
 }
 

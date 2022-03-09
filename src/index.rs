@@ -23,7 +23,7 @@ use crate::{
 };
 
 // Increase this number once the on-disk index changes
-pub const INDEX_VERSION: u8 = 1;
+pub const INDEX_VERSION: u8 = 2;
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 // Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
@@ -268,9 +268,9 @@ fn index<T: Rng>(
                 .records()
                 .map(|record| {
                     let record = record.expect("Failed reading input file");
-                    end += record.seq().len();
+                    end += record.seq().len() as u64;
                     FastaIdPosition {
-                        start: end - record.seq().len(),
+                        start: end - record.seq().len() as u64,
                         end: end - 1,
                         identifier: record.id().to_string(),
                     }
