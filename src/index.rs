@@ -15,7 +15,7 @@ use rand::{
     prelude::{Rng, SeedableRng, StdRng},
     seq::SliceRandom,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     errors::{Error, Result},
@@ -178,6 +178,18 @@ impl<T> VersionedIndexItem<T> {
         } else {
             Err(Error::IndexVersionMismatch)
         }
+    }
+}
+
+impl<T> VersionedIndexItem<T>
+where
+    T: DeserializeOwned,
+{
+    pub fn read_from_bincode<R>(reader: R) -> Result<Self>
+    where
+        R: std::io::Read,
+    {
+        bincode::deserialize_from::<_, Self>(reader).map_err(|e| e.into())
     }
 }
 

@@ -4,7 +4,7 @@ use bio::{
     alphabets,
     alphabets::{dna, RankTransform},
     data_structures::{
-        bwt::{bwt, less, Less, Occ, BWT},
+        bwt::{bwt, less, Occ},
         suffix_array::{suffix_array, RawSuffixArray},
     },
     io::fastq,
@@ -178,37 +178,37 @@ pub struct AlignmentParameters {
 
 pub fn load_suffix_array_from_path(reference_path: &str) -> Result<SampledSuffixArrayOwned> {
     let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
-    bincode::deserialize_from::<_, VersionedIndexItem<SampledSuffixArrayOwned>>(reader)?.try_take()
+    VersionedIndexItem::read_from_bincode(reader)?.try_take()
 }
 
 pub fn load_id_pos_map_from_path(reference_path: &str) -> Result<FastaIdPositions> {
     let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tpi", reference_path))?);
-    bincode::deserialize_from::<_, VersionedIndexItem<FastaIdPositions>>(reader)?.try_take()
+    VersionedIndexItem::read_from_bincode(reader)?.try_take()
 }
 
 pub fn load_index_from_path(reference_path: &str) -> Result<RtFmdIndex> {
     debug!("Load BWT");
-    let bwt: BWT = {
+    let bwt = {
         let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", reference_path))?);
-        bincode::deserialize_from::<_, VersionedIndexItem<BWT>>(reader)?.try_take()?
+        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
     };
 
     debug!("Load \"C\" table");
     let less = {
         let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tle", reference_path))?);
-        bincode::deserialize_from::<_, VersionedIndexItem<Less>>(reader)?.try_take()?
+        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
     };
 
     debug!("Load \"Occ\" table");
     let occ = {
         let reader = snap::read::FrameDecoder::new(File::open(format!("{}.toc", reference_path))?);
-        bincode::deserialize_from::<_, VersionedIndexItem<Occ>>(reader)?.try_take()?
+        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
     };
 
     debug!("Load \"RT\" table");
     let rt = {
         let reader = snap::read::FrameDecoder::new(File::open(format!("{}.trt", reference_path))?);
-        bincode::deserialize_from::<_, VersionedIndexItem<RankTransform>>(reader)?.try_take()?
+        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
     };
 
     debug!("Reconstruct index");
