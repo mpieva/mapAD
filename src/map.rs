@@ -954,7 +954,7 @@ where
     header_header_builder =
         header_header_builder.set_sort_order(sam::header::header::SortOrder::Unsorted);
 
-    const PG_ID: &str = CRATE_NAME;
+    let pg_id = CRATE_NAME;
 
     let mut program_builder = {
         let cmdline = {
@@ -963,7 +963,7 @@ where
             out
         };
         sam::header::Program::builder()
-            .set_id(PG_ID)
+            .set_id(pg_id)
             .set_name(CRATE_NAME)
             .set_version(crate_version!())
             .set_description(crate_description!())
@@ -1005,9 +1005,9 @@ where
         }
 
         // Ensure @PG/ID is unique
-        let pg_id_count = src_header.programs().keys().filter(|id| id.as_str() == PG_ID || id.starts_with(&format!("{}.", PG_ID))).count();
+        let pg_id_count = src_header.programs().keys().filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{}.", pg_id))).count();
         if pg_id_count > 0 {
-            program_builder = program_builder.set_id(format!("{}.{}", PG_ID, pg_id_count))
+            program_builder = program_builder.set_id(format!("{}.{}", pg_id, pg_id_count))
         }
 
         for comment in src_header.comments().iter() {
