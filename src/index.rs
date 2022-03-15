@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, hash::BuildHasherDefault};
+use std::{collections::HashMap, fs::File, hash::BuildHasherDefault, iter::once};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
@@ -217,10 +217,13 @@ fn index<T: Rng>(
     info!("Read input reference sequence");
     let mut ref_seq = fasta::Reader::from_file(reference_path)?
         .records()
-        // Convert all bases to uppercase
+        // `flat_map()` works by calling `into_iter` on the values returned by the closure, which
+        // means that the `Result`s would get lost in the process. We use the following construct
+        // to keep those.
         .flat_map(|record| match record {
+            // Convert all bases to uppercase
             Ok(record) => Either::Left(record.seq().to_ascii_uppercase().into_iter().map(Ok)),
-            Err(e) => Either::Right(std::iter::once(e).map(|e| Err(e.into()))),
+            Err(e) => Either::Right(once(Err(e.into()))),
         })
         .collect::<Result<Vec<_>>>()?;
 
