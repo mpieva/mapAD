@@ -1,4 +1,4 @@
-use std::{fmt::Debug, fs::File};
+use std::fmt::Debug;
 
 use bio::{
     alphabets,
@@ -177,39 +177,25 @@ pub struct AlignmentParameters {
 }
 
 pub fn load_suffix_array_from_path(reference_path: &str) -> Result<SampledSuffixArrayOwned> {
-    let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tsa", reference_path))?);
-    VersionedIndexItem::read_from_bincode(reader)?.try_take()
+    VersionedIndexItem::read_from_path(format!("{}.tsa", reference_path))?.try_take()
 }
 
 pub fn load_id_pos_map_from_path(reference_path: &str) -> Result<FastaIdPositions> {
-    let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tpi", reference_path))?);
-    VersionedIndexItem::read_from_bincode(reader)?.try_take()
+    VersionedIndexItem::read_from_path(format!("{}.tpi", reference_path))?.try_take()
 }
 
 pub fn load_index_from_path(reference_path: &str) -> Result<RtFmdIndex> {
     debug!("Load BWT");
-    let bwt = {
-        let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tbw", reference_path))?);
-        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
-    };
+    let bwt = VersionedIndexItem::read_from_path(format!("{}.tbw", reference_path))?.try_take()?;
 
     debug!("Load \"C\" table");
-    let less = {
-        let reader = snap::read::FrameDecoder::new(File::open(format!("{}.tle", reference_path))?);
-        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
-    };
+    let less = VersionedIndexItem::read_from_path(format!("{}.tle", reference_path))?.try_take()?;
 
     debug!("Load \"Occ\" table");
-    let occ = {
-        let reader = snap::read::FrameDecoder::new(File::open(format!("{}.toc", reference_path))?);
-        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
-    };
+    let occ = VersionedIndexItem::read_from_path(format!("{}.toc", reference_path))?.try_take()?;
 
     debug!("Load \"RT\" table");
-    let rt = {
-        let reader = snap::read::FrameDecoder::new(File::open(format!("{}.trt", reference_path))?);
-        VersionedIndexItem::read_from_bincode(reader)?.try_take()?
-    };
+    let rt = VersionedIndexItem::read_from_path(format!("{}.trt", reference_path))?.try_take()?;
 
     debug!("Reconstruct index");
     Ok(RtFmdIndex::new(bwt, less, occ, rt))

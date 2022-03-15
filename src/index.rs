@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, hash::BuildHasherDefault, iter::once};
+use std::{collections::HashMap, fs::File, hash::BuildHasherDefault, iter::once, path::Path};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
@@ -16,6 +16,7 @@ use rand::{
     seq::SliceRandom,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use snap::read::FrameDecoder;
 
 use crate::{
     errors::{Error, Result},
@@ -185,11 +186,12 @@ impl<T> VersionedIndexItem<T>
 where
     T: DeserializeOwned,
 {
-    pub fn read_from_bincode<R>(reader: R) -> Result<Self>
+    pub fn read_from_path<P>(path: P) -> Result<Self>
     where
-        R: std::io::Read,
+        P: AsRef<Path>,
     {
-        bincode::deserialize_from::<_, Self>(reader).map_err(|e| e.into())
+        let snappy_file = FrameDecoder::new(File::open(path)?);
+        bincode::deserialize_from(snappy_file).map_err(|e| e.into())
     }
 }
 
