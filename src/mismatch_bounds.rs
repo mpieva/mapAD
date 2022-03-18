@@ -191,10 +191,10 @@ impl Discrete {
         representative_mismatch_penalty: f32,
     ) -> Discrete {
         let cache = (0..MAX_CACHED_READ_LENGTH)
-            .map(|read_length| {
+            .map(|idx| {
                 Self::calculate_max_num_mismatches(
                     // Read lengths are stored with an offset to cache the "hot" lengths
-                    read_length + Self::MIN_READ_LENGTH,
+                    idx + Self::MIN_READ_LENGTH,
                     poisson_threshold,
                     base_error_rate,
                 )
@@ -242,18 +242,17 @@ impl Discrete {
             return 0.0;
         }
 
-        match self
-            .cache
+        self.cache
             // An offset must be subtracted to point to the correct cache entries
             .get(read_length - Self::MIN_READ_LENGTH)
-        {
-            None => Self::calculate_max_num_mismatches(
-                read_length,
-                self.poisson_threshold,
-                self.base_error_rate,
-            ),
-            Some(v) => *v,
-        }
+            .copied()
+            .unwrap_or_else(|| {
+                Self::calculate_max_num_mismatches(
+                    read_length,
+                    self.poisson_threshold,
+                    self.base_error_rate,
+                )
+            })
     }
 }
 
