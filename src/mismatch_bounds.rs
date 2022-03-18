@@ -1,7 +1,6 @@
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
-    iter::once,
+    fmt::{self, Display, Formatter},
+    iter,
 };
 
 use serde::{Deserialize, Serialize};
@@ -219,7 +218,7 @@ impl Discrete {
         let exp_minus_lambda = (-lambda).exp();
 
         // k = 0 (here 1, because BWA allows k+1 mismatches, and so do we)
-        once((1, exp_minus_lambda))
+        iter::once((1, exp_minus_lambda))
             // k = 1..read_length
             .chain((1..=read_length as u64).scan(
                 (1.0, 1, exp_minus_lambda),

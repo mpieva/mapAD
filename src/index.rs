@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, hash::BuildHasherDefault, iter::once, path::Path};
+use std::{collections::HashMap, fs::File, hash::BuildHasherDefault, iter, path::Path};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
@@ -225,7 +225,7 @@ fn index<T: Rng>(
         .flat_map(|record| match record {
             // Convert all bases to uppercase
             Ok(record) => Either::Left(record.seq().to_ascii_uppercase().into_iter().map(Ok)),
-            Err(e) => Either::Right(once(Err(e.into()))),
+            Err(e) => Either::Right(iter::once(Err(e.into()))),
         })
         .collect::<Result<Vec<_>>>()?;
 
