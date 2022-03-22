@@ -104,8 +104,8 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
         let alignment_parameters = utils::AlignmentParameters {
             difference_model: adna_scoring_model.into(),
             mismatch_bound: mismatch_bound.into(),
-            penalty_gap_open: representative_mm_penalty * 2.0,
-            penalty_gap_extend: representative_mm_penalty,
+            penalty_gap_open: representative_mm_penalty * 1.5,
+            penalty_gap_extend: representative_mm_penalty * 0.5,
             chunk_size: 1,
             gap_dist_ends: 5,
             stack_limit_abort: false,

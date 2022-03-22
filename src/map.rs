@@ -574,7 +574,10 @@ impl BiDArray {
                             best_penalty_mm_only - optimal_penalty
                         })
                         .fold(f32::MIN, |acc, penalty| acc.max(penalty))
-                        .max(alignment_parameters.penalty_gap_open)
+                        .max(
+                            alignment_parameters.penalty_gap_open
+                                + alignment_parameters.penalty_gap_extend,
+                        )
                         .max(alignment_parameters.penalty_gap_extend);
                         *interval = fmd_index.init_interval();
                         *last_mismatch_pos = index as i16;
@@ -1633,12 +1636,12 @@ where
                 insertion_score = if stack_frame.gap_forwards == GapState::Insertion {
                     parameters.penalty_gap_extend
                 } else {
-                    parameters.penalty_gap_open
+                    parameters.penalty_gap_open + parameters.penalty_gap_extend
                 } + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_forwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
-                    parameters.penalty_gap_open
+                    parameters.penalty_gap_open + parameters.penalty_gap_extend
                 } + stack_frame.alignment_score;
                 for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
                     *score = sequence_difference_model.get(
@@ -1666,12 +1669,12 @@ where
                 insertion_score = if stack_frame.gap_backwards == GapState::Insertion {
                     parameters.penalty_gap_extend
                 } else {
-                    parameters.penalty_gap_open
+                    parameters.penalty_gap_open + parameters.penalty_gap_extend
                 } + stack_frame.alignment_score;
                 deletion_score = if stack_frame.gap_backwards == GapState::Deletion {
                     parameters.penalty_gap_extend
                 } else {
-                    parameters.penalty_gap_open
+                    parameters.penalty_gap_open + parameters.penalty_gap_extend
                 } + stack_frame.alignment_score;
                 for (score, &base) in mm_scores.iter_mut().zip(b"ACGT".iter().rev()) {
                     *score = sequence_difference_model.get(
@@ -2042,7 +2045,7 @@ pub mod tests {
             match_score: 0.0,
         };
         let mmb = TestBound {
-            threshold: -2.0,
+            threshold: -3.0,
             representative_mm_bound: -10.0,
         };
 
@@ -2096,7 +2099,7 @@ pub mod tests {
             match_score: 0.0,
         };
         let mmb = TestBound {
-            threshold: -5.0,
+            threshold: -6.0,
             representative_mm_bound: -10.0,
         };
 
@@ -2323,8 +2326,8 @@ pub mod tests {
         let mmb = Discrete::new(0.01, 0.02, repr_mm_penalty);
 
         let parameters = AlignmentParameters {
-            penalty_gap_open: 3.5 * difference_model.get_representative_mismatch_penalty(),
-            penalty_gap_extend: 1.5 * difference_model.get_representative_mismatch_penalty(),
+            penalty_gap_open: 3.0 * difference_model.get_representative_mismatch_penalty(),
+            penalty_gap_extend: 0.6 * difference_model.get_representative_mismatch_penalty(),
             difference_model: difference_model.clone().into(),
             chunk_size: 1,
             mismatch_bound: mmb.clone().into(),
@@ -2363,7 +2366,7 @@ pub mod tests {
             .iter()
             .map(|f| f.alignment_score)
             .collect::<Vec<_>>();
-        assert_eq!(alignment_scores, vec![-10.936638, -38.377716, -10.965062]);
+        assert_eq!(alignment_scores, vec![-10.936638, -39.474224, -10.965062]);
 
         let mut positions: Vec<usize> = intervals
             .iter()
@@ -2387,7 +2390,7 @@ pub mod tests {
             match_score: 0.0,
         };
         let mmb = TestBound {
-            threshold: -3.0,
+            threshold: -4.0,
             representative_mm_bound: -10.0,
         };
 
@@ -2467,7 +2470,7 @@ pub mod tests {
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
-        assert_eq!(best_hit.alignment_score, -3.0);
+        assert_eq!(best_hit.alignment_score, -4.0);
         assert_eq!(
             cigar,
             vec![
@@ -2505,7 +2508,7 @@ pub mod tests {
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
-        assert_eq!(best_hit.alignment_score, -2.0);
+        assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
             cigar,
             vec![
@@ -2543,7 +2546,7 @@ pub mod tests {
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
-        assert_eq!(best_hit.alignment_score, -3.0);
+        assert_eq!(best_hit.alignment_score, -4.0);
         assert_eq!(
             cigar,
             vec![
@@ -2566,7 +2569,7 @@ pub mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mmb = TestBound {
-            threshold: -4.0,
+            threshold: -5.0,
             representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
         };
 
@@ -2596,7 +2599,7 @@ pub mod tests {
         let best_hit = intervals.pop().unwrap();
         let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
 
-        assert_eq!(best_hit.alignment_score, -4.0);
+        assert_eq!(best_hit.alignment_score, -5.0);
         assert_eq!(
             cigar,
             vec![
@@ -2672,7 +2675,7 @@ pub mod tests {
         let base_qualities = vec![0; pattern.len()];
 
         let mmb = TestBound {
-            threshold: -3.0,
+            threshold: -4.0,
             representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
         };
 
