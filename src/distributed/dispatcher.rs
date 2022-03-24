@@ -229,17 +229,19 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 let mut reader = bam::Reader::new(File::open(self.reads_path)?);
 
                 let src_header = reader
-                            .read_header()
-                            .ok()
-                            .and_then(|header| header.parse::<sam::Header>().ok())
-                            .or_else(|| {
-                                warn!("Could not read input file header. Instead, create output header from scratch. Some metadata might be lost.");
-                                None
-                            });
+                    .read_header()
+                    .map_err(Error::from)
+                    .and_then(|header| header.parse::<sam::Header>().map_err(Error::from));
+
+                if let Err(ref e) = src_header {
+                    warn!("Could not read input file header ({}). Instead, create output header from scratch. Some metadata might be lost.", e);
+                }
+
                 // Position cursor right after header
                 let _ = reader.read_reference_sequences();
 
-                let header = map::create_bam_header(src_header.as_ref(), &identifier_position_map)?;
+                let header =
+                    map::create_bam_header(src_header.as_ref().ok(), &identifier_position_map)?;
                 out_file.write_header(&header)?;
                 out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader

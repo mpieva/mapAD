@@ -3,6 +3,7 @@ use std::{error, io, result, str};
 
 use anyhow;
 use clap::crate_version;
+use noodles::sam;
 
 use crate::CRATE_NAME;
 
@@ -77,6 +78,13 @@ impl From<bio::io::fastq::Error> for Error {
     #[cold]
     fn from(e: bio::io::fastq::Error) -> Self {
         Error::FastQ(e)
+    }
+}
+
+impl From<sam::header::ParseError> for Error {
+    #[cold]
+    fn from(e: sam::header::ParseError) -> Self {
+        Error::ParseError(e.to_string())
     }
 }
 
