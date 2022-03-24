@@ -1,7 +1,7 @@
 use std::{
     collections::{BinaryHeap, HashMap},
     fs::{File, OpenOptions},
-    io::{self, BufReader, Read, Write},
+    io::{self, Read, Write},
     iter::Map,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
@@ -10,7 +10,7 @@ use std::{
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, error, info, warn};
 use mio::{net::TcpListener, *};
-use noodles::bam;
+use noodles::{bam, sam};
 use rayon::prelude::*;
 
 use crate::{
@@ -227,7 +227,19 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             })? {
             "bam" => {
                 let mut reader = bam::Reader::new(File::open(self.reads_path)?);
-                let header = map::create_bam_header(Some(&mut reader), &identifier_position_map)?;
+
+                let src_header = reader
+                            .read_header()
+                            .ok()
+                            .and_then(|header| header.parse::<sam::Header>().ok())
+                            .or_else(|| {
+                                warn!("Could not read input file header. Instead, create output header from scratch. Some metadata might be lost.");
+                                None
+                            });
+                // Position cursor right after header
+                let _ = reader.read_reference_sequences();
+
+                let header = map::create_bam_header(src_header.as_ref(), &identifier_position_map)?;
                 out_file.write_header(&header)?;
                 out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader
@@ -243,8 +255,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             }
             "fastq" | "fq" => {
                 let reader = fastq::Reader::from_file(self.reads_path)?;
-                let header =
-                    map::create_bam_header::<BufReader<File>>(None, &identifier_position_map)?;
+                let header = map::create_bam_header(None, &identifier_position_map)?;
                 out_file.write_header(&header)?;
                 out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader

@@ -4,7 +4,7 @@ use std::{
     cmp::Ordering,
     collections::{binary_heap::BinaryHeap, BTreeMap},
     fs::File,
-    io::{self, BufReader, Read, Write},
+    io::{self, Write},
     iter::Map,
     path::Path,
     time::{Duration, Instant},
@@ -736,11 +736,19 @@ pub fn run(
         })? {
         "bam" => {
             let mut reader = bam::Reader::new(File::open(reads_path)?);
-            let header = create_bam_header(Some(&mut reader), &identifier_position_map)?;
 
+            let src_header = reader
+                .read_header()
+                .ok()
+                .and_then(|header| header.parse::<sam::Header>().ok())
+                .or_else(|| {
+                    warn!("Could not read input file header. Instead, create output header from scratch. Some metadata might be lost.");
+                    None
+                });
             // Position cursor right after header
             let _ = reader.read_reference_sequences();
 
+            let header = create_bam_header(src_header.as_ref(), &identifier_position_map)?;
             out_file.write_header(&header)?;
             out_file.write_reference_sequences(header.reference_sequences())?;
             run_inner(
@@ -756,7 +764,7 @@ pub fn run(
         }
         "fastq" | "fq" => {
             let reader = fastq::Reader::from_file(reads_path)?;
-            let header = create_bam_header::<BufReader<File>>(None, &identifier_position_map)?;
+            let header = create_bam_header(None, &identifier_position_map)?;
             out_file.write_header(&header)?;
             out_file.write_reference_sequences(header.reference_sequences())?;
             run_inner(
@@ -943,13 +951,10 @@ where
 
 /// Creates basic BAM header with mandatory fields pre-populated.
 /// If provided, it will copy most data from an input BAM header (`@SQ` lines are removed).
-pub fn create_bam_header<R>(
-    reads_reader: Option<&mut bam::Reader<R>>,
+pub fn create_bam_header(
+    src_header: Option<&sam::Header>,
     identifier_position_map: &FastaIdPositions,
-) -> Result<sam::Header>
-where
-    R: Read,
-{
+) -> Result<sam::Header> {
     let mut header_builder = sam::Header::builder();
     let mut header_header_builder = sam::header::header::Header::builder();
     header_header_builder =
@@ -973,17 +978,7 @@ where
             .set_command_line(cmdline)
     };
 
-    if let Some(src_header) = reads_reader
-        .and_then(|bam_reader|
-            bam_reader
-                .read_header()
-                .ok()
-                .and_then(|header| header.parse::<sam::Header>().ok())
-                .or_else(|| {
-                    warn!("Could not read input file header. Instead, create output header from scratch. Some metadata might be lost.");
-                    None
-                })
-        ) {
+    if let Some(src_header) = src_header {
         // We've got an header to work with!
         // Retrieve custom header (@HD) fields (version is not included):
         let header = src_header.header().map(|header| header.fields());
@@ -1001,14 +996,23 @@ where
         // Append our program line to the latest end of a chain
         for pg_id in src_header.programs().keys().rev() {
             // Ensure it's really the end of a chain
-            if !src_header.programs().values().filter_map(|pg| pg.previous_id()).any(|x| x == pg_id.as_str()) {
+            if !src_header
+                .programs()
+                .values()
+                .filter_map(|pg| pg.previous_id())
+                .any(|x| x == pg_id.as_str())
+            {
                 program_builder = program_builder.set_previous_id(pg_id);
                 break;
             }
         }
 
         // Ensure @PG/ID is unique
-        let pg_id_count = src_header.programs().keys().filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{}.", pg_id))).count();
+        let pg_id_count = src_header
+            .programs()
+            .keys()
+            .filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{}.", pg_id)))
+            .count();
         if pg_id_count > 0 {
             program_builder = program_builder.set_id(format!("{}.{}", pg_id, pg_id_count))
         }
