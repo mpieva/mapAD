@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "mapad"
-version = "0.0.35-alpha.1"
+version = "0.0.35"
 dependencies = [
  "anyhow",
  "assert_approx_eq",
