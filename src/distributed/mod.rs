@@ -1,7 +1,7 @@
 pub mod dispatcher;
 pub mod worker;
 
-use std::collections::BinaryHeap;
+use std::{collections::BinaryHeap, iter};
 
 use serde::{Deserialize, Serialize};
 
@@ -91,8 +91,7 @@ impl TaskRxBuffer {
 
     fn reset(&mut self) {
         self.buf.clear();
-        self.buf
-            .extend(std::iter::repeat(0).take(TaskSheet::PROTO_LEN));
+        self.buf.extend(iter::repeat(0).take(TaskSheet::PROTO_LEN));
         self.expected_size = TaskSheet::PROTO_LEN;
     }
 
@@ -114,7 +113,7 @@ impl TaskRxBuffer {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf
-            .extend(std::iter::repeat(0).take(self.expected_size - TaskSheet::PROTO_LEN));
+            .extend(iter::repeat(0).take(self.expected_size - TaskSheet::PROTO_LEN));
         Ok(())
     }
 }
@@ -141,7 +140,7 @@ impl ResultRxBuffer {
     fn reset(&mut self) {
         self.buf.clear();
         self.buf
-            .extend(std::iter::repeat(0).take(ResultSheet::PROTO_LEN));
+            .extend(iter::repeat(0).take(ResultSheet::PROTO_LEN));
         // Actually, we expect a size of `ResultSheet::PROTO_LEN`,
         // but the value is not read before it gets replaced with
         // the decoded message size
@@ -162,7 +161,7 @@ impl ResultRxBuffer {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
         self.expected_size = message_size as usize;
         self.buf
-            .extend(std::iter::repeat(0).take(self.expected_size - ResultSheet::PROTO_LEN));
+            .extend(iter::repeat(0).take(self.expected_size - ResultSheet::PROTO_LEN));
         Ok(())
     }
 

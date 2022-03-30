@@ -1,12 +1,13 @@
-use std::fs::OpenOptions;
 use std::{
     cell::RefCell,
     cmp::Ordering,
     collections::{binary_heap::BinaryHeap, BTreeMap},
-    fs::File,
+    env,
+    fs::{File, OpenOptions},
     io::{self, Write},
-    iter::Map,
+    iter::{self, Map},
     path::Path,
+    str,
     time::{Duration, Instant},
 };
 
@@ -527,7 +528,7 @@ impl BiDArray {
             }
         }
 
-        std::iter::repeat(0.0).take(initial_skip as usize).chain(
+        iter::repeat(0.0).take(initial_skip as usize).chain(
             match direction {
                 Direction::Forward => Either::Left(pattern_part.iter()),
                 Direction::Backward => Either::Right(pattern_part.iter().rev()),
@@ -967,7 +968,7 @@ pub fn create_bam_header(
 
     let mut program_builder = {
         let cmdline = {
-            let mut out = std::env::args().fold(String::new(), |acc, part| acc + &part + " ");
+            let mut out = env::args().fold(String::new(), |acc, part| acc + &part + " ");
             let _ = out.pop();
             out
         };
@@ -1167,7 +1168,7 @@ where
     if hits_found {
         debug!(
             "Hits could not be mapped to valid coordinates. Report read \"{}\" as unmapped.",
-            std::str::from_utf8(&input_record.name).expect("Read names are validated elsewhere")
+            str::from_utf8(&input_record.name).expect("Read names are validated elsewhere")
         );
     }
 
@@ -1854,11 +1855,14 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use crate::{mismatch_bounds::*, sequence_difference_models::*, utils::*};
+    use std::mem;
+
     use assert_approx_eq::assert_approx_eq;
     use bio::alphabets;
     use noodles::{bam, sam};
+
+    use super::*;
+    use crate::{mismatch_bounds::*, sequence_difference_models::*, utils::*};
 
     #[test]
     fn test_inexact_search() {
@@ -3351,6 +3355,6 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
 
     #[test]
     fn stack_frame_size() {
-        assert_eq!(40, std::mem::size_of::<MismatchSearchStackFrame>());
+        assert_eq!(40, mem::size_of::<MismatchSearchStackFrame>());
     }
 }

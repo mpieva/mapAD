@@ -1,4 +1,4 @@
-use std::{fmt, fmt::Display};
+use std::fmt::{self, Display};
 
 use either::Either;
 use log::info;

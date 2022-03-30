@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::num::TryFromIntError;
 
 use slab::Slab;
 
@@ -49,11 +49,7 @@ where
     /// It's possible to insert multiple roots into one tree.
     ///
     /// Returns `Err` variant if index is out of the range of `NodeId`.
-    pub fn add_node(
-        &mut self,
-        value: T,
-        parent: NodeId,
-    ) -> Result<NodeId, std::num::TryFromIntError> {
+    pub fn add_node(&mut self, value: T, parent: NodeId) -> Result<NodeId, TryFromIntError> {
         Ok(NodeId(u32::try_from(
             self.0.insert(Node { value, parent }),
         )?))
