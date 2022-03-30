@@ -26,7 +26,7 @@ enum TransportState {
     // This operation would block
     Stalled,
     // An error has occurred
-    Error(std::io::Error),
+    Error(io::Error),
     // There are no tasks left in the queue
     Complete,
 }
