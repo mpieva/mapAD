@@ -1,5 +1,4 @@
-use core::fmt;
-use std::{error, io, result, str};
+use std::{error, fmt, io, result, str};
 
 use anyhow;
 use clap::crate_version;
