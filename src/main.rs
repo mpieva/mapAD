@@ -49,6 +49,16 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 .multiple(true)
                 .help("Sets the level of verbosity"),
         )
+        .arg(
+            Arg::with_name("num_threads")
+                .global(true)
+                .required(true)
+                .long("threads")
+                .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
+                .takes_value(true)
+                .default_value("0")
+                .value_name("INT")
+        )
         .subcommand(
             SubCommand::with_name("index")
                 .about("Indexes a genome file")
@@ -234,15 +244,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .value_name("INT")
                 )
                 .arg(
-                    Arg::with_name("num_threads")
-                        .required(true)
-                        .long("threads")
-                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
-                        .takes_value(true)
-                        .default_value("0")
-                        .value_name("INT")
-                )
-                .arg(
                     Arg::with_name("gap_dist_ends")
                         .required(true)
                         .long("gap_dist_ends")
@@ -280,15 +281,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .default_value("3130")
                         .value_name("INT")
                 )
-                .arg(
-                    Arg::with_name("num_threads")
-                        .required(true)
-                        .long("threads")
-                        .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
-                        .takes_value(true)
-                        .default_value("0")
-                        .value_name("INT")
-                ),
         )
         .get_matches()
 }
