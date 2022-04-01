@@ -283,7 +283,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 .arg(
                     Arg::with_name("num_threads")
                         .required(true)
-                        .long("num_threads")
+                        .long("threads")
                         .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
                         .takes_value(true)
                         .default_value("0")
