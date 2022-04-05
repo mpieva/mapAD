@@ -5,6 +5,7 @@ use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
 use simple_logger::SimpleLogger;
+use time::UtcOffset;
 
 use mapad::{
     distributed::{dispatcher, worker},
@@ -277,16 +278,18 @@ fn define_cli<'a>() -> ArgMatches<'a> {
 }
 
 fn handle_arguments(matches: ArgMatches) {
-    SimpleLogger::new()
-        .with_level(match matches.occurrences_of("v") {
-            0 => log::LevelFilter::Info,
-            1 => log::LevelFilter::Debug,
-            _ => log::LevelFilter::Trace,
-        })
-        .with_utc_timestamps()
-        .init()
-        .expect("This is not expected to fail");
-    warn!("Use UTC timestamps for log entries");
+    let mut logger_builder = SimpleLogger::new().with_level(match matches.occurrences_of("v") {
+        0 => log::LevelFilter::Info,
+        1 => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Trace,
+    });
+    if let Ok(local_offset) = UtcOffset::current_local_offset() {
+        logger_builder = logger_builder.with_utc_offset(local_offset);
+    } else {
+        warn!("Use UTC timestamps for log entries");
+        logger_builder = logger_builder.with_utc_timestamps();
+    }
+    logger_builder.init().expect("This is not expected to fail");
 
     let seed = value_t!(matches.value_of("seed"), u64).unwrap_or_else(|e| e.exit());
     match matches.subcommand() {
