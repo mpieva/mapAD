@@ -68,6 +68,15 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 .default_value("3130")
                 .value_name("INT")
         )
+        .arg(
+            Arg::with_name("seed")
+                .required(true)
+                .long("seed")
+                .help("Seed for the random number generator")
+                .takes_value(true)
+                .default_value("1234")
+                .value_name("INT"),
+        )
         .subcommand(
             SubCommand::with_name("index")
                 .about("Indexes a genome file")
@@ -81,15 +90,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .value_name("FASTA FILE"),
                 )
-                .arg(
-                    Arg::with_name("seed")
-                        .required(true)
-                        .long("seed")
-                        .help("Ambiguous bases are substituted with random ones. Two independent runs will lead to the same index when the same seed is used.")
-                        .takes_value(true)
-                        .default_value("1234")
-                        .value_name("INT"),
-                ),
         )
         .subcommand(
             SubCommand::with_name("map")
@@ -288,22 +288,22 @@ fn handle_arguments(matches: ArgMatches) {
         .expect("This is not expected to fail");
     warn!("Use UTC timestamps for log entries");
 
+    let seed = value_t!(matches.value_of("seed"), u64).unwrap_or_else(|e| e.exit());
     match matches.subcommand() {
         ("index", Some(arg_matches)) => {
-            start_indexer(arg_matches);
+            start_indexer(arg_matches, seed);
         }
         ("map", Some(arg_matches)) => {
-            start_mapper(arg_matches);
+            start_mapper(arg_matches, seed);
         }
         ("worker", Some(arg_matches)) => {
-            start_worker(arg_matches);
+            start_worker(arg_matches, seed);
         }
         _ => unreachable!(),
     }
 }
 
-fn start_indexer(arg_matches: &ArgMatches) {
-    let seed = value_t!(arg_matches.value_of("seed"), u64).unwrap_or_else(|e| e.exit());
+fn start_indexer(arg_matches: &ArgMatches, seed: u64) {
     let reference_path = arg_matches
         .value_of("reference")
         .expect("Presence is ensured by CLI definition");
@@ -313,7 +313,7 @@ fn start_indexer(arg_matches: &ArgMatches) {
     }
 }
 
-fn start_mapper(map_matches: &ArgMatches) {
+fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
     let reads_path = map_matches
         .value_of("reads")
         .expect("Presence is ensured by CLI definition");
@@ -355,7 +355,7 @@ fn start_mapper(map_matches: &ArgMatches) {
     }
 }
 
-fn start_worker(arg_matches: &ArgMatches) {
+fn start_worker(arg_matches: &ArgMatches, _seed: u64) {
     let host = arg_matches
         .value_of("host")
         .expect("Presence is ensured by CLI definition");
