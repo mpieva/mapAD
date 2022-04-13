@@ -10,8 +10,16 @@ pub struct NodeId(u32);
 /// Very simply tree structure. Except for root nodes, each node has a parent.
 /// The only direction of traversal is from children to parents (towards a root).
 /// Other relationships are not stored. It's possible to build and traverse trees with multiple roots.
-#[derive(Default)]
 pub struct Tree<T>(Slab<Node<T>>);
+
+impl<T> Default for Tree<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<T> Tree<T>
 where
