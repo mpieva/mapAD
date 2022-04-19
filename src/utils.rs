@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 
 use bio::{
     alphabets,
@@ -9,8 +9,11 @@ use bio::{
     },
     io::fastq,
 };
-use log::{debug, warn};
-use noodles::bam;
+use log::debug;
+use noodles::{
+    bam,
+    sam::{self, AlignmentRecord},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -47,9 +50,9 @@ pub enum BamAuxField {
 
 // We (currently) only get references to the internal fields of `noodles::bam::Record`s,
 // so we have to copy/clone data over
-impl From<&bam::record::data::field::Value> for BamAuxField {
-    fn from(input: &bam::record::data::field::Value) -> Self {
-        use bam::record::data::field::Value;
+impl From<&sam::record::data::field::Value> for BamAuxField {
+    fn from(input: &sam::record::data::field::Value) -> Self {
+        use sam::record::data::field::Value;
         match input {
             Value::Char(v) => BamAuxField::Char(*v as u8),
             Value::Int8(v) => BamAuxField::I8(*v),
@@ -73,9 +76,9 @@ impl From<&bam::record::data::field::Value> for BamAuxField {
     }
 }
 
-impl From<BamAuxField> for bam::record::data::field::Value {
+impl From<BamAuxField> for sam::record::data::field::Value {
     fn from(input: BamAuxField) -> Self {
-        use bam::record::data::field::Value;
+        use sam::record::data::field::Value;
         match input {
             BamAuxField::Char(v) => Value::Char(v.into()),
             BamAuxField::I8(v) => Value::Int8(v),
@@ -103,7 +106,7 @@ impl From<BamAuxField> for bam::record::data::field::Value {
 pub struct Record {
     pub sequence: Vec<u8>,
     pub base_qualities: Vec<u8>,
-    pub name: Vec<u8>,
+    pub name: Option<Vec<u8>>,
     pub bam_tags: Vec<([u8; 2], BamAuxField)>,
     pub bam_flags: u16,
 }
@@ -114,8 +117,9 @@ impl From<bam::Record> for Record {
 
         let mut base_qualities = input
             .quality_scores()
-            .chars()
-            .map(|score| score as u8 - 33)
+            .as_ref()
+            .iter()
+            .map(|score| u8::from(*score) - 33)
             .collect::<Vec<_>>();
 
         if input.flags().is_reverse_complemented() {
@@ -123,25 +127,21 @@ impl From<bam::Record> for Record {
             sequence = dna::revcomp(sequence);
         };
 
-        let input_tags = input.data().values()
-            .map(|maybe_tag| {
-                maybe_tag
-                    .map(|field|(field.tag().as_ref().to_owned(), field.value().into()))
-                    .map_err(|e| {
-                        warn!(
-                            "Error reading auxiliary data of record \"{}\". Auxiliary data will be incomplete.",
-                            String::from_utf8_lossy(input.read_name())
-                        );
-                        e.into()
-                    })
-            })
-            .filter_map(Result::ok)
+        let input_tags = input
+            .data()
+            .values()
+            .map(|field| (field.tag().as_ref().to_owned(), field.value().into()))
             .collect::<Vec<_>>();
+
+        let read_name = input.read_name().map(|name| {
+            let name: &[u8] = name.as_ref();
+            name.to_vec()
+        });
 
         Self {
             sequence,
             base_qualities,
-            name: input.read_name().to_owned(),
+            name: read_name,
             bam_tags: input_tags,
             bam_flags: input.flags().bits(),
         }
@@ -158,10 +158,21 @@ impl From<fastq::Record> for Record {
         Self {
             sequence,
             base_qualities,
-            name,
+            name: Some(name),
             bam_tags: Vec::new(),
             bam_flags: 0,
         }
+    }
+}
+
+impl fmt::Display for Record {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let read_name = self
+            .name
+            .as_ref()
+            .map(|name| name.as_ref())
+            .unwrap_or_else(|| b"*".as_ref());
+        write!(f, "{}", String::from_utf8_lossy(read_name))
     }
 }
 

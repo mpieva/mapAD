@@ -161,8 +161,8 @@ impl EditOperationsTrack {
 
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
     /// The strand a read is mapped to is taken into account here.
-    fn to_bam_fields(&self, strand: Direction) -> (Vec<bam::record::cigar::Op>, Vec<u8>, u16) {
-        use bam::record::cigar::Op;
+    fn to_bam_fields(&self, strand: Direction) -> (Vec<sam::record::cigar::Op>, Vec<u8>, u16) {
+        use sam::record::cigar::Op;
         // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut num_matches: u32 = 0;
         let mut num_operations = 1;
@@ -194,10 +194,7 @@ impl EditOperationsTrack {
                             num_operations += 1;
                         }
                         _ => {
-                            cigar.push(
-                                Op::new(lop.into(), num_operations)
-                                    .expect("This is not expected to happen"),
-                            );
+                            cigar.push(Op::new(lop.into(), num_operations));
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -207,10 +204,7 @@ impl EditOperationsTrack {
                             num_operations += 1;
                         }
                         _ => {
-                            cigar.push(
-                                Op::new(lop.into(), num_operations)
-                                    .expect("This is not expected to happen"),
-                            );
+                            cigar.push(Op::new(lop.into(), num_operations));
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -220,10 +214,7 @@ impl EditOperationsTrack {
                             num_operations += 1;
                         }
                         _ => {
-                            cigar.push(
-                                Op::new(lop.into(), num_operations)
-                                    .expect("This is not expected to happen"),
-                            );
+                            cigar.push(Op::new(lop.into(), num_operations));
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -233,10 +224,7 @@ impl EditOperationsTrack {
                             num_operations += 1;
                         }
                         _ => {
-                            cigar.push(
-                                Op::new(lop.into(), num_operations)
-                                    .expect("This is not expected to happen"),
-                            );
+                            cigar.push(Op::new(lop.into(), num_operations));
                             num_operations = 1;
                             last_edit_operation = Some(edit_operation);
                         }
@@ -249,8 +237,7 @@ impl EditOperationsTrack {
 
         // Add remainder
         if let Some(lop) = last_edit_operation {
-            cigar
-                .push(Op::new(lop.into(), num_operations).expect("This is not expected to happen"));
+            cigar.push(Op::new(lop.into(), num_operations));
         }
         let _ = Self::add_md_edit_operation(None, None, strand, num_matches, &mut md_tag);
 
@@ -631,14 +618,13 @@ where
                 record.ok()
             })
             .filter(|record| {
-                let length_check = record.sequence.len() == record.base_qualities.len();
-                if !length_check {
+                let length_check_ok = record.sequence.len() == record.base_qualities.len();
+                if !length_check_ok {
                     error!(
-                        "Skip record \"{}\" due to different length of sequence and quality strings",
-                        String::from_utf8_lossy(&record.name)
+                        "Skip record \"{}\" due to different length of sequence and quality strings", record
                     );
                 }
-                length_check
+                length_check_ok
             })
             .take(self.chunk_size)
             .collect::<Vec<_>>();
@@ -1168,8 +1154,8 @@ where
     if hits_found {
         debug!(
             "Hits could not be mapped to valid coordinates. Report read \"{}\" as unmapped.",
-            str::from_utf8(&input_record.name).expect("Read names are validated elsewhere")
-        );
+            input_record
+        )
     }
 
     // No match found, report unmapped read
@@ -1296,9 +1282,9 @@ fn bam_record_helper(
     if let Some(position) = position {
         flags.remove(sam::record::Flags::UNMAPPED);
         bam_builder = bam_builder.set_position(
-            i32::try_from(position + 1)
+            usize::try_from(position + 1)
                 .ok()
-                .and_then(|pos32| pos32.try_into().ok())
+                .and_then(|pos| pos.try_into().ok())
                 .ok_or_else(|| Error::InvalidIndex("Could not compute valid coordinate".into()))?,
         )
     } else {
@@ -1315,9 +1301,14 @@ fn bam_record_helper(
     }
 
     // Set mandatory properties of the BAM record
-    bam_builder = bam_builder
-        .set_read_name(input_record.name.to_owned())
-        .set_flags(flags);
+    if let Some(read_name) = input_record.name {
+        bam_builder = bam_builder.set_read_name(
+            read_name
+                .try_into()
+                .map_err(|e| Error::Hts(format!("Invalid record name: \"{}\"", e)))?,
+        );
+    }
+    bam_builder = bam_builder.set_flags(flags);
 
     // Add optional fields (or do not)
 
@@ -1332,22 +1323,23 @@ fn bam_record_helper(
     // Some (not all) fields need to be reversed when the read maps to the reverse strand
     match strand {
         Some(Direction::Forward) | None => {
-            bam_builder = bam_builder
-                .set_sequence(
-                    bam::record::Sequence::try_from(input_record.sequence.as_slice()).map_err(
-                        |e| Error::Hts(format!("Could not create valid sequence: {}", e)),
-                    )?,
-                )
-                .set_quality_scores(input_record.base_qualities.into());
+            bam_builder =
+                bam_builder
+                    .set_sequence(
+                        sam::record::Sequence::try_from(input_record.sequence)
+                            .map_err(|e| Error::Hts(format!("Invalid sequence: \"{}\"", e)))?,
+                    )
+                    .set_quality_scores(input_record.base_qualities.try_into().map_err(|e| {
+                        Error::Hts(format!("Invalid base quality string: \"{}\"", e))
+                    })?);
         }
         Some(Direction::Backward) => {
             // CIGAR strings and MD tags are reversed during generation
             bam_builder = bam_builder
                 .set_sequence(
-                    bam::record::Sequence::try_from(
-                        dna::revcomp(&input_record.sequence).as_slice(),
-                    )
-                    .map_err(|e| Error::Hts(format!("Could not create valid sequence: {}", e)))?,
+                    sam::record::Sequence::try_from(dna::revcomp(&input_record.sequence)).map_err(
+                        |e| Error::Hts(format!("Could not create valid sequence: \"{}\"", e)),
+                    )?,
                 )
                 .set_quality_scores(
                     input_record
@@ -1356,7 +1348,10 @@ fn bam_record_helper(
                         .rev()
                         .copied()
                         .collect::<Vec<_>>()
-                        .into(),
+                        .try_into()
+                        .map_err(|e| {
+                            Error::Hts(format!("Invalid base quality string: \"{}\"", e))
+                        })?,
                 );
         }
     }
@@ -1383,7 +1378,7 @@ fn bam_record_helper(
         .filter(|(tag, _v)| tag != b"YA")
         .filter(|(tag, _v)| tag != b"XD")
         .map(|(tag, value)| {
-            Ok(bam::record::data::Field::new(
+            Ok(sam::record::data::Field::new(
                 tag.as_slice()
                     .try_into()
                     .map_err(|_e| Error::ParseError("Could not read input data tag".into()))?,
@@ -1393,24 +1388,24 @@ fn bam_record_helper(
         .collect::<Result<Vec<_>>>()?;
 
     if let Some(hit_interval) = hit_interval {
-        aux_data.push(bam::record::data::Field::new(
+        aux_data.push(sam::record::data::Field::new(
             sam::record::data::field::Tag::AlignmentScore,
-            bam::record::data::field::Value::Float(hit_interval.alignment_score),
+            sam::record::data::field::Value::Float(hit_interval.alignment_score),
         ));
     };
 
     if let Some(edit_distance) = edit_distance {
-        aux_data.push(bam::record::data::Field::new(
+        aux_data.push(sam::record::data::Field::new(
             sam::record::data::field::Tag::EditDistance,
-            bam::record::data::field::Value::Int32(edit_distance as i32),
+            sam::record::data::field::Value::Int32(edit_distance as i32),
         ));
     };
 
     // CIGAR strings and MD tags are reversed during generation
     if let Some(md_tag) = md_tag {
-        aux_data.push(bam::record::data::Field::new(
+        aux_data.push(sam::record::data::Field::new(
             sam::record::data::field::Tag::MismatchedPositions,
-            bam::record::data::field::Value::String(
+            sam::record::data::field::Value::String(
                 String::from_utf8(md_tag).expect("This is not expected to fail"),
             ),
         ));
@@ -1418,23 +1413,23 @@ fn bam_record_helper(
 
     // Our format differs in that we include alignment scores, so we use `YA` instead of `XA`
     if !alternative_hits.is_empty() {
-        aux_data.push(bam::record::data::Field::new(
+        aux_data.push(sam::record::data::Field::new(
             b"YA"
                 .as_slice()
                 .try_into()
                 .expect("This is not expected to fail"),
-            bam::record::data::field::Value::String(alternative_hits),
+            sam::record::data::field::Value::String(alternative_hits),
         ));
     }
 
     if let Some(duration) = duration {
         // Add the time that was needed for mapping the read
-        aux_data.push(bam::record::data::Field::new(
+        aux_data.push(sam::record::data::Field::new(
             b"XD"
                 .as_slice()
                 .try_into()
                 .expect("This is not expected to fail"),
-            bam::record::data::field::Value::Float(duration.as_secs_f32()),
+            sam::record::data::field::Value::Float(duration.as_secs_f32()),
         ));
     }
 
@@ -1444,9 +1439,7 @@ fn bam_record_helper(
             .map_err(|e| Error::Hts(format!("Could not create valid auxiliary data: {}", e)))?,
     );
 
-    bam_builder
-        .build()
-        .map_err(|e| Error::Hts(format!("Could not create valid record: {}", e)))
+    Ok(bam_builder.build())
 }
 
 /// Derive Cigar string from oddly-ordered tracks of edit operations.
@@ -1859,7 +1852,7 @@ pub mod tests {
 
     use assert_approx_eq::assert_approx_eq;
     use bio::alphabets;
-    use noodles::{bam, sam};
+    use noodles::sam;
 
     use super::*;
     use crate::{mismatch_bounds::*, sequence_difference_models::*, utils::*};
@@ -2444,9 +2437,9 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 4).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Deletion, 1).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2).unwrap(),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 4),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Deletion, 1),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
             ]
         );
 
@@ -2483,9 +2476,9 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 3).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Deletion, 2).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 3).unwrap(),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 3),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Deletion, 2),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 3),
             ]
         );
 
@@ -2521,9 +2514,9 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 1).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2).unwrap(),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 1),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
             ]
         );
 
@@ -2559,9 +2552,9 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 2).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2).unwrap(),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 2),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
             ]
         );
 
@@ -2612,9 +2605,9 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 3).unwrap(),
-                bam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2).unwrap(),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 3),
+                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
             ]
         );
     }

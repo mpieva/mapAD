@@ -3,7 +3,10 @@ use std::{
     io::{self, Write},
 };
 
-use noodles::bam;
+use noodles::{
+    bam,
+    sam::{self, AlignmentRecord, AlignmentWriter},
+};
 use tempfile::tempdir;
 
 use mapad::{
@@ -79,9 +82,9 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             .write_reference_sequences(input_bam_header.reference_sequences())
             .unwrap();
         for sam_line in sam_content.lines() {
-            let sam_record = sam_line.parse().unwrap();
+            let sam_record = sam_line.parse::<sam::Record>().unwrap();
             input_bam_file
-                .write_sam_record(input_bam_header.reference_sequences(), &sam_record)
+                .write_alignment_record(&input_bam_header, &sam_record)
                 .unwrap();
         }
     }

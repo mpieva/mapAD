@@ -63,14 +63,13 @@ where
                 record.ok()
             })
             .filter(|record| {
-                let length_check = record.sequence.len() == record.base_qualities.len();
-                if !length_check {
+                let length_check_ok = record.sequence.len() == record.base_qualities.len();
+                if !length_check_ok {
                     error!(
-                        "Skip record \"{}\" due to different length of sequence and quality strings",
-                        String::from_utf8_lossy(&record.name)
+                        "Skip record \"{}\" due to different length of sequence and quality strings", record
                     );
                 }
-                length_check
+                length_check_ok
             })
             .take(self.chunk_size)
             .collect::<Vec<_>>();
