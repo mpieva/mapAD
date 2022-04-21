@@ -45,15 +45,14 @@ fn define_cli<'a>() -> ArgMatches<'a> {
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
             Arg::with_name("v")
-                .short("v")
                 .global(true)
+                .short("v")
                 .multiple(true)
                 .help("Sets the level of verbosity"),
         )
         .arg(
             Arg::with_name("num_threads")
                 .global(true)
-                .required(true)
                 .long("threads")
                 .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
                 .takes_value(true)
@@ -62,7 +61,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
         )
         .arg(
             Arg::with_name("port")
-                .required(true)
+                .global(true)
                 .long("port")
                 .help("TCP port to communicate over")
                 .takes_value(true)
@@ -71,7 +70,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
         )
         .arg(
             Arg::with_name("seed")
-                .required(true)
+                .global(true)
                 .long("seed")
                 .help("Seed for the random number generator")
                 .takes_value(true)
@@ -196,7 +195,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 )
                 .arg(
                     Arg::with_name("divergence")
-                        .required(true)
                         .short("D")
                         .help("Divergence / base error rate")
                         .takes_value(true)
@@ -215,7 +213,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 )
                 .arg(
                     Arg::with_name("gap_extension_penalty")
-                        .required(true)
                         .short("x")
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
                         .takes_value(true)
@@ -225,7 +222,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 )
                 .arg(
                     Arg::with_name("chunk_size")
-                        .required(true)
                         .long("batch_size")
                         .help("The number of reads that are processed in parallel")
                         .takes_value(true)
@@ -246,7 +242,6 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 )
                 .arg(
                     Arg::with_name("gap_dist_ends")
-                        .required(true)
                         .long("gap_dist_ends")
                         .help("Disallow allow gaps at read ends (configurable range)")
                         .takes_value(true)
