@@ -135,13 +135,15 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             .map(|maybe_record| {
                 maybe_record.map(|record| {
                     (
+                        record.read_name().cloned(),
+                        record.flags().bits(),
                         record.reference_sequence_id(),
                         record.position(),
                         record.mapping_quality(),
+                        record.cigar().to_owned(),
                         record.sequence().len(),
-                        record.flags().bits(),
-                        record.sequence().to_string(),
-                        record.cigar().to_string(),
+                        record.sequence().to_owned(),
+                        record.quality_scores().to_owned(),
                     )
                 })
             })
@@ -150,76 +152,124 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
 
         let comp = vec![
             (
+                Some(
+                    "A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
+                0,
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
+                "28M".parse().unwrap(),
                 28,
-                0,
-                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
-                "28M".into(),
+                "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
             ),
             (
-                Some(0_i32.try_into().unwrap()),
-                Some(269.try_into().unwrap()),
-                Some(37_u8.try_into().unwrap()),
-                28,
+                Some(
+                    "A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
                 585,
-                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
-                "28M".into(),
-            ),
-            (
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
+                "28M".parse().unwrap(),
                 28,
+                "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            ),
+            (
+                Some(
+                    "A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
                 0,
-                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
-                "28M".into(),
-            ),
-            (
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
+                "28M".parse().unwrap(),
                 28,
-                16,
-                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
-                "28M".into(),
+                "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
             ),
             (
+                Some(
+                    "A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
+                16,
+                Some(0_i32.try_into().unwrap()),
+                Some(269.try_into().unwrap()),
+                Some(37_u8.try_into().unwrap()),
+                "28M".parse().unwrap(),
+                28,
+                "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            ),
+            (
+                Some(
+                    "A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
+                16,
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(3_u8.try_into().unwrap()),
+                "14M1D13M".parse().unwrap(),
                 27,
-                16,
-                "TTAACAATGAACTTGGGAACGACCAGG".into(),
-                "14M1D13M".into(),
+                "TTAACAATGAACTTGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
             ),
             (
+                Some(
+                    "A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
+                16,
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(3_u8.try_into().unwrap()),
+                "15M1I13M".parse().unwrap(),
                 29,
-                16,
-                "TTAACAATGAACTTAAGGGAACGACCAGG".into(),
-                "15M1I13M".into(),
+                "TTAACAATGAACTTAAGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
             ),
             (
+                Some(
+                    "A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
+                0,
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
+                "28M".parse().unwrap(),
                 28,
-                0,
-                "TTAACAATGAACTTAGGGAACGACCAGG".into(),
-                "28M".into(),
+                "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
             ),
             (
+                Some(
+                    "A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                        .parse()
+                        .unwrap(),
+                ),
+                4,
                 None,
                 None,
                 Some(0_u8.try_into().unwrap()),
+                sam::record::Cigar::default(),
                 28,
-                4,
-                "GATTGGTGCACGGACGCGCGTTGAAAGG".into(),
-                "".into(),
+                "GATTGGTGCACGGACGCGCGTTGAAAGG".parse().unwrap(),
+                "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
             ),
         ];
         assert_eq!(comp, result_sample);
