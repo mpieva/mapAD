@@ -119,7 +119,8 @@ impl From<bam::Record> for Record {
             .quality_scores()
             .as_ref()
             .iter()
-            .map(|score| u8::from(*score) - 33)
+            .copied()
+            .map(u8::from)
             .collect::<Vec<_>>();
 
         if input.flags().is_reverse_complemented() {
