@@ -136,7 +136,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                 maybe_record.map(|record| {
                     (
                         record.read_name().cloned(),
-                        record.flags().bits(),
+                        record.flags().to_owned(),
                         record.reference_sequence_id(),
                         record.position(),
                         record.mapping_quality(),
@@ -157,7 +157,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                0,
+                0.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
@@ -172,7 +172,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                585,
+                585.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
@@ -187,7 +187,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                0,
+                0.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
@@ -202,7 +202,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                16,
+                16.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
@@ -217,7 +217,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                16,
+                16.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(3_u8.try_into().unwrap()),
@@ -232,7 +232,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                16,
+                16.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(3_u8.try_into().unwrap()),
@@ -247,7 +247,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                0,
+                0.into(),
                 Some(0_i32.try_into().unwrap()),
                 Some(269.try_into().unwrap()),
                 Some(37_u8.try_into().unwrap()),
@@ -262,7 +262,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
                         .parse()
                         .unwrap(),
                 ),
-                4,
+                4.into(),
                 None,
                 None,
                 Some(0_u8.try_into().unwrap()),
