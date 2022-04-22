@@ -23,9 +23,6 @@ use crate::{
     map::{FastaIdPosition, FastaIdPositions},
 };
 
-// Increase this number once the on-disk index changes
-pub const INDEX_VERSION: u8 = 2;
-
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 // Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
 pub const DNA_UPPERCASE_X_ALPHABET: &[u8; 5] = b"ACGTX";
@@ -165,16 +162,19 @@ pub struct VersionedIndexItem<T> {
 }
 
 impl<T> VersionedIndexItem<T> {
+    // Increase this number once the on-disk index changes
+    const INDEX_VERSION: u8 = 2;
+
     pub fn new(data: T) -> Self {
         Self {
-            version: INDEX_VERSION,
+            version: Self::INDEX_VERSION,
             data,
         }
     }
 
     /// Returns inner data if the version of the deserialized Struct is compatible
     pub fn try_take(self) -> Result<T> {
-        if self.version == INDEX_VERSION {
+        if self.version == Self::INDEX_VERSION {
             Ok(self.data)
         } else {
             Err(Error::IndexVersionMismatch)
@@ -336,10 +336,7 @@ fn index<T: Rng>(
 
     {
         info!("Save BWT");
-        let versioned_bwt = VersionedIndexItem::<BWT> {
-            version: INDEX_VERSION,
-            data: bwt,
-        };
+        let versioned_bwt = VersionedIndexItem::new(bwt);
         let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tbw", name))?);
         bincode::serialize_into(&mut writer, &versioned_bwt)?;
     }
