@@ -1,6 +1,4 @@
-use clap::{
-    crate_description, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand,
-};
+use clap::{crate_description, crate_version, Arg, ArgMatches, Command};
 use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
@@ -25,8 +23,8 @@ fn main() {
     handle_arguments(define_cli());
 }
 
-fn define_cli<'a>() -> ArgMatches<'a> {
-    let probability_validator = |v: String| {
+fn define_cli() -> ArgMatches {
+    let probability_validator = |v: &str| {
         let error_message = String::from("Please specify a value between 0 and 1");
         let v: f32 = match v.parse() {
             Ok(s) => s,
@@ -39,28 +37,29 @@ fn define_cli<'a>() -> ArgMatches<'a> {
         }
     };
 
-    App::new(CRATE_NAME)
+    Command::new(CRATE_NAME)
         .about(crate_description!())
         .version(crate_version!())
-        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand_required(true)
+        .arg_required_else_help(true)
         .arg(
-            Arg::with_name("v")
+            Arg::new("v")
                 .global(true)
-                .short("v")
-                .multiple(true)
+                .short('v')
+                .multiple_occurrences(true)
                 .help("Sets the level of verbosity"),
         )
         .arg(
-            Arg::with_name("num_threads")
+            Arg::new("num_threads")
                 .global(true)
                 .long("threads")
-                .help(&format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
+                .help(&*format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
                 .takes_value(true)
                 .default_value("0")
                 .value_name("INT")
         )
         .arg(
-            Arg::with_name("port")
+            Arg::new("port")
                 .global(true)
                 .long("port")
                 .help("TCP port to communicate over")
@@ -69,7 +68,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 .value_name("INT")
         )
         .arg(
-            Arg::with_name("seed")
+            Arg::new("seed")
                 .global(true)
                 .long("seed")
                 .help("Seed for the random number generator")
@@ -78,13 +77,13 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 .value_name("INT"),
         )
         .subcommand(
-            SubCommand::with_name("index")
+            Command::new("index")
                 .about("Indexes a genome file")
                 .version(crate_version!())
                 .arg(
-                    Arg::with_name("reference")
+                    Arg::new("reference")
                         .required(true)
-                        .short("g")
+                        .short('g')
                         .long("reference")
                         .help("FASTA file containing the genome to be indexed")
                         .takes_value(true)
@@ -92,39 +91,39 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                 )
         )
         .subcommand(
-            SubCommand::with_name("map")
+            Command::new("map")
                 .about("Maps reads to an indexed genome")
                 .version(crate_version!())
                 .arg(
-                    Arg::with_name("reads")
+                    Arg::new("reads")
                         .required(true)
-                        .short("r")
+                        .short('r')
                         .long("reads")
                         .help("BAM or FASTQ file that contains the reads to be aligned")
                         .takes_value(true)
                         .value_name("STRING"),
                 )
                 .arg(
-                    Arg::with_name("reference")
+                    Arg::new("reference")
                         .required(true)
-                        .short("g")
+                        .short('g')
                         .long("reference")
                         .help("Prefix of the file names of the index files. The reference FASTA file itself does not need to be present.")
                         .takes_value(true)
                         .value_name("STRING"),
                 )
                 .arg(
-                    Arg::with_name("output")
+                    Arg::new("output")
                         .required(true)
-                        .short("o")
+                        .short('o')
                         .long("output")
                         .help("Path to output BAM file")
                         .takes_value(true)
                         .value_name("STRING"),
                 )
                 .arg(
-                    Arg::with_name("poisson_prob")
-                        .short("p")
+                    Arg::new("poisson_prob")
+                        .short('p')
                         .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under `-D` base error rate")
                         .takes_value(true)
@@ -132,25 +131,25 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("as_cutoff")
-                        .short("c")
+                    Arg::new("as_cutoff")
+                        .short('c')
                         .group("allowed_mm")
                         .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
                         .takes_value(true)
                         .value_name("FLOAT"),
                 )
                 .arg(
-                    Arg::with_name("as_cutoff_exponent")
-                        .short("e")
+                    Arg::new("as_cutoff_exponent")
+                        .short('e')
                         .help("Exponent to be applied to the read length (ignored if `-c` is not used)")
                         .takes_value(true)
                         .default_value("1.0")
                         .value_name("FLOAT"),
                 )
                 .arg(
-                    Arg::with_name("library")
+                    Arg::new("library")
                         .required(true)
-                        .short("l")
+                        .short('l')
                         .long("library")
                         .help("Library preparation method")
                         .takes_value(true)
@@ -158,44 +157,44 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .value_name("STRING")
                 )
                 .arg(
-                    Arg::with_name("five_prime_overhang")
+                    Arg::new("five_prime_overhang")
                         .required(true)
-                        .short("f")
+                        .short('f')
                         .help("5'-overhang length parameter")
                         .takes_value(true)
                         .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("three_prime_overhang")
-                        .required_if("library", "single_stranded")
-                        .short("t")
+                    Arg::new("three_prime_overhang")
+                        .required_if_eq("library", "single_stranded")
+                        .short('t')
                         .help("3'-overhang length parameter")
                         .takes_value(true)
                         .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("ds_deamination_rate")
+                    Arg::new("ds_deamination_rate")
                         .required(true)
-                        .short("d")
+                        .short('d')
                         .help("Deamination rate in double-stranded stem of a read")
                         .takes_value(true)
                         .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("ss_deamination_rate")
+                    Arg::new("ss_deamination_rate")
                         .required(true)
-                        .short("s")
+                        .short('s')
                         .help("Deamination rate in single-stranded ends of a read")
                         .takes_value(true)
                         .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("divergence")
-                        .short("D")
+                    Arg::new("divergence")
+                        .short('D')
                         .help("Divergence / base error rate")
                         .takes_value(true)
                         .value_name("FLOAT")
@@ -203,17 +202,17 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("indel_rate")
+                    Arg::new("indel_rate")
                         .required(true)
-                        .short("i")
+                        .short('i')
                         .help("Expected rate of indels between reads and reference")
                         .takes_value(true)
                         .value_name("FLOAT")
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("gap_extension_penalty")
-                        .short("x")
+                    Arg::new("gap_extension_penalty")
+                        .short('x')
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
                         .takes_value(true)
                         .value_name("FLOAT")
@@ -221,7 +220,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .validator(probability_validator),
                 )
                 .arg(
-                    Arg::with_name("chunk_size")
+                    Arg::new("chunk_size")
                         .long("batch_size")
                         .help("The number of reads that are processed in parallel")
                         .takes_value(true)
@@ -229,19 +228,19 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .value_name("INT")
                 )
                 .arg(
-                    Arg::with_name("ignore_base_quality")
+                    Arg::new("ignore_base_quality")
                         .long("ignore_base_quality")
                         .help("Ignore base qualities in scoring models")
                         .takes_value(false)
                 )
                 .arg(
-                    Arg::with_name("dispatcher")
+                    Arg::new("dispatcher")
                         .long("dispatcher")
                         .help("Run in dispatcher mode for distributed computing in a network. Needs workers to be spawned externally to distribute work among them.")
                         .takes_value(false)
                 )
                 .arg(
-                    Arg::with_name("gap_dist_ends")
+                    Arg::new("gap_dist_ends")
                         .long("gap_dist_ends")
                         .help("Disallow allow gaps at read ends (configurable range)")
                         .takes_value(true)
@@ -249,7 +248,7 @@ fn define_cli<'a>() -> ArgMatches<'a> {
                         .value_name("INT")
                 )
                 .arg(
-                    Arg::with_name("stack_limit_abort")
+                    Arg::new("stack_limit_abort")
                         .long("stack_limit_abort")
                         .help("Abort alignment when stack size limit is reached instead of trying to recover.")
                         .takes_value(false)
@@ -257,11 +256,11 @@ fn define_cli<'a>() -> ArgMatches<'a> {
 
         )
         .subcommand(
-            SubCommand::with_name("worker")
+            Command::new("worker")
                 .about("Spawns worker")
                 .version(crate_version!())
                 .arg(
-                    Arg::with_name("host")
+                    Arg::new("host")
                         .required(true)
                         .long("host")
                         .help("Hostname or IP address of the running dispatcher node")
@@ -286,15 +285,15 @@ fn handle_arguments(matches: ArgMatches) {
     }
     logger_builder.init().expect("This is not expected to fail");
 
-    let seed = value_t!(matches.value_of("seed"), u64).unwrap_or_else(|e| e.exit());
+    let seed = matches.value_of_t("seed").unwrap_or_else(|e| e.exit());
     match matches.subcommand() {
-        ("index", Some(arg_matches)) => {
+        Some(("index", arg_matches)) => {
             start_indexer(arg_matches, seed);
         }
-        ("map", Some(arg_matches)) => {
+        Some(("map", arg_matches)) => {
             start_mapper(arg_matches, seed);
         }
-        ("worker", Some(arg_matches)) => {
+        Some(("worker", arg_matches)) => {
             start_worker(arg_matches, seed);
         }
         _ => unreachable!(),
@@ -322,8 +321,9 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
         .value_of("output")
         .expect("Presence is ensured by CLI definition");
 
-    let num_threads = value_t!(map_matches.value_of("num_threads"), usize)
-        .expect("Presence is ensured by CLI definition");
+    let num_threads = map_matches
+        .value_of_t("num_threads")
+        .unwrap_or_else(|e| e.exit());
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build_global()
@@ -333,7 +333,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
 
     if let Err(e) = if map_matches.is_present("dispatcher") {
         info!("Dispatcher mode");
-        let port = value_t!(map_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+        let port = map_matches.value_of_t("port").unwrap_or_else(|e| e.exit());
         dispatcher::Dispatcher::new(
             reads_path,
             reference_path,
@@ -357,10 +357,11 @@ fn start_worker(arg_matches: &ArgMatches, _seed: u64) {
     let host = arg_matches
         .value_of("host")
         .expect("Presence is ensured by CLI definition");
-    let port = value_t!(arg_matches.value_of("port"), u16).unwrap_or_else(|e| e.exit());
+    let port = arg_matches.value_of_t("port").unwrap_or_else(|e| e.exit());
 
-    let num_threads = value_t!(arg_matches.value_of("num_threads"), usize)
-        .expect("Presence is ensured by CLI definition");
+    let num_threads = arg_matches
+        .value_of_t("num_threads")
+        .unwrap_or_else(|e| e.exit());
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build_global()
@@ -377,23 +378,33 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         .expect("Presence is ensured by CLI definition")
     {
         "single_stranded" => LibraryPrep::SingleStranded {
-            five_prime_overhang: value_t!(arg_matches.value_of("five_prime_overhang"), f32)
+            five_prime_overhang: arg_matches
+                .value_of_t("five_prime_overhang")
                 .unwrap_or_else(|e| e.exit()),
-            three_prime_overhang: value_t!(arg_matches.value_of("three_prime_overhang"), f32)
+            three_prime_overhang: arg_matches
+                .value_of_t("three_prime_overhang")
                 .unwrap_or_else(|e| e.exit()),
         },
         "double_stranded" => LibraryPrep::DoubleStranded(
-            value_t!(arg_matches.value_of("five_prime_overhang"), f32).unwrap_or_else(|e| e.exit()),
+            arg_matches
+                .value_of_t("five_prime_overhang")
+                .unwrap_or_else(|e| e.exit()),
         ),
         _ => unreachable!(),
     };
 
-    let divergence = value_t!(arg_matches.value_of("divergence"), f32).unwrap_or_else(|e| e.exit());
+    let divergence = arg_matches
+        .value_of_t("divergence")
+        .unwrap_or_else(|e| e.exit());
 
     let difference_model = SimpleAncientDnaModel::new(
         library_prep,
-        value_t!(arg_matches.value_of("ds_deamination_rate"), f32).unwrap_or_else(|e| e.exit()),
-        value_t!(arg_matches.value_of("ss_deamination_rate"), f32).unwrap_or_else(|e| e.exit()),
+        arg_matches
+            .value_of_t("ds_deamination_rate")
+            .unwrap_or_else(|e| e.exit()),
+        arg_matches
+            .value_of_t("ss_deamination_rate")
+            .unwrap_or_else(|e| e.exit()),
         // Divergence is divided by three because it is used for testing each of the three possible substitutions
         divergence / 3.0,
         arg_matches.is_present("ignore_base_quality"),
@@ -401,32 +412,43 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
 
     let mismatch_bound = if arg_matches.is_present("poisson_prob") {
         Discrete::new(
-            value_t!(arg_matches.value_of("poisson_prob"), f32).unwrap_or_else(|e| e.exit()),
+            arg_matches
+                .value_of_t("poisson_prob")
+                .unwrap_or_else(|e| e.exit()),
             divergence,
             difference_model.get_representative_mismatch_penalty(),
         )
         .into()
     } else {
         Continuous::new(
-            value_t!(arg_matches.value_of("as_cutoff"), f32).unwrap_or_else(|e| e.exit()) * -1.0,
-            value_t!(arg_matches.value_of("as_cutoff_exponent"), f32).unwrap_or_else(|e| e.exit()),
+            arg_matches
+                .value_of_t::<f32>("as_cutoff")
+                .unwrap_or_else(|e| e.exit())
+                * -1.0,
+            arg_matches
+                .value_of_t("as_cutoff_exponent")
+                .unwrap_or_else(|e| e.exit()),
             difference_model.get_representative_mismatch_penalty(),
         )
         .into()
     };
 
     AlignmentParameters {
-        penalty_gap_open: value_t!(arg_matches.value_of("indel_rate"), f32)
+        penalty_gap_open: arg_matches
+            .value_of_t::<f32>("indel_rate")
             .unwrap_or_else(|e| e.exit())
             .log2(),
-        penalty_gap_extend: value_t!(arg_matches.value_of("gap_extension_penalty"), f32)
+        penalty_gap_extend: arg_matches
+            .value_of_t::<f32>("gap_extension_penalty")
             .unwrap_or_else(|e| e.exit())
             * difference_model.get_representative_mismatch_penalty(),
         difference_model: difference_model.into(),
-        chunk_size: value_t!(arg_matches.value_of("chunk_size"), usize)
+        chunk_size: arg_matches
+            .value_of_t("chunk_size")
             .unwrap_or_else(|e| e.exit()),
         mismatch_bound,
-        gap_dist_ends: value_t!(arg_matches.value_of("gap_dist_ends"), u8)
+        gap_dist_ends: arg_matches
+            .value_of_t("gap_dist_ends")
             .unwrap_or_else(|e| e.exit()),
         stack_limit_abort: arg_matches.is_present("stack_limit_abort"),
     }
