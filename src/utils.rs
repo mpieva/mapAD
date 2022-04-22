@@ -172,7 +172,7 @@ impl fmt::Display for Record {
             .name
             .as_ref()
             .map(|name| name.as_ref())
-            .unwrap_or_else(|| b"*".as_ref());
+            .unwrap_or(sam::record::read_name::MISSING);
         write!(f, "{}", String::from_utf8_lossy(read_name))
     }
 }
