@@ -190,8 +190,9 @@ where
     where
         P: AsRef<Path>,
     {
-        let snappy_file = FrameDecoder::new(File::open(path)?);
-        bincode::deserialize_from(snappy_file).map_err(|e| e.into())
+        Ok(File::open(path)
+            .map(FrameDecoder::new)
+            .map(bincode::deserialize_from)??)
     }
 }
 
