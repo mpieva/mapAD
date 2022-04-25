@@ -19,7 +19,7 @@ pub enum Error {
     ParseError(String),
     InvalidInputType,
     InvalidIndex(String),
-    IndexVersionMismatch,
+    IndexVersionMismatch { running: u8, on_disk: u8 },
     AnyhowError(String),
     ContigBoundaryOverlap,
 }
@@ -35,7 +35,7 @@ impl fmt::Display for Error {
             Error::ParseError(err) => write!(f, "Parse error: {}", err),
             Error::InvalidInputType => write!(f, "Please specify a path to an input file that ends either with \".bam\", \".fq\", or \".fastq\""),
             Error::InvalidIndex(err) => write!(f, "Index is invalid: {}", err),
-            Error::IndexVersionMismatch => write!(f, "The provided index is incompatible with version {} of {}. Please re-create the index.", crate_version!(), CRATE_NAME),
+            Error::IndexVersionMismatch { running, on_disk } => write!(f, "The provided index (v{on_disk}) is incompatible with version {} of {CRATE_NAME} (which expects index version v{running}). Please re-create the index.", crate_version!()),
             Error::AnyhowError(err) => write!(f, "Internal error: {}", err),
             Error::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
         }

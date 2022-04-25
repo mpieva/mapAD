@@ -177,7 +177,10 @@ impl<T> VersionedIndexItem<T> {
         if self.version == Self::INDEX_VERSION {
             Ok(self.data)
         } else {
-            Err(Error::IndexVersionMismatch)
+            Err(Error::IndexVersionMismatch {
+                running: Self::INDEX_VERSION,
+                on_disk: self.version,
+            })
         }
     }
 }
