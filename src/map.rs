@@ -5,7 +5,7 @@ use std::{
     env,
     fs::{File, OpenOptions},
     io::{self, Write},
-    iter::{self, Map},
+    iter::{self},
     path::Path,
     str,
     time::{Duration, Instant},
@@ -14,7 +14,7 @@ use std::{
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
 use clap::{crate_description, crate_version};
 use either::Either;
-use log::{debug, error, info, trace, warn};
+use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use noodles::{bam, sam};
 use rand::RngCore;
@@ -26,6 +26,7 @@ use crate::{
     backtrack_tree::{NodeId, Tree},
     errors::{Error, Result},
     fmd_index::{RtBiInterval, RtFmdIndex},
+    io::{IntoTaskQueue, TaskQueue},
     mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
     prrange::PrRange,
     sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
@@ -593,83 +594,6 @@ impl BiDArray {
     }
 }
 
-/// Reads chunks of configurable size from source Iterator
-///
-/// Very basic error checking, reporting, and recovery happens here.
-struct ChunkIterator<T> {
-    chunk_size: usize,
-    records: T,
-}
-
-impl<T> Iterator for ChunkIterator<T>
-where
-    T: Iterator<Item = Result<Record>>,
-{
-    type Item = Vec<Record>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let chunk = self
-            .records
-            .by_ref()
-            .filter_map(|record| {
-                if let Err(ref e) = record {
-                    error!("Skip record due to an error: {}", e);
-                }
-                record.ok()
-            })
-            .filter(|record| {
-                let length_check_ok = record.sequence.len() == record.base_qualities.len();
-                if !length_check_ok {
-                    error!(
-                        "Skip record \"{}\" due to different length of sequence and quality strings", record
-                    );
-                }
-                length_check_ok
-            })
-            .take(self.chunk_size)
-            .collect::<Vec<_>>();
-
-        // If the underlying iterator is exhausted return None, too
-        if chunk.is_empty() {
-            return None;
-        }
-
-        Some(chunk)
-    }
-}
-
-/// Convertible to ChunkIterator
-trait IntoChunkIterator<E, I, O, T>
-where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-    O: Iterator<Item = Result<Record>>,
-{
-    fn into_chunks(self, chunk_size: usize) -> ChunkIterator<O>;
-}
-
-/// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
-/// are implemented, it is sufficient to impl `From<T> for Record` for the additional item `T`.
-#[allow(clippy::type_complexity)]
-impl<E, I, T> IntoChunkIterator<E, I, Map<T, fn(std::result::Result<I, E>) -> Result<Record>>, T>
-    for T
-where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-{
-    fn into_chunks(
-        self,
-        chunk_size: usize,
-    ) -> ChunkIterator<Map<T, fn(std::result::Result<I, E>) -> Result<Record>>> {
-        ChunkIterator {
-            chunk_size,
-            records: self.map(|inner| inner.map(|v| v.into()).map_err(|e| e.into())),
-        }
-    }
-}
-
 /// Loads index files and launches the mapping process
 pub fn run(
     reads_path: &str,
@@ -740,9 +664,7 @@ pub fn run(
             out_file.write_header(&header)?;
             out_file.write_reference_sequences(header.reference_sequences())?;
             run_inner(
-                reader
-                    .records()
-                    .into_chunks(alignment_parameters.chunk_size),
+                reader.records().into_tasks(alignment_parameters.chunk_size),
                 &fmd_index,
                 &suffix_array,
                 alignment_parameters,
@@ -756,9 +678,7 @@ pub fn run(
             out_file.write_header(&header)?;
             out_file.write_reference_sequences(header.reference_sequences())?;
             run_inner(
-                reader
-                    .records()
-                    .into_chunks(alignment_parameters.chunk_size),
+                reader.records().into_tasks(alignment_parameters.chunk_size),
                 &fmd_index,
                 &suffix_array,
                 alignment_parameters,
@@ -776,7 +696,7 @@ pub fn run(
 /// This part has been extracted from the main run() function to allow static dispatch based on the
 /// input file type
 fn run_inner<S, T, W>(
-    records: ChunkIterator<T>,
+    records: TaskQueue<T>,
     fmd_index: &RtFmdIndex,
     suffix_array: &S,
     alignment_parameters: &AlignmentParameters,
@@ -796,6 +716,7 @@ where
     for chunk in records {
         debug!("Map chunk of reads");
         let results = chunk
+            .get_records()
             .into_par_iter()
             .map(|record| {
                 STACK_BUF.with(|stack_buf| {

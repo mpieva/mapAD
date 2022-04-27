@@ -22,6 +22,7 @@ pub enum Error {
     IndexVersionMismatch { running: u8, on_disk: u8 },
     AnyhowError(String),
     ContigBoundaryOverlap,
+    InternalError,
 }
 
 impl fmt::Display for Error {
@@ -38,6 +39,7 @@ impl fmt::Display for Error {
             Error::IndexVersionMismatch { running, on_disk } => write!(f, "The provided index (v{on_disk}) is incompatible with version {} of {CRATE_NAME} (which expects index version v{running}). Please re-create the index.", crate_version!()),
             Error::AnyhowError(err) => write!(f, "Internal error: {}", err),
             Error::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
+            Error::InternalError => write!(f, "Internal error"),
         }
     }
 }

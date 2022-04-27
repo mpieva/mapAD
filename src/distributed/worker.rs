@@ -1,7 +1,6 @@
 use std::{
     cell::RefCell,
     io::{self, Read, Write},
-    mem,
     net::TcpStream,
 };
 
@@ -11,7 +10,7 @@ use rayon::prelude::*;
 
 use crate::{
     backtrack_tree::Tree,
-    distributed::{ResultSheet, TaskRxBuffer, TaskSheet},
+    distributed::{Message, ResultSheet, TaskRxBuffer, TaskSheet},
     errors::{Error, Result},
     fmd_index::RtFmdIndex,
     map,
@@ -51,25 +50,29 @@ impl Worker {
                     debug!("Received task");
                     // Load FMD index if necessary
                     if self.fmd_index.is_none() {
-                        if let Some(reference_path) = task.reference_path {
-                            info!("Load FMD-index");
-                            self.fmd_index = Some(load_index_from_path(&reference_path)?);
-                        }
+                        info!("Load FMD-index");
+                        self.fmd_index = Some(load_index_from_path(
+                            task.get_reference_path()
+                                .expect("This is not expected to fail"),
+                        )?);
                     }
 
                     // Extract alignment parameters if necessary
                     if self.alignment_parameters.is_none() {
                         info!("Extract alignment parameters");
-                        if let Some(alignment_parameters) = task.alignment_parameters {
-                            self.alignment_parameters = Some(alignment_parameters);
-                        }
+                        self.alignment_parameters = Some(
+                            task.get_alignment_parameters()
+                                .expect("This is not expected to fail")
+                                .clone(),
+                        );
                     }
 
                     // If requirements are met, run task
                     if let Some(fmd_index) = &self.fmd_index {
                         if let Some(alignment_parameters) = &self.alignment_parameters {
                             info!("Map reads");
-                            let results = mem::take(&mut task.records)
+                            let task_id = task.get_id();
+                            let results = task.get_records()
                                 .into_par_iter()
                                 .map(|record| {
                                     STACK_BUF.with(|stack_buf| {
@@ -189,7 +192,7 @@ impl Worker {
 
                             info!("Return results");
                             self.connection
-                                .write_all(&ResultSheet::new(task.chunk_id, results).encode())?;
+                                .write_all(&ResultSheet::new(task_id, results).encode())?;
                         }
                     }
                 }

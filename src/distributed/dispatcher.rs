@@ -2,13 +2,12 @@ use std::{
     collections::{BinaryHeap, HashMap},
     fs::{File, OpenOptions},
     io::{self, Read, Write},
-    iter::Map,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
 };
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use mio::{net::TcpListener, *};
 use noodles::{bam, sam};
 use rayon::prelude::*;
@@ -16,6 +15,7 @@ use rayon::prelude::*;
 use crate::{
     distributed::*,
     errors::{Error, Result},
+    io::{IntoTaskQueue, TaskQueue},
     map,
     utils::*,
 };
@@ -29,100 +29,6 @@ enum TransportState {
     Error(io::Error),
     // There are no tasks left in the queue
     Complete,
-}
-
-/// Keeps track of the processing state of chunks of reads
-///
-/// Very basic error checking, reporting, and recovery happens here.
-struct TaskQueue<T> {
-    chunk_id: usize,
-    chunk_size: usize,
-    records: T,
-    requeried_tasks: Vec<TaskSheet>,
-}
-
-impl<T> Iterator for TaskQueue<T>
-where
-    T: Iterator<Item = Result<Record>>,
-{
-    type Item = TaskSheet;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(task) = self.requeried_tasks.pop() {
-            info!("Retrying previously failed task {}", task.chunk_id);
-            return Some(task);
-        }
-
-        let chunk = self
-            .records
-            .by_ref()
-            .filter_map(|record| {
-                if let Err(ref e) = record {
-                    error!("Skip record due to an error: {}", e);
-                }
-                record.ok()
-            })
-            .filter(|record| {
-                let length_check_ok = record.sequence.len() == record.base_qualities.len();
-                if !length_check_ok {
-                    error!(
-                        "Skip record \"{}\" due to different length of sequence and quality strings", record
-                    );
-                }
-                length_check_ok
-            })
-            .take(self.chunk_size)
-            .collect::<Vec<_>>();
-        self.chunk_id += 1;
-
-        if chunk.is_empty() {
-            None
-        } else {
-            Some(TaskSheet::from_records(self.chunk_id - 1, chunk, None))
-        }
-    }
-}
-
-impl<T> TaskQueue<T>
-where
-    T: Iterator<Item = Result<Record>>,
-{
-    fn requery_task(&mut self, task_sheet: TaskSheet) {
-        self.requeried_tasks.push(task_sheet);
-    }
-}
-
-/// Convertible to TaskQueue
-trait IntoTaskQueue<E, I, O, T>
-where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-    O: Iterator<Item = Result<Record>>,
-{
-    fn into_tasks(self, chunk_size: usize) -> TaskQueue<O>;
-}
-
-/// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
-/// are implemented, it is sufficient to impl `From<T> for Record` for the additional item.
-#[allow(clippy::type_complexity)]
-impl<E, I, T> IntoTaskQueue<E, I, Map<T, fn(std::result::Result<I, E>) -> Result<Record>>, T> for T
-where
-    I: Into<Record>,
-    E: Into<Error>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-{
-    fn into_tasks(
-        self,
-        chunk_size: usize,
-    ) -> TaskQueue<Map<T, fn(std::result::Result<I, E>) -> Result<Record>>> {
-        TaskQueue {
-            chunk_id: 0,
-            chunk_size,
-            records: self.map(|inner| inner.map(|v| v.into()).map_err(|e| e.into())),
-            requeried_tasks: Vec::new(),
-        }
-    }
 }
 
 // Central place to store data relevant for one dispatcher <-> worker connection
@@ -409,8 +315,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                             .expect("This is not expected to fail")
                                             .assigned_task
                                             .as_ref()
-                                            .expect("This is not expected to fail")
-                                            .chunk_id,
+                                            .expect("This is not expected to fail"),
                                         event.token().0,
                                     );
                                     poll.registry().reregister(
@@ -499,7 +404,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .assigned_task
             .take()
         {
-            warn!("Requeried task {} of failed worker", assigned_task.chunk_id);
+            warn!("Requery task {} of failed worker", assigned_task);
             task_queue.requery_task(assigned_task);
         }
         self.connections
@@ -578,17 +483,15 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         if send_buffer.is_ready() {
             if let Some(mut task) = task_queue.next() {
-                task.reference_path = Some(self.reference_path.to_string_lossy().into_owned());
-                task.alignment_parameters = Some(self.alignment_parameters.to_owned());
-
-                // The task gets stored in the assignment record and send buffer
-                connection.assigned_task = Some(task);
-                send_buffer.reload(
-                    connection
-                        .assigned_task
-                        .as_mut()
+                task.set_reference_path(
+                    self.reference_path
+                        .to_str()
                         .expect("This is not expected to fail"),
                 );
+                task.set_alignment_parameters(self.alignment_parameters);
+                // The task gets stored in the assignment record and send buffer
+                send_buffer.reload(&mut task);
+                connection.assigned_task = Some(task);
             } else {
                 return Ok(TransportState::Complete);
             }

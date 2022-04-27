@@ -3,6 +3,7 @@ pub mod distributed;
 pub mod errors;
 pub mod fmd_index;
 pub mod index;
+pub mod io;
 pub mod map;
 pub mod mismatch_bounds;
 pub mod prrange;

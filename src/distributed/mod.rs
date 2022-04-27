@@ -5,48 +5,11 @@ use std::{collections::BinaryHeap, iter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    errors::Result,
-    map::HitInterval,
-    utils::{AlignmentParameters, Record},
-};
+use crate::{errors::Result, io::TaskSheet, map::HitInterval, utils::Record};
 
-trait Message {
+pub trait Message {
     const PROTO_LEN: usize = 8;
-}
-
-/// Task wrapped in a Struct for sending to a worker
-#[derive(Serialize, Deserialize, Debug)]
-struct TaskSheet {
-    encoded_size: u64,
-    chunk_id: usize,
-    records: Vec<Record>,
-    reference_path: Option<String>,
-    alignment_parameters: Option<AlignmentParameters>,
-}
-
-impl Message for TaskSheet {}
-
-impl TaskSheet {
-    fn from_records(
-        read_set: usize,
-        records: Vec<Record>,
-        alignment_parameters: Option<AlignmentParameters>,
-    ) -> Self {
-        Self {
-            encoded_size: 0,
-            chunk_id: read_set,
-            records,
-            reference_path: None,
-            alignment_parameters,
-        }
-    }
-
-    fn encode(&mut self) -> Vec<u8> {
-        let encoded_size = bincode::serialized_size(self).expect("This is not expected to fail");
-        self.encoded_size = encoded_size;
-        bincode::serialize(self).expect("This is not expected to fail")
-    }
+    fn encode(&mut self) -> Vec<u8>;
 }
 
 /// Results wrapped in a Struct for sending back to the dispatcher
@@ -57,7 +20,13 @@ struct ResultSheet {
     results: Vec<(Record, BinaryHeap<HitInterval>)>,
 }
 
-impl Message for ResultSheet {}
+impl Message for ResultSheet {
+    fn encode(&mut self) -> Vec<u8> {
+        let encoded_size = bincode::serialized_size(self).expect("This is not expected to fail");
+        self.encoded_size = encoded_size;
+        bincode::serialize(self).expect("This is not expected to fail")
+    }
+}
 
 impl ResultSheet {
     fn new(read_set: usize, results: Vec<(Record, BinaryHeap<HitInterval>)>) -> Self {
@@ -66,12 +35,6 @@ impl ResultSheet {
             chunk_id: read_set,
             results,
         }
-    }
-
-    fn encode(&mut self) -> Vec<u8> {
-        let encoded_size = bincode::serialized_size(self).expect("This is not expected to fail");
-        self.encoded_size = encoded_size;
-        bincode::serialize(self).expect("This is not expected to fail")
     }
 }
 
