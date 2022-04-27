@@ -9,14 +9,18 @@ use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 
 use crate::{
-    backtrack_tree::Tree,
     distributed::{Message, ResultSheet, TaskRxBuffer, TaskSheet},
     errors::{Error, Result},
-    fmd_index::RtFmdIndex,
-    map,
-    mismatch_bounds::MismatchBoundDispatch,
-    sequence_difference_models::SequenceDifferenceModelDispatch,
-    utils::{load_index_from_path, AlignmentParameters},
+    index::load_index_from_path,
+    map::{
+        backtrack_tree::Tree,
+        fmd_index::RtFmdIndex,
+        mapping::{k_mismatch_search, EDIT_TREE_LIMIT, STACK_LIMIT},
+        mismatch_bounds::MismatchBoundDispatch,
+        record::EditOperation,
+        sequence_difference_models::SequenceDifferenceModelDispatch,
+        AlignmentParameters, MismatchSearchStackFrame,
+    },
 };
 
 pub struct Worker {
@@ -39,8 +43,8 @@ impl Worker {
 
     pub fn run(&mut self) -> Result<()> {
         thread_local! {
-            static STACK_BUF: RefCell<MinMaxHeap<map::MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(map::STACK_LIMIT as usize + 9));
-            static TREE_BUF: RefCell<Tree<map::EditOperation>> = RefCell::new(Tree::with_capacity(map::EDIT_TREE_LIMIT + 9));
+            static STACK_BUF: RefCell<MinMaxHeap<MismatchSearchStackFrame>> = RefCell::new(MinMaxHeap::with_capacity(STACK_LIMIT as usize + 9));
+            static TREE_BUF: RefCell<Tree<EditOperation>> = RefCell::new(Tree::with_capacity(EDIT_TREE_LIMIT + 9));
         }
 
         loop {
@@ -84,7 +88,7 @@ impl Worker {
                                             let hit_intervals = match &alignment_parameters.difference_model {
                                                 SequenceDifferenceModelDispatch::SimpleAncientDnaModel(sdm) => {
                                                     match &alignment_parameters.mismatch_bound {
-                                                        MismatchBoundDispatch::Discrete(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::Discrete(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -94,7 +98,7 @@ impl Worker {
                                                             sdm,
                                                             mb,
                                                         ),
-                                                        MismatchBoundDispatch::Continuous(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::Continuous(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -104,7 +108,7 @@ impl Worker {
                                                             sdm,
                                                             mb,
                                                         ),
-                                                        MismatchBoundDispatch::TestBound(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::TestBound(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -118,7 +122,7 @@ impl Worker {
                                                 }
                                                 SequenceDifferenceModelDispatch::TestDifferenceModel(sdm) => {
                                                     match &alignment_parameters.mismatch_bound {
-                                                        MismatchBoundDispatch::Discrete(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::Discrete(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -128,7 +132,7 @@ impl Worker {
                                                             sdm,
                                                             mb,
                                                         ),
-                                                        MismatchBoundDispatch::Continuous(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::Continuous(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -138,7 +142,7 @@ impl Worker {
                                                             sdm,
                                                             mb,
                                                         ),
-                                                        MismatchBoundDispatch::TestBound(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::TestBound(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -152,7 +156,7 @@ impl Worker {
                                                 },
                                                 SequenceDifferenceModelDispatch::VindijaPwm(sdm) => {
                                                     match &alignment_parameters.mismatch_bound {
-                                                        MismatchBoundDispatch::Discrete(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::Discrete(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -162,7 +166,7 @@ impl Worker {
                                                             sdm,
                                                             mb,
                                                         ),
-                                                        MismatchBoundDispatch::Continuous(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::Continuous(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,
@@ -172,7 +176,7 @@ impl Worker {
                                                             sdm,
                                                             mb,
                                                         ),
-                                                        MismatchBoundDispatch::TestBound(mb) => map::k_mismatch_search(
+                                                        MismatchBoundDispatch::TestBound(mb) => k_mismatch_search(
                                                             &record.sequence,
                                                             &record.base_qualities,
                                                             alignment_parameters,

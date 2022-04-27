@@ -279,7 +279,7 @@ impl MismatchBound for TestBound {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sequence_difference_models::*;
+    use crate::map::sequence_difference_models::*;
 
     #[test]
     fn test_allowed_mismatches() {

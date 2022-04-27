@@ -13,11 +13,18 @@ use noodles::{bam, sam};
 use rayon::prelude::*;
 
 use crate::{
-    distributed::*,
+    distributed::{ResultRxBuffer, TaskTxBuffer},
     errors::{Error, Result},
-    io::{IntoTaskQueue, TaskQueue},
-    map,
-    utils::*,
+    index::{
+        load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
+        FastaIdPositions,
+    },
+    map::{
+        input_chunk_reader::{IntoTaskQueue, TaskQueue, TaskSheet},
+        mapping::{create_bam_header, intervals_to_bam},
+        record::Record,
+        AlignmentParameters, HitInterval,
+    },
 };
 
 enum TransportState {
@@ -145,8 +152,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 // Position cursor right after header
                 let _ = reader.read_reference_sequences();
 
-                let header =
-                    map::create_bam_header(src_header.as_ref().ok(), &identifier_position_map)?;
+                let header = create_bam_header(src_header.as_ref().ok(), &identifier_position_map)?;
                 out_file.write_header(&header)?;
                 out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader
@@ -162,7 +168,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             }
             "fastq" | "fq" => {
                 let reader = fastq::Reader::from_file(self.reads_path)?;
-                let header = map::create_bam_header(None, &identifier_position_map)?;
+                let header = create_bam_header(None, &identifier_position_map)?;
                 out_file.write_header(&header)?;
                 out_file.write_reference_sequences(header.reference_sequences())?;
                 let mut task_queue = reader
@@ -186,7 +192,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         &mut self,
         task_queue: &mut TaskQueue<T>,
         suffix_array: &S,
-        identifier_position_map: &map::FastaIdPositions,
+        identifier_position_map: &FastaIdPositions,
         listener: &mut TcpListener,
         out_file: &mut bam::Writer<W>,
     ) -> Result<()>
@@ -356,9 +362,9 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     fn write_results<S, W>(
         &self,
-        hits: Vec<(Record, BinaryHeap<map::HitInterval>)>,
+        hits: Vec<(Record, BinaryHeap<HitInterval>)>,
         suffix_array: &S,
-        identifier_position_map: &map::FastaIdPositions,
+        identifier_position_map: &FastaIdPositions,
         alignment_parameters: &AlignmentParameters,
         out_file: &mut bam::Writer<W>,
     ) -> Result<()>
@@ -370,7 +376,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         let bam_records = hits
             .into_par_iter()
             .map_init(rand::thread_rng, |mut rng, (record, hit_interval)| {
-                map::intervals_to_bam(
+                intervals_to_bam(
                     record,
                     hit_interval,
                     suffix_array,

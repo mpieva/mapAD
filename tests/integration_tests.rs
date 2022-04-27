@@ -10,10 +10,13 @@ use noodles::{
 use tempfile::tempdir;
 
 use mapad::{
-    index, map,
-    mismatch_bounds::Discrete,
-    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
-    utils,
+    index::indexing,
+    map::{
+        mapping,
+        mismatch_bounds::Discrete,
+        sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
+        AlignmentParameters,
+    },
 };
 
 #[test]
@@ -51,7 +54,7 @@ ATTCTGATGACGAAGTGTATACCCTGGCGTGCTAGTCCCTCGGCGTTGGATATCCTAGAT
 TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
         writeln!(file, "{}", fasta_content).unwrap();
 
-        index::run(test_genome_path.to_str().unwrap(), 1234).unwrap();
+        indexing::run(test_genome_path.to_str().unwrap(), 1234).unwrap();
     }
 
     // Create test reads and store them in a BAM file
@@ -104,7 +107,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
         );
         let representative_mm_penalty = adna_scoring_model.get_representative_mismatch_penalty();
         let mismatch_bound = Discrete::new(0.03, base_error_rate, representative_mm_penalty);
-        let alignment_parameters = utils::AlignmentParameters {
+        let alignment_parameters = AlignmentParameters {
             difference_model: adna_scoring_model.into(),
             mismatch_bound: mismatch_bound.into(),
             penalty_gap_open: representative_mm_penalty * 1.5,
@@ -113,7 +116,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             gap_dist_ends: 5,
             stack_limit_abort: false,
         };
-        map::run(
+        mapping::run(
             input_bam_path.to_str().unwrap(),
             test_genome_path.to_str().unwrap(),
             output_bam_path.to_str().unwrap(),

@@ -1,14 +1,15 @@
-use std::fmt::{Display, Formatter};
-use std::iter::Map;
+use std::{
+    fmt::{Display, Formatter},
+    iter::Map,
+};
 
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
-use crate::distributed::Message;
-use crate::utils::AlignmentParameters;
 use crate::{
+    distributed::Message,
     errors::{Error, Result},
-    utils::Record,
+    map::{record::Record, AlignmentParameters},
 };
 
 /// Keeps track of the processing state of chunks of reads

@@ -3,12 +3,12 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use min_max_heap::MinMaxHeap;
 
 use mapad::{
-    backtrack_tree::Tree,
-    map::k_mismatch_search,
-    mismatch_bounds::*,
-    prrange::PrRange,
-    sequence_difference_models::*,
-    utils::{build_auxiliary_structures, AlignmentParameters},
+    index::DNA_UPPERCASE_ALPHABET,
+    map::{
+        backtrack_tree::Tree, mapping::k_mismatch_search, mismatch_bounds::*, prrange::PrRange,
+        sequence_difference_models::*, AlignmentParameters,
+    },
+    utils::build_auxiliary_structures,
 };
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -41,7 +41,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             stack_limit_abort: false,
         };
 
-        let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GTTT".as_bytes().to_owned();
@@ -192,7 +192,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         stack_limit_abort: false,
     };
 
-    let alphabet = alphabets::Alphabet::new(mapad::index::DNA_UPPERCASE_ALPHABET);
+    let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
     let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
     c.bench_function("bench_exogenous_read", |b| {
@@ -368,8 +368,8 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
     c.bench_function("bench_randrange_first", |b| {
         let range = 3700000000_usize..3700001000;
         b.iter(|| {
-            let last = PrRange::try_from_range(&range, 1234).unwrap().next();
-            assert!(last.is_some());
+            let first = PrRange::try_from_range(&range, 1234).unwrap().next();
+            assert!(first.is_some());
         })
     });
 }

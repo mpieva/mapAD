@@ -7,10 +7,13 @@ use time::UtcOffset;
 
 use mapad::{
     distributed::{dispatcher, worker},
-    index, map,
-    mismatch_bounds::{Continuous, Discrete},
-    sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
-    utils::AlignmentParameters,
+    index::indexing,
+    map::{
+        mapping,
+        mismatch_bounds::{Continuous, Discrete},
+        sequence_difference_models::{LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel},
+        AlignmentParameters,
+    },
     CRATE_NAME,
 };
 
@@ -305,7 +308,7 @@ fn start_indexer(arg_matches: &ArgMatches, seed: u64) {
         .value_of("reference")
         .expect("Presence is ensured by CLI definition");
 
-    if let Err(e) = index::run(reference_path, seed) {
+    if let Err(e) = indexing::run(reference_path, seed) {
         error!("{}", e);
     }
 }
@@ -342,7 +345,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
         )
         .and_then(|mut dispatcher| dispatcher.run(port))
     } else {
-        map::run(
+        mapping::run(
             reads_path,
             reference_path,
             out_file_path,

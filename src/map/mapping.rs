@@ -1,11 +1,9 @@
 use std::{
     cell::RefCell,
-    cmp::Ordering,
-    collections::{binary_heap::BinaryHeap, BTreeMap},
+    collections::binary_heap::BinaryHeap,
     env,
     fs::{File, OpenOptions},
     io::{self, Write},
-    iter::{self},
     path::Path,
     str,
     time::{Duration, Instant},
@@ -13,26 +11,28 @@ use std::{
 
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
 use clap::{crate_description, crate_version};
-use either::Either;
 use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use noodles::{bam, sam};
 use rand::RngCore;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 
 use crate::{
-    backtrack_tree::{NodeId, Tree},
     errors::{Error, Result},
-    fmd_index::{RtBiInterval, RtFmdIndex},
-    io::{IntoTaskQueue, TaskQueue},
-    mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
-    prrange::PrRange,
-    sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
-    utils::{
+    index::{
         load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
-        AlignmentParameters, Record,
+        FastaIdPositions,
+    },
+    map::{
+        backtrack_tree::Tree,
+        bi_d_array::BiDArray,
+        fmd_index::RtFmdIndex,
+        input_chunk_reader::{IntoTaskQueue, TaskQueue},
+        mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
+        prrange::PrRange,
+        record::{extract_edit_operations, EditOperation, Record},
+        sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
+        AlignmentParameters, Direction, GapState, HitInterval, MismatchSearchStackFrame,
     },
     CRATE_NAME,
 };
@@ -40,559 +40,6 @@ use crate::{
 // These settings lead to a memory consumption of ~245 MiB per thread
 pub const STACK_LIMIT: u32 = 2_000_000;
 pub const EDIT_TREE_LIMIT: u32 = 10_000_000;
-
-/// A subset of MismatchSearchStackFrame to store hits
-#[derive(Serialize, Deserialize, Debug)]
-pub struct HitInterval {
-    interval: RtBiInterval,
-    alignment_score: f32,
-    edit_operations: EditOperationsTrack,
-}
-
-impl PartialOrd for HitInterval {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for HitInterval {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.alignment_score
-            .partial_cmp(&other.alignment_score)
-            .expect("This is not expected to fail")
-    }
-}
-
-impl PartialEq for HitInterval {
-    fn eq(&self, other: &Self) -> bool {
-        self.alignment_score.eq(&other.alignment_score)
-    }
-}
-
-impl Eq for HitInterval {}
-
-/// Simple zero-cost direction enum to increase readability
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum Direction {
-    Forward,
-    Backward,
-}
-
-impl Direction {
-    /// Reverses the direction from forward to backward and vice-versa
-    fn reverse(self) -> Self {
-        use self::Direction::*;
-        match self {
-            Forward => Backward,
-            Backward => Forward,
-        }
-    }
-
-    #[allow(dead_code)]
-    fn is_forward(self) -> bool {
-        use self::Direction::*;
-        match self {
-            Forward => true,
-            Backward => false,
-        }
-    }
-
-    #[allow(dead_code)]
-    fn is_backward(self) -> bool {
-        !self.is_forward()
-    }
-}
-
-/// Variants store position in the read and, if necessary, the reference base
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-pub enum EditOperation {
-    Insertion(u16),
-    Deletion(u16, u8),
-    Match(u16),
-    Mismatch(u16, u8),
-}
-
-impl Default for EditOperation {
-    fn default() -> Self {
-        Self::Match(0)
-    }
-}
-
-impl From<&EditOperation> for sam::record::cigar::op::Kind {
-    fn from(src: &EditOperation) -> Self {
-        use sam::record::cigar::op::Kind;
-        match src {
-            EditOperation::Insertion(_) => Kind::Insertion,
-            EditOperation::Deletion(_, _) => Kind::Deletion,
-            EditOperation::Match(_) => Kind::Match,
-            EditOperation::Mismatch(_, _) => Kind::Match,
-        }
-    }
-}
-
-impl From<&EditOperation> for sam::record::cigar::Op {
-    fn from(src: &EditOperation) -> Self {
-        use sam::record::cigar::op::{Kind, Op};
-        match src {
-            EditOperation::Insertion(l) => Op::new(Kind::Insertion, (*l).into()),
-            EditOperation::Deletion(l, _) => Op::new(Kind::Deletion, (*l).into()),
-            EditOperation::Match(l) => Op::new(Kind::Match, (*l).into()),
-            EditOperation::Mismatch(l, _) => Op::new(Kind::Match, (*l).into()),
-        }
-    }
-}
-
-/// Contains edit operations performed in order to align the sequence
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EditOperationsTrack(Vec<EditOperation>);
-
-impl EditOperationsTrack {
-    /// Calculates the amount of positions in the genome
-    /// that are covered by this read
-    pub fn effective_len(&self) -> usize {
-        self.0.iter().fold(0, |acc, edit_operation| {
-            acc + match edit_operation {
-                EditOperation::Insertion(_) => 0,
-                EditOperation::Deletion(_, _) => 1,
-                EditOperation::Match(_) => 1,
-                EditOperation::Mismatch(_, _) => 1,
-            }
-        })
-    }
-
-    /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
-    /// The strand a read is mapped to is taken into account here.
-    fn to_bam_fields(&self, strand: Direction) -> (Vec<sam::record::cigar::Op>, Vec<u8>, u16) {
-        use sam::record::cigar::Op;
-        // Reconstruct the order of the remaining edit operations and condense CIGAR
-        let mut num_matches: u32 = 0;
-        let mut num_operations = 1;
-        let mut edit_distance = 0;
-        let mut last_edit_operation = None;
-        let mut cigar = Vec::new();
-        let mut md_tag = Vec::new();
-
-        let track = match strand {
-            Direction::Forward => Either::Left(self.0.iter()),
-            Direction::Backward => Either::Right(self.0.iter().rev()),
-        };
-        for edit_operation in track {
-            edit_distance = Self::add_edit_distance(edit_operation, edit_distance);
-
-            num_matches = Self::add_md_edit_operation(
-                Some(edit_operation),
-                last_edit_operation,
-                strand,
-                num_matches,
-                &mut md_tag,
-            );
-
-            if let Some(lop) = last_edit_operation {
-                // Construct CIGAR string
-                match edit_operation {
-                    EditOperation::Match(_) => match lop {
-                        EditOperation::Match(_) | EditOperation::Mismatch(_, _) => {
-                            num_operations += 1;
-                        }
-                        _ => {
-                            cigar.push(Op::new(lop.into(), num_operations));
-                            num_operations = 1;
-                            last_edit_operation = Some(edit_operation);
-                        }
-                    },
-                    EditOperation::Mismatch(_, _) => match lop {
-                        EditOperation::Mismatch(_, _) | EditOperation::Match(_) => {
-                            num_operations += 1;
-                        }
-                        _ => {
-                            cigar.push(Op::new(lop.into(), num_operations));
-                            num_operations = 1;
-                            last_edit_operation = Some(edit_operation);
-                        }
-                    },
-                    EditOperation::Insertion(_) => match lop {
-                        EditOperation::Insertion(_) => {
-                            num_operations += 1;
-                        }
-                        _ => {
-                            cigar.push(Op::new(lop.into(), num_operations));
-                            num_operations = 1;
-                            last_edit_operation = Some(edit_operation);
-                        }
-                    },
-                    EditOperation::Deletion(_, _) => match lop {
-                        EditOperation::Deletion(_, _) => {
-                            num_operations += 1;
-                        }
-                        _ => {
-                            cigar.push(Op::new(lop.into(), num_operations));
-                            num_operations = 1;
-                            last_edit_operation = Some(edit_operation);
-                        }
-                    },
-                }
-            } else {
-                last_edit_operation = Some(edit_operation);
-            }
-        }
-
-        // Add remainder
-        if let Some(lop) = last_edit_operation {
-            cigar.push(Op::new(lop.into(), num_operations));
-        }
-        let _ = Self::add_md_edit_operation(None, None, strand, num_matches, &mut md_tag);
-
-        (cigar, md_tag, edit_distance)
-    }
-
-    fn add_md_edit_operation(
-        edit_operation: Option<&EditOperation>,
-        last_edit_operation: Option<&EditOperation>,
-        strand: Direction,
-        mut k: u32,
-        md_tag: &mut Vec<u8>,
-    ) -> u32 {
-        let comp_if_necessary = |reference_base| match strand {
-            Direction::Forward => reference_base,
-            Direction::Backward => dna::complement(reference_base),
-        };
-
-        match edit_operation {
-            Some(EditOperation::Match(_)) => k += 1,
-            Some(EditOperation::Mismatch(_, reference_base)) => {
-                let reference_base = comp_if_necessary(*reference_base);
-                md_tag.extend_from_slice(format!("{}{}", k, reference_base as char).as_bytes());
-                k = 0;
-            }
-            Some(EditOperation::Insertion(_)) => {
-                // Insertions are ignored in MD tags
-            }
-            Some(EditOperation::Deletion(_, reference_base)) => {
-                let reference_base = comp_if_necessary(*reference_base);
-                match last_edit_operation {
-                    Some(EditOperation::Deletion(_, _)) => {
-                        md_tag.extend_from_slice(format!("{}", reference_base as char).as_bytes());
-                    }
-                    _ => {
-                        md_tag.extend_from_slice(
-                            format!("{}^{}", k, reference_base as char).as_bytes(),
-                        );
-                    }
-                }
-                k = 0;
-            }
-            None => md_tag.extend_from_slice(format!("{}", k).as_bytes()),
-        }
-        k
-    }
-
-    fn add_edit_distance(edit_operation: &EditOperation, distance: u16) -> u16 {
-        if let EditOperation::Match(_) = edit_operation {
-            distance
-        } else {
-            distance + 1
-        }
-    }
-
-    pub fn read_len(&self) -> usize {
-        self.0.iter().fold(0, |acc, edit_operation| {
-            acc + match edit_operation {
-                EditOperation::Insertion(_) => 1,
-                EditOperation::Deletion(_, _) => 0,
-                EditOperation::Match(_) => 1,
-                EditOperation::Mismatch(_, _) => 1,
-            }
-        })
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum GapState {
-    Insertion,
-    Deletion,
-    Closed,
-}
-
-/// Stores information about partial alignments on the priority stack.
-/// There are two different measures of alignment quality:
-/// alignment_score: Initialized with 0, penalties are simply added
-/// priority: alignment_score + expected minimal amount of penalties.
-/// This is used as key for the priority stack.
-#[derive(Debug)]
-pub struct MismatchSearchStackFrame {
-    current_interval: RtBiInterval,
-    backward_index: i16,
-    forward_index: i16,
-    direction: Direction,
-    gap_forwards: GapState,
-    gap_backwards: GapState,
-    alignment_score: f32,
-    edit_node_id: NodeId,
-}
-
-impl PartialOrd for MismatchSearchStackFrame {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for MismatchSearchStackFrame {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.alignment_score
-            .partial_cmp(&other.alignment_score)
-            .expect("This is not expected to fail")
-    }
-}
-
-impl PartialEq for MismatchSearchStackFrame {
-    fn eq(&self, other: &Self) -> bool {
-        self.alignment_score.eq(&other.alignment_score)
-    }
-}
-
-impl Eq for MismatchSearchStackFrame {}
-
-/// For multi-identifier reference sequences like the human genome (that is split by chromosome)
-/// this struct is used to keep a map of IDs and positions
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FastaIdPosition {
-    pub start: u64,
-    pub end: u64,
-    pub identifier: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FastaIdPositions {
-    id_position: Vec<FastaIdPosition>,
-}
-
-impl FastaIdPositions {
-    pub fn new(id_position: Vec<FastaIdPosition>) -> Self {
-        Self { id_position }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &FastaIdPosition> {
-        self.id_position.iter()
-    }
-
-    /// Find the corresponding reference identifier by position. The function
-    /// returns a tuple: ("target ID", "relative position")
-    fn get_reference_identifier(
-        &self,
-        position: usize,
-        pattern_length: usize,
-    ) -> Option<(u32, u64)> {
-        let position = position as u64;
-        self.id_position
-            .iter()
-            .enumerate()
-            .find(|(_, identifier)| {
-                (identifier.start <= position)
-                    && (position + pattern_length as u64 - 1 <= identifier.end)
-            })
-            .and_then(|(index, identifier)| {
-                Some((u32::try_from(index).ok()?, position - identifier.start))
-            })
-    }
-}
-
-/// Compute the lower bound of mismatches of a read per position by aligning perfectly,
-/// starting from the read end and progressing to the center. As soon as the extension of
-/// the alignment is not possible, we found at least one mismatch and record that per
-/// read-position in the so-called D-array. The content of the array is used as "lookahead"
-/// score. This allows for pruning the search tree. The values are minimal expected penalties
-/// towards the respective ends of the query. Like alignment scores, these values are negative.
-#[derive(Debug)]
-struct BiDArray {
-    d_composite: Vec<f32>,
-    split: usize,
-}
-
-impl BiDArray {
-    pub(crate) fn new<SDM>(
-        pattern: &[u8],
-        base_qualities: &[u8],
-        split: usize,
-        alignment_parameters: &AlignmentParameters,
-        fmd_index: &RtFmdIndex,
-        sdm: &SDM,
-    ) -> Self
-    where
-        SDM: SequenceDifferenceModel,
-    {
-        // This value is never actually used as `u16` but this type
-        // restricts the values to the valid range.
-        const MAX_OFFSET: u16 = 15;
-
-        // Compute a backward-D-iterator for every offset
-        let mut offset_d_backward_iterators = (0..MAX_OFFSET as usize)
-            .map(|offset| {
-                Self::compute_part(
-                    &pattern[..split],
-                    &base_qualities[..split],
-                    Direction::Forward,
-                    pattern.len(),
-                    offset as i16,
-                    alignment_parameters,
-                    fmd_index,
-                    sdm,
-                )
-            })
-            .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
-
-        // Construct backward-D-array from minimal (most severe) penalties for each position
-        let d_backwards = (0..split).map(|_| {
-            offset_d_backward_iterators
-                .iter_mut()
-                .map(|offset_d_rev_iter| {
-                    offset_d_rev_iter
-                        .next()
-                        .expect("Iterator is guaranteed to have the right length")
-                })
-                .fold(0_f32, |min_penalty, penalty| min_penalty.min(penalty))
-        });
-
-        // Compute a forward-D-iterator for every offset
-        let mut offset_d_forward_iterators = (0..MAX_OFFSET)
-            .map(|offset| {
-                Self::compute_part(
-                    &pattern[split..],
-                    &base_qualities[split..],
-                    Direction::Backward,
-                    pattern.len(),
-                    offset as i16,
-                    alignment_parameters,
-                    fmd_index,
-                    sdm,
-                )
-            })
-            .collect::<SmallVec<[_; MAX_OFFSET as usize]>>();
-
-        // Construct forward-D-array from minimal (most severe) penalties for each position
-        let d_forwards = (0..pattern.len() - split).map(|_| {
-            offset_d_forward_iterators
-                .iter_mut()
-                .map(|offset_d_fwd_iter| {
-                    offset_d_fwd_iter
-                        .next()
-                        .expect("Iterator is guaranteed to have the right length")
-                })
-                .fold(0_f32, |min_penalty, penalty| min_penalty.min(penalty))
-        });
-
-        Self {
-            d_composite: d_backwards.chain(d_forwards).collect(),
-            split,
-        }
-    }
-
-    /// Computes either left or right part of the Bi-D-Array for the given pattern.
-    /// `Direction` here is the opposite of the read alignment direction in `k_mismatch_search`.
-    fn compute_part<'a, SDM>(
-        pattern_part: &'a [u8],
-        base_qualities_part: &'a [u8],
-        direction: Direction,
-        full_pattern_length: usize,
-        initial_skip: i16,
-        alignment_parameters: &'a AlignmentParameters,
-        fmd_index: &'a RtFmdIndex,
-        sdm: &'a SDM,
-    ) -> impl Iterator<Item = f32> + 'a
-    where
-        SDM: SequenceDifferenceModel,
-    {
-        fn directed_index(index: usize, length: usize, direction: Direction) -> usize {
-            match direction {
-                Direction::Forward => index,
-                Direction::Backward => length - 1 - index,
-            }
-        }
-
-        iter::repeat(0.0).take(initial_skip as usize).chain(
-            match direction {
-                Direction::Forward => Either::Left(pattern_part.iter()),
-                Direction::Backward => Either::Right(pattern_part.iter().rev()),
-            }
-            .enumerate()
-            .skip(initial_skip as usize)
-            .scan(
-                (0.0, initial_skip - 1, fmd_index.init_interval()),
-                move |(z, last_mismatch_pos, interval), (index, &base)| {
-                    *interval = match direction {
-                        Direction::Forward => fmd_index.forward_ext(interval, base),
-                        Direction::Backward => fmd_index.backward_ext(interval, base),
-                    };
-                    if interval.size < 1 {
-                        // Sub-read does not align perfectly, scan sub-sequence to find the most conservative penalty
-                        *z += match direction {
-                            Direction::Forward => Either::Left(pattern_part.iter()),
-                            Direction::Backward => Either::Right(pattern_part.iter().rev()),
-                        }
-                        .enumerate()
-                        .take(index + 1)
-                        .skip((*last_mismatch_pos + 1) as usize)
-                        .map(|(j, &base_j)| {
-                            let idx_mapped_to_read =
-                                directed_index(j, full_pattern_length, direction);
-                            let best_penalty_mm_only = sdm.get_min_penalty(
-                                idx_mapped_to_read,
-                                full_pattern_length,
-                                base_j,
-                                base_qualities_part
-                                    [directed_index(j, base_qualities_part.len(), direction)],
-                                true,
-                            );
-                            let optimal_penalty = sdm.get_min_penalty(
-                                idx_mapped_to_read,
-                                full_pattern_length,
-                                base_j,
-                                base_qualities_part
-                                    [directed_index(j, base_qualities_part.len(), direction)],
-                                false,
-                            );
-                            // The optimal penalty, conditioning on position and base, is subtracted because we
-                            // optimize the ratio `AS/optimal_AS` (in log space) to find the best mappings
-                            best_penalty_mm_only - optimal_penalty
-                        })
-                        .fold(f32::MIN, |acc, penalty| acc.max(penalty))
-                        .max(
-                            alignment_parameters.penalty_gap_open
-                                + alignment_parameters.penalty_gap_extend,
-                        )
-                        .max(alignment_parameters.penalty_gap_extend);
-                        *interval = fmd_index.init_interval();
-                        *last_mismatch_pos = index as i16;
-                    }
-                    Some(*z)
-                },
-            ),
-        )
-    }
-
-    fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
-        let d_rev = if backward_index < 0 {
-            0.0
-        } else {
-            self.d_composite[backward_index as usize]
-        };
-        let d_fwd =
-            // Cover case forward_index == self.d_composite.len()
-            if forward_index as usize >= self.d_composite.len() {
-                0.0
-            } else {
-                self.d_composite[self.d_composite.len() - 1 - forward_index as usize + self.split]
-            };
-        d_rev + d_fwd
-    }
-}
 
 /// Loads index files and launches the mapping process
 pub fn run(
@@ -1363,48 +810,6 @@ fn bam_record_helper(
     Ok(bam_builder.build())
 }
 
-/// Derive Cigar string from oddly-ordered tracks of edit operations.
-/// Since we start aligning at the center of a read, tracks of edit operations
-/// are not ordered by position in the read. Also, the track of edit operations
-/// must be extracted from the (possibly huge) tree which is built during
-/// backtracking for size reasons.
-fn extract_edit_operations(
-    end_node: NodeId,
-    edit_tree: &Tree<EditOperation>,
-    pattern_len: usize,
-) -> EditOperationsTrack {
-    // Restore outer ordering of the edit operation by the positions they carry as values.
-    // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
-    // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
-    let mut cigar_order_outer: BTreeMap<u16, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
-
-    edit_tree.ancestors(end_node).for_each(|&edit_operation| {
-        let position = match edit_operation {
-            EditOperation::Insertion(position) => position,
-            EditOperation::Deletion(position, _) => position,
-            EditOperation::Match(position) => position,
-            EditOperation::Mismatch(position, _) => position,
-        };
-        cigar_order_outer
-            .entry(position)
-            .or_insert_with(SmallVec::new)
-            .push(edit_operation);
-    });
-
-    EditOperationsTrack(
-        cigar_order_outer
-            .into_iter()
-            .flat_map(|(i, inner_vec)| {
-                if i < (pattern_len / 2) as u16 {
-                    Either::Left(inner_vec.into_iter())
-                } else {
-                    Either::Right(inner_vec.into_iter().rev())
-                }
-            })
-            .collect(),
-    )
-}
-
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
 fn check_and_push_stack_frame<MB>(
@@ -1776,7 +1181,11 @@ pub mod tests {
     use noodles::sam;
 
     use super::*;
-    use crate::{mismatch_bounds::*, sequence_difference_models::*, utils::*};
+    use crate::{
+        index::DNA_UPPERCASE_ALPHABET,
+        map::{mismatch_bounds::*, sequence_difference_models::*, *},
+        utils::*,
+    };
 
     #[test]
     fn test_inexact_search() {
@@ -1803,7 +1212,7 @@ pub mod tests {
         let ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GTTC".as_bytes().to_owned();
@@ -1860,7 +1269,7 @@ pub mod tests {
         let ref_seq = "GAAAAG".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TTTT".as_bytes().to_owned();
@@ -1890,77 +1299,6 @@ pub mod tests {
     }
 
     #[test]
-    fn test_d() {
-        let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = TGTAATC
-
-        // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
-
-        let difference_model = SimpleAncientDnaModel::new(
-            LibraryPrep::SingleStranded {
-                five_prime_overhang: 0.3,
-                three_prime_overhang: 0.3,
-            },
-            0.001,
-            0.8,
-            0.02,
-            false,
-        );
-
-        let representative_mismatch_penalty =
-            difference_model.get_representative_mismatch_penalty();
-
-        let parameters = AlignmentParameters {
-            difference_model: difference_model.clone().into(),
-            mismatch_bound: TestBound {
-                threshold: 0.0,
-                representative_mm_bound: difference_model.get_representative_mismatch_penalty(),
-            }
-            .into(),
-            penalty_gap_open: 0.00001_f32.log2(),
-            penalty_gap_extend: representative_mismatch_penalty,
-            chunk_size: 1,
-            gap_dist_ends: 0,
-            stack_limit_abort: false,
-        };
-
-        let pattern = b"CCCCCCC";
-        let base_qualities = [10, 40, 40, 40, 40, 10, 40];
-
-        let center_of_read = pattern.len() / 2;
-
-        let bi_d_array = BiDArray::new(
-            pattern,
-            &base_qualities,
-            center_of_read,
-            &parameters,
-            &fmd_index,
-            &difference_model,
-        );
-
-        assert_eq!(
-            &*bi_d_array.d_composite,
-            &[0.0, -3.6297126, -5.4444757, 0.0, -3.8959491, -3.8959491, -9.413074]
-        );
-
-        assert_eq!(
-            bi_d_array.get(1, 4),
-            bi_d_array.d_composite[1] + bi_d_array.d_composite[bi_d_array.split + 2]
-        );
-        assert_eq!(
-            bi_d_array.get(2, 3),
-            bi_d_array.d_composite[2] + bi_d_array.d_composite[bi_d_array.split + 3]
-        );
-        assert_eq!(
-            bi_d_array.get(0, 6),
-            bi_d_array.d_composite[0] + bi_d_array.d_composite[bi_d_array.split + 0]
-        );
-
-        assert_eq!(bi_d_array.get(0, pattern.len() as i16 - 1), 0.0,);
-    }
-
-    #[test]
     fn test_gapped_alignment() {
         let difference_model = TestDifferenceModel {
             deam_score: -10.0,
@@ -1985,7 +1323,7 @@ pub mod tests {
         let ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TT".as_bytes().to_owned();
@@ -2039,7 +1377,7 @@ pub mod tests {
         let ref_seq = "AAAAAGGGGAAAAA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         // Gap in the middle of the read (allowed)
@@ -2113,7 +1451,7 @@ pub mod tests {
         let ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TTCCCT".as_bytes().to_owned();
@@ -2179,7 +1517,7 @@ pub mod tests {
         let ref_seq = "AAAAAA".as_bytes().to_owned(); // revcomp = "ATA"
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "AAGAAA".as_bytes().to_owned();
@@ -2264,7 +1602,7 @@ pub mod tests {
             .to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GTTGTATTTTTAGTAGAGACAGGCTTTCATCATGTTGGCCAG"
@@ -2333,7 +1671,7 @@ pub mod tests {
         let ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
@@ -2370,7 +1708,7 @@ pub mod tests {
         let ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
@@ -2409,7 +1747,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
@@ -2447,7 +1785,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
@@ -2485,7 +1823,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
@@ -2561,7 +1899,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
@@ -2591,7 +1929,7 @@ pub mod tests {
         let ref_seq = "GATTAGCA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
@@ -2636,7 +1974,7 @@ pub mod tests {
         let ref_seq = "GATTACAG".as_bytes().to_owned(); // CTGTAATC
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
@@ -2667,7 +2005,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
@@ -2697,7 +2035,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
@@ -2747,7 +2085,7 @@ pub mod tests {
         let ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TTT".as_bytes().to_owned();
@@ -2819,7 +2157,7 @@ pub mod tests {
         let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
 
         // Reference
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "TAGT".as_bytes().to_owned();
@@ -2901,7 +2239,7 @@ pub mod tests {
             stack_limit_abort: false,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
         {
@@ -3073,14 +2411,14 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             stack_limit_abort: false,
         };
 
-        let alphabet = alphabets::Alphabet::new(crate::index::DNA_UPPERCASE_ALPHABET);
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         // bench_exogenous_read
         {
             let pattern = "GATATCTCGGCTGACAAACCAACAAAAAGTATCGGAACATCGCGGCGGCGTAGATGAATCTTAACCACACTCGACAGCTGTGCTTCTATACTAGCATTAC"
-            .as_bytes()
-            .to_owned();
+                .as_bytes()
+                .to_owned();
             let base_qualities = vec![40; pattern.len()];
 
             let mut stack = MinMaxHeap::new();
@@ -3230,41 +2568,6 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             );
             assert_eq!(intervals.len(), 1);
         }
-    }
-
-    #[test]
-    fn test_edop_effective_len() {
-        let edop_track = EditOperationsTrack(vec![
-            EditOperation::Match(0),
-            EditOperation::Mismatch(1, b'C'),
-            EditOperation::Match(2),
-            EditOperation::Insertion(3),
-            EditOperation::Match(4),
-            EditOperation::Deletion(5, b'A'),
-            EditOperation::Deletion(6, b'G'),
-            EditOperation::Match(7),
-            EditOperation::Match(8),
-            EditOperation::Match(9),
-            EditOperation::Match(10),
-            EditOperation::Insertion(11),
-            EditOperation::Mismatch(10, b'C'),
-        ]);
-        assert_eq!(edop_track.effective_len(), 11);
-
-        let edop_track_2 = EditOperationsTrack(vec![
-            EditOperation::Insertion(0),
-            EditOperation::Insertion(1),
-            EditOperation::Insertion(2),
-        ]);
-        assert_eq!(edop_track_2.effective_len(), 0);
-
-        let edop_track_3 = EditOperationsTrack(vec![
-            EditOperation::Deletion(0, b'A'),
-            EditOperation::Deletion(1, b'C'),
-            EditOperation::Deletion(2, b'G'),
-            EditOperation::Deletion(3, b'T'),
-        ]);
-        assert_eq!(edop_track_3.effective_len(), 4);
     }
 
     #[test]

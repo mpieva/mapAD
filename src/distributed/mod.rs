@@ -5,7 +5,10 @@ use std::{collections::BinaryHeap, iter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::Result, io::TaskSheet, map::HitInterval, utils::Record};
+use crate::{
+    errors::Result,
+    map::{input_chunk_reader::TaskSheet, record::Record, HitInterval},
+};
 
 pub trait Message {
     const PROTO_LEN: usize = 8;

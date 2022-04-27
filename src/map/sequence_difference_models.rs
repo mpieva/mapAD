@@ -4,6 +4,8 @@ use either::Either;
 use log::info;
 use serde::{Deserialize, Serialize};
 
+use crate::index::DNA_UPPERCASE_ALPHABET;
+
 const MAX_ENCODED_BASE_QUALITY: u8 = u8::MAX;
 
 /// New models must impl this trait and be included in the `SequenceDifferenceModelDispatch` enum in order to
@@ -37,15 +39,12 @@ pub trait SequenceDifferenceModel {
         base_quality: u8,
         only_mismatches: bool,
     ) -> f32 {
-        let iterator = crate::index::DNA_UPPERCASE_ALPHABET.iter();
+        let iterator = DNA_UPPERCASE_ALPHABET.iter();
 
         if only_mismatches {
             Either::Left(iterator.filter(|&&base| base != to))
         } else {
-            if crate::index::DNA_UPPERCASE_ALPHABET
-                .iter()
-                .all(|&symbol| symbol != to)
-            {
+            if DNA_UPPERCASE_ALPHABET.iter().all(|&symbol| symbol != to) {
                 return 0.0;
             }
             Either::Right(iterator)
