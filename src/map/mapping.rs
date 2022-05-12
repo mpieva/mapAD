@@ -562,6 +562,7 @@ where
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
 /// and its base qualities
+#[allow(clippy::assertions_on_constants)]
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
     best_alignment_interval_size: usize,
@@ -622,6 +623,7 @@ fn estimate_mapping_quality(
 }
 
 /// Create and return a BAM record of either a hit or an unmapped read
+#[allow(clippy::too_many_arguments)]
 fn bam_record_helper(
     input_record: Record,
     position: Option<u64>,
@@ -884,6 +886,7 @@ fn print_debug(
 
 /// Finds all suffix array intervals for the current pattern
 /// w.r.t. supplied alignment parameters
+#[allow(clippy::too_many_arguments)]
 pub fn k_mismatch_search<SDM, MB>(
     pattern: &[u8],
     base_qualities: &[u8],

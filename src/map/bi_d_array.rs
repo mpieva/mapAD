@@ -100,6 +100,7 @@ impl BiDArray {
 
     /// Computes either left or right part of the Bi-D-Array for the given pattern.
     /// `Direction` here is the opposite of the read alignment direction in `k_mismatch_search`.
+    #[allow(clippy::too_many_arguments)]
     fn compute_part<'a, SDM>(
         pattern_part: &'a [u8],
         base_qualities_part: &'a [u8],
