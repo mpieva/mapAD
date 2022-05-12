@@ -109,7 +109,7 @@ where
 /// Task wrapped in a Struct for sending to a worker
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TaskSheet {
-    encoded_size: u64,
+    encoded_size: u64, // must be of type `u64` and the first element
     chunk_id: usize,
     records: Vec<Record>,
     reference_path: Option<String>,
@@ -125,7 +125,7 @@ impl Display for TaskSheet {
 impl TaskSheet {
     pub fn from_records(read_set: usize, records: Vec<Record>) -> Self {
         Self {
-            encoded_size: 0,
+            encoded_size: Default::default(),
             chunk_id: read_set,
             records,
             reference_path: None,

@@ -9,7 +9,7 @@ use min_max_heap::MinMaxHeap;
 use rayon::prelude::*;
 
 use crate::{
-    distributed::{Message, ResultSheet, TaskRxBuffer, TaskSheet},
+    distributed::{comm_buffers::TaskRxBuffer, Message, ResultSheet, TaskSheet},
     errors::{Error, Result},
     index::load_index_from_path,
     map::{

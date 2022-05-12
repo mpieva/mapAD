@@ -13,7 +13,7 @@ use noodles::{bam, sam};
 use rayon::prelude::*;
 
 use crate::{
-    distributed::{ResultRxBuffer, TaskTxBuffer},
+    distributed::comm_buffers::{ResultRxBuffer, TaskTxBuffer},
     errors::{Error, Result},
     index::{
         load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
