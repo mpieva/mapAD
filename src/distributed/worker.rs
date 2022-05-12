@@ -50,7 +50,7 @@ impl Worker {
         loop {
             // Receive task
             match self.read_message() {
-                Ok(mut task) => {
+                Ok(task) => {
                     debug!("Received task");
                     // Load FMD index if necessary
                     if self.fmd_index.is_none() {
