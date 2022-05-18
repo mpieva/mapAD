@@ -604,13 +604,16 @@ fn estimate_mapping_quality(
             1.0
         } else {
             // Pseudo-unique mapping
-            let weighted_suboptimal_alignments =
-                other_alignments
-                    .iter()
-                    .fold(0.0, |acc, suboptimal_alignment| {
-                        acc + 2_f32.powf(suboptimal_alignment.alignment_score)
-                            * suboptimal_alignment.interval.size as f32
-                    });
+            let weighted_suboptimal_alignments = other_alignments
+                .iter()
+                // Filtering out "same" hits e.g. caused by InDels in homopolymers
+                .filter(|suboptimal_alignment| {
+                    suboptimal_alignment.interval != best_alignment.interval
+                })
+                .fold(0.0, |acc, suboptimal_alignment| {
+                    acc + 2_f32.powf(suboptimal_alignment.alignment_score)
+                        * suboptimal_alignment.interval.size as f32
+                });
             ratio_best / (ratio_best + weighted_suboptimal_alignments)
         }
     }
