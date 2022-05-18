@@ -426,58 +426,14 @@ where
     R: RngCore,
     S: SuffixArray,
 {
-    let mut intervals_to_coordinates =
-        |interval: &HitInterval| -> Result<(usize, u32, u64, Direction)> {
-            // Calculate length of reference strand ignoring sentinel characters
-            let strand_len = (suffix_array.len() - 2) / 2;
-            // Get amount of positions in the genome covered by the read
-            let effective_read_len = interval.edit_operations.effective_len();
-
-            // If this function returns an error that's likely because the best-scoring interval mappings
-            // overlap contig boundaries. In that case, we can drop the best-scoring interval and
-            // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
-            PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
-                .ok_or_else(|| {
-                    Error::InvalidIndex("Could not enumerate possible reference positions".into())
-                })?
-                // This is to count the number of skipped invalid positions
-                .enumerate()
-                .find_map(|(i, sar_pos)| {
-                    suffix_array
-                        .get(sar_pos)
-                        // Determine strand
-                        .map(|absolute_pos| {
-                            if absolute_pos < strand_len {
-                                (absolute_pos, Direction::Forward)
-                            } else {
-                                (
-                                    suffix_array.len() - absolute_pos - effective_read_len - 1,
-                                    Direction::Backward,
-                                )
-                            }
-                        })
-                        // Convert to relative coordinates
-                        .and_then(|(absolute_pos, strand)| {
-                            if let Some((tid, rel_pos)) = identifier_position_map
-                                .get_reference_identifier(absolute_pos, effective_read_len)
-                            {
-                                Some((i, tid, rel_pos, strand))
-                            } else {
-                                None
-                            }
-                        })
-                })
-                .ok_or(Error::ContigBoundaryOverlap)
-        };
-
     let hits_found = !intervals.is_empty();
 
     while let Some(best_alignment) = intervals.pop() {
         // Determine relative-to-chromosome position
-        match intervals_to_coordinates(&best_alignment) {
-            Ok((num_failed, tid, relative_pos, strand)) => {
+        match interval2coordinate(&best_alignment, suffix_array, identifier_position_map, rng) {
+            Ok(int2coord_out) => {
                 let updated_best_alignment_interval_size =
-                    best_alignment.interval.size - num_failed;
+                    best_alignment.interval.size - int2coord_out.num_skipped;
 
                 let alternative_hits = if updated_best_alignment_interval_size > 1 {
                     format!("mm,{},;", updated_best_alignment_interval_size)
@@ -497,9 +453,10 @@ where
                 } else {
                     "".into()
                 };
+
                 return bam_record_helper(
                     input_record,
-                    Some(relative_pos),
+                    Some(int2coord_out.relative_pos),
                     Some(&best_alignment),
                     Some(estimate_mapping_quality(
                         &best_alignment,
@@ -507,8 +464,8 @@ where
                         &intervals,
                         alignment_parameters,
                     )),
-                    Some(tid),
-                    Some(strand),
+                    Some(int2coord_out.tid),
+                    Some(int2coord_out.strand),
                     duration,
                     alternative_hits,
                 );
@@ -558,6 +515,70 @@ where
             difference_model.get_min_penalty(i, pattern.len(), base, quality, false)
         })
         .collect::<Vec<_>>()
+}
+
+struct IntToCoordOutput {
+    tid: u32,
+    relative_pos: u64,
+    strand: Direction,
+    num_skipped: usize,
+}
+
+fn interval2coordinate<S, R>(
+    interval: &HitInterval,
+    suffix_array: &S,
+    identifier_position_map: &FastaIdPositions,
+    rng: &mut R,
+) -> Result<IntToCoordOutput>
+where
+    R: RngCore,
+    S: SuffixArray,
+{
+    // Calculate length of reference strand ignoring sentinel characters
+    let strand_len = (suffix_array.len() - 2) / 2;
+    // Get amount of positions in the genome covered by the read
+    let effective_read_len = interval.edit_operations.effective_len();
+
+    // If this function returns an error that's likely because the best-scoring interval mappings
+    // overlap contig boundaries. In that case, we can drop the best-scoring interval and
+    // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
+    PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
+        .ok_or_else(|| {
+            Error::InvalidIndex("Could not enumerate possible reference positions".into())
+        })?
+        // This is to count the number of skipped invalid positions
+        .enumerate()
+        .find_map(|(i, sar_pos)| {
+            suffix_array
+                .get(sar_pos)
+                // Determine strand
+                .map(|absolute_pos| {
+                    if absolute_pos < strand_len {
+                        (absolute_pos, Direction::Forward)
+                    } else {
+                        (
+                            suffix_array.len() - absolute_pos - effective_read_len - 1,
+                            Direction::Backward,
+                        )
+                    }
+                })
+                // Convert to relative coordinates
+                .and_then(|(absolute_pos, strand)| {
+                    if let Some((tid, rel_pos)) = identifier_position_map
+                        .get_reference_identifier(absolute_pos, effective_read_len)
+                    {
+                        Some(IntToCoordOutput {
+                            tid,
+                            relative_pos: rel_pos,
+                            strand,
+                            num_skipped: i,
+                        })
+                    } else {
+                        None
+                    }
+                })
+        })
+        .ok_or(Error::ContigBoundaryOverlap)
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
