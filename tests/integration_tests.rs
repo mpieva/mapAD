@@ -325,7 +325,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA";
             ];
             result_sample.sort_by_key(|k| k.name.clone());
 
-            assert_eq!(comp, result_sample);
+            assert_eq!(result_sample, comp);
         }
     }
 
