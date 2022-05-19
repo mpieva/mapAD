@@ -441,12 +441,17 @@ where
                     "pu,,;".into()
                 } else if !intervals.is_empty() {
                     let mut buf = "pu,".to_string();
-                    buf.extend(intervals.iter().map(|subopt_intv| {
-                        format!(
-                            "{},{:.2};",
-                            subopt_intv.interval.size, subopt_intv.alignment_score
-                        )
-                    }));
+                    buf.extend(
+                        intervals
+                            .iter()
+                            .filter(|subopt_intv| subopt_intv.interval != best_alignment.interval)
+                            .map(|subopt_intv| {
+                                format!(
+                                    "{},{:.2};",
+                                    subopt_intv.interval.size, subopt_intv.alignment_score
+                                )
+                            }),
+                    );
                     buf
                 } else if updated_best_alignment_interval_size == 1 {
                     "uq,,;".into()
