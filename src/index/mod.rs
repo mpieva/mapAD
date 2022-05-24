@@ -62,7 +62,7 @@ impl FastaIdPositions {
         &self,
         position: usize,
         pattern_length: usize,
-    ) -> Option<(u32, u64)> {
+    ) -> Option<(u32, u64, &str)> {
         let position = position as u64;
         self.id_position
             .iter()
@@ -72,7 +72,11 @@ impl FastaIdPositions {
                     && (position + pattern_length as u64 - 1 <= identifier.end)
             })
             .and_then(|(index, identifier)| {
-                Some((u32::try_from(index).ok()?, position - identifier.start))
+                Some((
+                    u32::try_from(index).ok()?,
+                    position - identifier.start,
+                    identifier.identifier.as_str(),
+                ))
             })
     }
 }

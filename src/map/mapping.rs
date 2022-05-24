@@ -32,7 +32,8 @@ use crate::{
         prrange::PrRange,
         record::{extract_edit_operations, EditOperation, Record},
         sequence_difference_models::{SequenceDifferenceModel, SequenceDifferenceModelDispatch},
-        AlignmentParameters, Direction, GapState, HitInterval, MismatchSearchStackFrame,
+        AlignmentParameters, AlternativeAlignments, Direction, GapState, HitInterval,
+        IntToCoordOutput, MismatchSearchStackFrame,
     },
     CRATE_NAME,
 };
@@ -415,7 +416,7 @@ pub fn create_bam_header(
 /// Convert suffix array intervals to positions and BAM records
 pub fn intervals_to_bam<R, S>(
     input_record: Record,
-    mut intervals: BinaryHeap<HitInterval>,
+    intervals: BinaryHeap<HitInterval>,
     suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
     duration: Option<&Duration>,
@@ -428,40 +429,95 @@ where
 {
     let hits_found = !intervals.is_empty();
 
-    while let Some(best_alignment) = intervals.pop() {
-        // Determine relative-to-chromosome position
-        match interval2coordinate(&best_alignment, suffix_array, identifier_position_map, rng) {
-            Ok(int2coord_out) => {
-                let updated_best_alignment_interval_size =
-                    best_alignment.interval.size - int2coord_out.num_skipped;
+    let mut intervals = intervals.into_sorted_vec();
 
-                let alternative_hits = if updated_best_alignment_interval_size > 1 {
-                    format!("mm,{},;", updated_best_alignment_interval_size)
-                } else if intervals.len() > 9 {
-                    "pu,,;".into()
-                } else if !intervals.is_empty() {
-                    let mut buf = "pu,".to_string();
-                    buf.extend(
-                        intervals
+    while let Some(best_alignment) = intervals.pop() {
+        // REMEMBER: The best-scoring alignment has been `pop()`ed,
+        // so `intervals`, from here, only contains suboptimal alignments
+
+        let mut best_i2co_iter =
+            interval2coordinate(&best_alignment, suffix_array, identifier_position_map, rng)?;
+
+        // The first position is reported in the BAM record
+        match best_i2co_iter.next() {
+            Some(best_i2co) => {
+                let updated_best_alignment_interval_size =
+                    best_alignment.interval.size - best_i2co.num_skipped;
+
+                // Alternative hits (same or worse score) are reported via BAM auxiliary fields
+                let alternative_hits = {
+                    // Chain best multi-mapping hits and suboptimal alignments
+                    let xa = best_i2co_iter
+                        .chain(
+                            intervals
+                                .iter()
+                                .rev()
+                                // Remove duplicates (coming from e.g. InDels in homopolymers)
+                                .filter(|suboptimal_alignment| {
+                                    suboptimal_alignment.interval != best_alignment.interval
+                                })
+                                // Report all valid positions of each suboptimal alignment
+                                .filter_map(|suboptimal_alignment| {
+                                    interval2coordinate(
+                                        suboptimal_alignment,
+                                        suffix_array,
+                                        identifier_position_map,
+                                        rng,
+                                    )
+                                    .ok()
+                                })
+                                .flatten(),
+                        )
+                        .map(|i2co| {
+                            let (pre_cigar, md, nm) =
+                                i2co.interval.edit_operations.to_bam_fields(i2co.strand);
+                            format!(
+                                "{},{}{},{},{},{},{},{:.2};",
+                                i2co.contig_name,
+                                match i2co.strand {
+                                    Direction::Forward => '+',
+                                    Direction::Backward => '-',
+                                },
+                                i2co.relative_pos + 1,
+                                sam::record::Cigar::from(pre_cigar),
+                                String::from_utf8_lossy(&md),
+                                nm,
+                                i2co.interval.interval.size,
+                                i2co.interval.alignment_score,
+                            )
+                        })
+                        .take(5)
+                        .collect::<String>();
+
+                    AlternativeAlignments {
+                        x0: updated_best_alignment_interval_size
+                            .try_into()
+                            .unwrap_or(i32::MAX),
+                        x1: intervals
                             .iter()
-                            .filter(|subopt_intv| subopt_intv.interval != best_alignment.interval)
-                            .map(|subopt_intv| {
-                                format!(
-                                    "{},{:.2};",
-                                    subopt_intv.interval.size, subopt_intv.alignment_score
-                                )
-                            }),
-                    );
-                    buf
-                } else if updated_best_alignment_interval_size == 1 {
-                    "uq,,;".into()
-                } else {
-                    "".into()
+                            .filter(|suboptimal_alignment| {
+                                suboptimal_alignment.interval != best_alignment.interval
+                            })
+                            .map(|suboptimal_alignment| suboptimal_alignment.interval.size)
+                            .sum::<usize>()
+                            .try_into()
+                            .unwrap_or(i32::MAX),
+                        xa,
+                        xs: intervals
+                            .last()
+                            .map(|suboptimal_alignment| suboptimal_alignment.alignment_score)
+                            .unwrap_or_default(),
+                        xt: match updated_best_alignment_interval_size {
+                            0 => 'N',
+                            1 => 'U',
+                            _ => 'R',
+                        },
+                    }
                 };
 
                 return bam_record_helper(
                     input_record,
-                    Some(int2coord_out.relative_pos),
+                    Some(best_i2co.relative_pos),
                     Some(&best_alignment),
                     Some(estimate_mapping_quality(
                         &best_alignment,
@@ -469,14 +525,14 @@ where
                         &intervals,
                         alignment_parameters,
                     )),
-                    Some(int2coord_out.tid),
-                    Some(int2coord_out.strand),
+                    Some(best_i2co.tid),
+                    Some(best_i2co.strand),
                     duration,
-                    alternative_hits,
+                    Some(alternative_hits),
                 );
             }
-            Err(e) => {
-                debug!("{}. Try again with next best hit.", e);
+            None => {
+                debug!("Mapped coordinate overlaps contig boundary. Try again with next best hit.");
             }
         }
     }
@@ -497,7 +553,7 @@ where
         None,
         None,
         duration,
-        "".into(),
+        None,
     )
 }
 
@@ -522,19 +578,12 @@ where
         .collect::<Vec<_>>()
 }
 
-struct IntToCoordOutput {
-    tid: u32,
-    relative_pos: u64,
-    strand: Direction,
-    num_skipped: usize,
-}
-
-fn interval2coordinate<S, R>(
-    interval: &HitInterval,
-    suffix_array: &S,
-    identifier_position_map: &FastaIdPositions,
+fn interval2coordinate<'a, S, R>(
+    interval: &'a HitInterval,
+    suffix_array: &'a S,
+    identifier_position_map: &'a FastaIdPositions,
     rng: &mut R,
-) -> Result<IntToCoordOutput>
+) -> Result<impl Iterator<Item = IntToCoordOutput<'a>> + 'a>
 where
     R: RngCore,
     S: SuffixArray,
@@ -544,46 +593,46 @@ where
     // Get amount of positions in the genome covered by the read
     let effective_read_len = interval.edit_operations.effective_len();
 
-    // If this function returns an error that's likely because the best-scoring interval mappings
-    // overlap contig boundaries. In that case, we can drop the best-scoring interval and
-    // re-evaluate (coordinates & MQ) the mapping with the remainder of the hit interval heap.
-    PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
-        .ok_or_else(|| {
-            Error::InvalidIndex("Could not enumerate possible reference positions".into())
-        })?
-        // This is to count the number of skipped invalid positions
-        .enumerate()
-        .find_map(|(i, sar_pos)| {
-            suffix_array
-                .get(sar_pos)
-                // Determine strand
-                .map(|absolute_pos| {
-                    if absolute_pos < strand_len {
-                        (absolute_pos, Direction::Forward)
-                    } else {
-                        (
-                            suffix_array.len() - absolute_pos - effective_read_len - 1,
-                            Direction::Backward,
-                        )
-                    }
-                })
-                // Convert to relative coordinates
-                .and_then(|(absolute_pos, strand)| {
-                    if let Some((tid, rel_pos)) = identifier_position_map
-                        .get_reference_identifier(absolute_pos, effective_read_len)
-                    {
-                        Some(IntToCoordOutput {
-                            tid,
-                            relative_pos: rel_pos,
-                            strand,
-                            num_skipped: i,
-                        })
-                    } else {
-                        None
-                    }
-                })
-        })
-        .ok_or(Error::ContigBoundaryOverlap)
+    Ok(
+        PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
+            .ok_or_else(|| {
+                Error::InvalidIndex("Could not enumerate possible reference positions".into())
+            })?
+            // This is to count the number of skipped invalid positions
+            .enumerate()
+            .filter_map(move |(i, sar_pos)| {
+                suffix_array
+                    .get(sar_pos)
+                    // Determine strand
+                    .map(|absolute_pos| {
+                        if absolute_pos < strand_len {
+                            (absolute_pos, Direction::Forward)
+                        } else {
+                            (
+                                suffix_array.len() - absolute_pos - effective_read_len - 1,
+                                Direction::Backward,
+                            )
+                        }
+                    })
+                    // Convert to relative coordinates
+                    .and_then(|(absolute_pos, strand)| {
+                        if let Some((tid, rel_pos, contig_name)) = identifier_position_map
+                            .get_reference_identifier(absolute_pos, effective_read_len)
+                        {
+                            Some(IntToCoordOutput {
+                                tid,
+                                interval,
+                                contig_name,
+                                relative_pos: rel_pos,
+                                strand,
+                                num_skipped: i,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+            }),
+    )
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
@@ -592,7 +641,7 @@ where
 fn estimate_mapping_quality(
     best_alignment: &HitInterval,
     best_alignment_interval_size: usize,
-    other_alignments: &BinaryHeap<HitInterval>,
+    other_alignments: &[HitInterval],
     alignment_parameters: &AlignmentParameters,
 ) -> u8 {
     const MAX_MAPQ: u8 = 37;
@@ -662,7 +711,7 @@ fn bam_record_helper(
     strand: Option<Direction>,
     duration: Option<&Duration>,
     // Contains valid content for the `YA` tag
-    alternative_hits: String,
+    alternative_hits: Option<AlternativeAlignments>,
 ) -> Result<bam::Record> {
     let mut bam_builder = bam::Record::builder();
 
@@ -774,8 +823,8 @@ fn bam_record_helper(
         .filter(|(tag, _v)| tag != b"AS")
         .filter(|(tag, _v)| tag != b"NM")
         .filter(|(tag, _v)| tag != b"MD")
-        .filter(|(tag, _v)| tag != b"YA")
-        .filter(|(tag, _v)| tag != b"XD")
+        // Remove BWA (+ mapAD) specific auxiliary fields (avoid potential confusion)
+        .filter(|(tag, _v)| !tag.starts_with(b"X"))
         .map(|(tag, value)| {
             Ok(sam::record::data::Field::new(
                 tag.as_slice()
@@ -810,14 +859,46 @@ fn bam_record_helper(
         ));
     }
 
-    // Our format differs in that we include alignment scores, so we use `YA` instead of `XA`
-    if !alternative_hits.is_empty() {
+    // Alternative alignments (augmented BWA-style)
+    if let Some(alternative_hits) = alternative_hits {
+        if !alternative_hits.xa.is_empty() {
+            aux_data.push(sam::record::data::Field::new(
+                b"XA"
+                    .as_slice()
+                    .try_into()
+                    .expect("This is not expected to fail"),
+                sam::record::data::field::Value::String(alternative_hits.xa),
+            ));
+        }
         aux_data.push(sam::record::data::Field::new(
-            b"YA"
+            b"X0"
                 .as_slice()
                 .try_into()
                 .expect("This is not expected to fail"),
-            sam::record::data::field::Value::String(alternative_hits),
+            sam::record::data::field::Value::Int32(alternative_hits.x0),
+        ));
+        aux_data.push(sam::record::data::Field::new(
+            b"X1"
+                .as_slice()
+                .try_into()
+                .expect("This is not expected to fail"),
+            sam::record::data::field::Value::Int32(alternative_hits.x1),
+        ));
+        if alternative_hits.x1 > 0 {
+            aux_data.push(sam::record::data::Field::new(
+                b"XS"
+                    .as_slice()
+                    .try_into()
+                    .expect("This is not expected to fail"),
+                sam::record::data::field::Value::Float(alternative_hits.xs),
+            ));
+        }
+        aux_data.push(sam::record::data::Field::new(
+            b"XT"
+                .as_slice()
+                .try_into()
+                .expect("This is not expected to fail"),
+            sam::record::data::field::Value::Char(alternative_hits.xt),
         ));
     }
 

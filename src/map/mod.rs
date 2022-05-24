@@ -136,3 +136,29 @@ impl PartialEq for MismatchSearchStackFrame {
 }
 
 impl Eq for MismatchSearchStackFrame {}
+
+/// Holds data used for the output of alternative alignments in a BWA-like way
+#[derive(Debug)]
+struct AlternativeAlignments {
+    // Number of best-scoring hits
+    x0: i32,
+    // Number of suboptimal hits within search space
+    x1: i32,
+    // Alternative hits; format: (chr,pos,CIGAR,MD,NM,n_hits,AS;){0,5}
+    xa: String,
+    // Alignment score of the second-best hit
+    xs: f32,
+    // Type: _U_nique/_R_epeat/_N_ot mapped
+    xt: char,
+}
+
+/// Bundles the output of `interval2coordinate()`
+#[derive(Debug)]
+struct IntToCoordOutput<'a> {
+    tid: u32,
+    contig_name: &'a str,
+    relative_pos: u64,
+    strand: Direction,
+    num_skipped: usize,
+    interval: &'a HitInterval,
+}
