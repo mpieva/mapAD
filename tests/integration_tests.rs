@@ -36,6 +36,7 @@ struct BamFieldSubset {
     x0: Option<i32>,
     x1: Option<i32>,
     xa: Option<String>,
+    xs: Option<f32>,
     xt: Option<char>,
 }
 
@@ -217,6 +218,10 @@ TGATCGATCATGCTAAAAATCGAT";
                             .data()
                             .get(b"XA".as_slice().try_into().unwrap())
                             .map(|field| field.value().as_str().unwrap().to_owned()),
+                        xs: record
+                            .data()
+                            .get(b"XS".as_slice().try_into().unwrap())
+                            .map(|field| field.value().as_float().unwrap().to_owned()),
                         xt: record
                             .data()
                             .get(b"XT".as_slice().try_into().unwrap())
@@ -244,6 +249,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -263,6 +269,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -282,6 +289,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -301,6 +309,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -320,6 +329,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -339,6 +349,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -358,6 +369,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(0),
                     xa: None,
+                    xs: None,
                     xt: Some('U'),
                 },
                 BamFieldSubset {
@@ -377,6 +389,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: None,
                     x1: None,
                     xa: None,
+                    xs: None,
                     xt: None,
                 },
                 BamFieldSubset {
@@ -396,6 +409,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(2),
                     x1: Some(0),
                     xa: Some("Chromosome_02,+139,6M,6,0,2,0.00;".into()),
+                    xs: None,
                     xt: Some('R'),
                 },
                 BamFieldSubset {
@@ -419,6 +433,7 @@ TGATCGATCATGCTAAAAATCGAT";
                     x0: Some(1),
                     x1: Some(2),
                     xa: Some("Chromosome_03,+43,42M,0C41,1,1,-0.72;Chromosome_03,+1,42M,0C40C0,2,1,-1.56;".into()),
+                    xs: Some(-0.7209588),
                     xt: Some('U'),
                 },
             ];
