@@ -74,7 +74,8 @@ AAAGAGGTAATTGACCGAAAACCCTGTAACTCACCAATATGGGTTGGCAATCTTACCAAA
 ATTCTGATGACGAAGTGTATACCCTGGCGTGCTAGTCCCTCGGCGTTGGATATCCTAGAT
 TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA
 >Chromosome_03
-CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAC";
+CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGACCCAAGAATCCGTAGACTC
+TGATCGATCATGCTAAAAATCGAT";
         writeln!(file, "{}", fasta_content).unwrap();
 
         indexing::run(test_genome_path.to_str().unwrap(), 1234).unwrap();
@@ -406,7 +407,7 @@ CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAC";
                     flags: 0.into(),
                     tid: Some(1),
                     pos: Some(188.try_into().unwrap()),
-                    mq: Some(6_u8.try_into().unwrap()),
+                    mq: Some(3_u8.try_into().unwrap()),
                     cigar: "42M".parse().unwrap(),
                     seq_len: 42,
                     seq: "TCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT"
@@ -416,8 +417,8 @@ CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAC";
                         .parse()
                         .unwrap(),
                     x0: Some(1),
-                    x1: Some(1),
-                    xa: Some("Chromosome_03,+1,42M,0C40C0,2,1,-1.56;".into()),
+                    x1: Some(2),
+                    xa: Some("Chromosome_03,+43,42M,0C41,1,1,-0.72;Chromosome_03,+1,42M,0C40C0,2,1,-1.56;".into()),
                     xt: Some('U'),
                 },
             ];
