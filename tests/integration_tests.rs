@@ -127,7 +127,7 @@ CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAC";
             },
             0.01,
             1.0,
-            base_error_rate,
+            base_error_rate / 3.0,
             false,
         );
         let representative_mm_penalty = adna_scoring_model.get_representative_mismatch_penalty();
@@ -417,7 +417,7 @@ CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAC";
                         .unwrap(),
                     x0: Some(1),
                     x1: Some(1),
-                    xa: Some("Chromosome_03,+1,42M,0C40C0,2,1,-1.53;".into()),
+                    xa: Some("Chromosome_03,+1,42M,0C40C0,2,1,-1.56;".into()),
                     xt: Some('U'),
                 },
             ];
