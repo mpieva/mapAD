@@ -192,6 +192,12 @@ Mapping quality is defined as the PHRED-scaled probability that an alignment is 
 are PHRED-scaled, and, for better compatibility with `BWA`, confined to the interval 
 <img src="https://render.githubusercontent.com/render/math?math=[0..37]">.
 
+## BAM Output
+
+mapAD uses BAM auxiliary data fields to report suboptimal alignments in a `bwa aln`-like fashion. `X0`: Number of best
+hits (multi-mapped alignment), `X1`: Number of suboptimal alignments, `XA`: 5 best suboptimal alignments in the format
+`chr,(+|-)pos,cigar,MD,NM,num_of_hits,AS`, `XT`: Type of mapping (`(N|U|R)`), `XS`: Best suboptimal alignment score.
+
 <!--- FIXME: Needs to be updated with current numbers
 ## Hardware Requirements
 
