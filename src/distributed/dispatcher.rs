@@ -4,6 +4,7 @@ use std::{
     io::{self, Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
+    time::Duration,
 };
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
@@ -362,7 +363,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     fn write_results<S, W>(
         &self,
-        hits: Vec<(Record, BinaryHeap<HitInterval>)>,
+        hits: Vec<(Record, BinaryHeap<HitInterval>, Duration)>,
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
         alignment_parameters: &AlignmentParameters,
@@ -375,17 +376,20 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         debug!("Translate suffix array intervals to genomic positions");
         let bam_records = hits
             .into_par_iter()
-            .map_init(rand::thread_rng, |mut rng, (record, hit_interval)| {
-                intervals_to_bam(
-                    record,
-                    hit_interval,
-                    suffix_array,
-                    identifier_position_map,
-                    None,
-                    alignment_parameters,
-                    &mut rng,
-                )
-            })
+            .map_init(
+                rand::thread_rng,
+                |mut rng, (record, hit_interval, duration)| {
+                    intervals_to_bam(
+                        record,
+                        hit_interval,
+                        suffix_array,
+                        identifier_position_map,
+                        Some(&duration),
+                        alignment_parameters,
+                        &mut rng,
+                    )
+                },
+            )
             .collect::<Result<Vec<_>>>()?;
 
         debug!("Write to output file");

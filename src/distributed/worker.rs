@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     io::{self, Read, Write},
     net::TcpStream,
+    time::Instant,
 };
 
 use log::{debug, info};
@@ -81,6 +82,7 @@ impl Worker {
                                 .map(|record| {
                                     STACK_BUF.with(|stack_buf| {
                                         TREE_BUF.with(|tree_buf| {
+                                            let start = Instant::now();
                                             // Here we call the instances of the generic `k_mismatch_search` function. Currently, only
                                             // `SimpleAncientDnaModel` is used, as well as `Discrete` and `Continuuous` `MismatchBound`s.
                                             // The others merely serve as an example.
@@ -189,7 +191,8 @@ impl Worker {
                                                     }
                                                 },
                                             };
-                                            (record, hit_intervals)})
+                                            let duration = start.elapsed();
+                                            (record, hit_intervals, duration)})
                                     })
                                 })
                                 .collect::<Vec<_>>();

@@ -3,7 +3,7 @@ pub mod worker;
 
 mod comm_buffers;
 
-use std::{collections::BinaryHeap, mem};
+use std::{collections::BinaryHeap, mem, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +22,7 @@ pub trait Message {
 pub struct ResultSheet {
     encoded_size: u64, // must be of type `u64` and the first element
     chunk_id: usize,
-    results: Vec<(Record, BinaryHeap<HitInterval>)>,
+    results: Vec<(Record, BinaryHeap<HitInterval>, Duration)>,
 }
 
 impl Message for ResultSheet {
@@ -34,7 +34,7 @@ impl Message for ResultSheet {
 }
 
 impl ResultSheet {
-    fn new(read_set: usize, results: Vec<(Record, BinaryHeap<HitInterval>)>) -> Self {
+    fn new(read_set: usize, results: Vec<(Record, BinaryHeap<HitInterval>, Duration)>) -> Self {
         Self {
             encoded_size: 0,
             chunk_id: read_set,
