@@ -163,6 +163,7 @@ where
 
     for chunk in records {
         debug!("Map chunk of records");
+        let bam_records = chunk
             .get_records()
             .into_par_iter()
             .map(|record| {
@@ -298,6 +299,7 @@ where
             .collect::<Result<Vec<_>>>()?;
 
         debug!("Write chunk of BAM records to output file");
+        for record in bam_records.iter() {
             out_file.write_record(record)?;
         }
     }
