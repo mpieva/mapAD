@@ -162,8 +162,7 @@ where
     }
 
     for chunk in records {
-        debug!("Map chunk of reads");
-        let results = chunk
+        debug!("Map chunk of records");
             .get_records()
             .into_par_iter()
             .map(|record| {
@@ -298,8 +297,7 @@ where
             )
             .collect::<Result<Vec<_>>>()?;
 
-        debug!("Write BAM records to output file serially");
-        for record in results.iter() {
+        debug!("Write chunk of BAM records to output file");
             out_file.write_record(record)?;
         }
     }

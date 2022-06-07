@@ -392,7 +392,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             )
             .collect::<Result<Vec<_>>>()?;
 
-        debug!("Write to output file");
+        debug!("Write chunk of BAM records to output file");
         for record in bam_records.iter() {
             out_file.write_record(record)?;
         }
