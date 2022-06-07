@@ -486,7 +486,7 @@ where
                                 i2co.interval.alignment_score,
                             )
                         })
-                        .take(5)
+                        .take(2)
                         .collect::<String>();
 
                     AlternativeAlignments {
