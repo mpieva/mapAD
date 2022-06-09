@@ -599,8 +599,7 @@ where
         .ok_or_else(|| {
             Error::InvalidIndex("Could not enumerate possible reference positions".into())
         })?
-        // This is to count the number of skipped invalid positions
-        .enumerate()
+        .enumerate() // Count the number of skipped invalid positions
         .filter_map(move |(i, sar_pos)| {
             suffix_array
                 .get(sar_pos)
