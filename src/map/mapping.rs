@@ -593,46 +593,46 @@ where
     // Get amount of positions in the genome covered by the read
     let effective_read_len = interval.edit_operations.effective_len();
 
-    Ok(
-        PrRange::try_from_range(&interval.interval.range_fwd(), rng.next_u32() as usize)
-            .ok_or_else(|| {
-                Error::InvalidIndex("Could not enumerate possible reference positions".into())
-            })?
-            // This is to count the number of skipped invalid positions
-            .enumerate()
-            .filter_map(move |(i, sar_pos)| {
-                suffix_array
-                    .get(sar_pos)
-                    // Determine strand
-                    .map(|absolute_pos| {
-                        if absolute_pos < strand_len {
-                            (absolute_pos, Direction::Forward)
-                        } else {
-                            (
-                                suffix_array.len() - absolute_pos - effective_read_len - 1,
-                                Direction::Backward,
-                            )
-                        }
-                    })
-                    // Convert to relative coordinates
-                    .and_then(|(absolute_pos, strand)| {
-                        if let Some((tid, rel_pos, contig_name)) = identifier_position_map
-                            .get_reference_identifier(absolute_pos, effective_read_len)
-                        {
-                            Some(IntToCoordOutput {
-                                tid,
-                                interval,
-                                contig_name,
-                                relative_pos: rel_pos,
-                                strand,
-                                num_skipped: i,
-                            })
-                        } else {
-                            None
-                        }
-                    })
-            }),
-    )
+    Ok(usize::try_from(rng.next_u32())
+        .ok()
+        .and_then(|seed| PrRange::try_from_range(&interval.interval.range_fwd(), seed))
+        .ok_or_else(|| {
+            Error::InvalidIndex("Could not enumerate possible reference positions".into())
+        })?
+        // This is to count the number of skipped invalid positions
+        .enumerate()
+        .filter_map(move |(i, sar_pos)| {
+            suffix_array
+                .get(sar_pos)
+                // Determine strand
+                .map(|absolute_pos| {
+                    if absolute_pos < strand_len {
+                        (absolute_pos, Direction::Forward)
+                    } else {
+                        (
+                            suffix_array.len() - absolute_pos - effective_read_len - 1,
+                            Direction::Backward,
+                        )
+                    }
+                })
+                // Convert to relative coordinates
+                .and_then(|(absolute_pos, strand)| {
+                    if let Some((tid, rel_pos, contig_name)) = identifier_position_map
+                        .get_reference_identifier(absolute_pos, effective_read_len)
+                    {
+                        Some(IntToCoordOutput {
+                            tid,
+                            interval,
+                            contig_name,
+                            relative_pos: rel_pos,
+                            strand,
+                            num_skipped: i,
+                        })
+                    } else {
+                        None
+                    }
+                })
+        }))
 }
 
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
