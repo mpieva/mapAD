@@ -211,6 +211,13 @@ pub mod tests {
     }
 
     #[test]
+    fn itw_bug_case_1() {
+        let range = 5233065207..5233065216_usize;
+        let randrange = PrRange::try_from_range(&range, 400636091).unwrap();
+        assert_eq!(randrange.count(), 9);
+    }
+
+    #[test]
     fn small_range() {
         let start = 1;
         let end = 2;
