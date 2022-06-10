@@ -48,7 +48,7 @@ impl PrRange {
         }
 
         let m = next_prime(l);
-        let mut a = (seed % m).max(2);
+        let mut a = 2;
 
         while !is_primitive_root(a, m)? {
             a += 1;
