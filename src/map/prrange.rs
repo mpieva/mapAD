@@ -41,18 +41,21 @@ impl Iterator for PrRange {
 
 impl PrRange {
     pub fn try_new(start: usize, end: usize, seed: usize) -> Option<Self> {
-        // We don't allow any empty ranges
+        // We don't allow empty or negative ranges
         let l = end.saturating_sub(start);
         if l == 0 {
             return None;
         }
 
         let m = next_prime(l);
-        let mut a = 2;
 
-        while !is_primitive_root(a, m)? {
-            a += 1;
-        }
+        let a = {
+            let mut a = 2;
+            while !is_primitive_root(a, m)? {
+                a += 1;
+            }
+            a
+        };
 
         let seed = (seed % l).max(1);
 
