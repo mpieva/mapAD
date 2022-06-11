@@ -244,4 +244,18 @@ pub mod tests {
         let end = 1;
         assert!(PrRange::try_new(start, end, 1234).is_none());
     }
+
+    #[test]
+    fn test_seeds() {
+        let from = 0;
+        let to = 100;
+        for start in from..=to {
+            for end in start + 1..=to {
+                for seed in from..=to {
+                    let randrange = PrRange::try_new(start, end, seed).unwrap();
+                    assert_eq!(randrange.count(), end - start);
+                }
+            }
+        }
+    }
 }
