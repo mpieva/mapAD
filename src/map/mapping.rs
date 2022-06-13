@@ -648,7 +648,7 @@ fn estimate_mapping_quality(
     assert!(MIN_MAPQ_UNIQ <= MAX_MAPQ);
 
     let alignment_probability = {
-        let ratio_best = 2_f32.powf(best_alignment.alignment_score);
+        let prob_best = 2_f32.powf(best_alignment.alignment_score);
         if best_alignment_interval_size > 1 {
             // Multi-mapping
             1.0 / best_alignment_interval_size as f32
@@ -667,7 +667,7 @@ fn estimate_mapping_quality(
                     acc + 2_f32.powf(suboptimal_alignment.alignment_score)
                         * suboptimal_alignment.interval.size as f32
                 });
-            ratio_best / (ratio_best + weighted_suboptimal_alignments)
+            prob_best / (prob_best + weighted_suboptimal_alignments)
         }
     }
     // Guard against rounding errors
