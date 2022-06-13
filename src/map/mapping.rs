@@ -644,7 +644,7 @@ fn estimate_mapping_quality(
     alignment_parameters: &AlignmentParameters,
 ) -> u8 {
     const MAX_MAPQ: u8 = 37;
-    const MIN_MAPQ_UNIQ: u8 = 25;
+    const MIN_MAPQ_UNIQ: u8 = 20;
     assert!(MIN_MAPQ_UNIQ <= MAX_MAPQ);
 
     let alignment_probability = {
