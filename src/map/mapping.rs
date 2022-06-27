@@ -515,7 +515,7 @@ where
                     }
                 };
 
-                return bam_record_helper(
+                return create_bam_record(
                     input_record,
                     Some(best_i2co.relative_pos),
                     Some(&best_alignment),
@@ -545,7 +545,7 @@ where
     }
 
     // No match found, report unmapped read
-    bam_record_helper(
+    create_bam_record(
         input_record,
         None,
         None,
@@ -701,7 +701,7 @@ fn estimate_mapping_quality(
 
 /// Create and return a BAM record of either a hit or an unmapped read
 #[allow(clippy::too_many_arguments)]
-fn bam_record_helper(
+fn create_bam_record(
     input_record: Record,
     position: Option<u64>,
     hit_interval: Option<&HitInterval>,
@@ -825,7 +825,7 @@ fn bam_record_helper(
     let mut aux_data = input_record
         .bam_tags
         .into_iter()
-        // Remove BWA (+ mapAD) specific auxiliary fields (avoid potential confusion)
+        // Remove BWA (+ mapAD) specific auxiliary fields (avoids potential confusion)
         .filter(|(tag, _v)| !tag_filter.contains(&tag))
         .map(|(tag, value)| {
             Ok(sam::record::data::Field::new(
