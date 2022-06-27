@@ -815,15 +815,18 @@ fn bam_record_helper(
 
     // Add optional tags
 
+    // BAM auxiliary data tags that will be removed
+    let tag_filter = [
+        b"AS", b"MD", b"NM", b"X0", b"X1", b"XA", b"XD", b"XE", b"XF", b"XG", b"XM", b"XN", b"XO",
+        b"XS", b"XT",
+    ];
+
     // Add tags that were already present in the input
     let mut aux_data = input_record
         .bam_tags
         .into_iter()
-        .filter(|(tag, _v)| tag != b"AS")
-        .filter(|(tag, _v)| tag != b"NM")
-        .filter(|(tag, _v)| tag != b"MD")
         // Remove BWA (+ mapAD) specific auxiliary fields (avoid potential confusion)
-        .filter(|(tag, _v)| !tag.starts_with(b"X"))
+        .filter(|(tag, _v)| !tag_filter.contains(&tag))
         .map(|(tag, value)| {
             Ok(sam::record::data::Field::new(
                 tag.as_slice()
