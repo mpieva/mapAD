@@ -1,7 +1,7 @@
 # mapAD
 
 This is another attempt to write a _fast enough_ experimental ancient DNA damage aware short read mapper.
-This work depends heavily on the excellent [rust-bio](https://rust-bio.github.io/) crate
+This work depends on the [rust-bio](https://rust-bio.github.io/) crate
 ([Köster, 2016](https://doi.org/10.1093/bioinformatics/btv573)).
 
 mapAD uses pure backtracking on top of the bidirectional
@@ -64,7 +64,7 @@ Please note that the resulting binary is not portable.
 ## Usage
 
 The subprograms `mapad index` and `mapad map` will index the reference and map reads to it, respectively.
-Adding ` --help` will print a list of available and required command line options.
+Adding the ` --help` flag will print a list of available and required command line options.
 
 ### Indexing Reference Genomes
 
@@ -210,6 +210,8 @@ refers to the number of position an alignment maps to.
 Mapping quality is defined as the PHRED-scaled probability that an alignment is incorrect. Hence the above probabilities
 are PHRED-scaled, and, for better compatibility with `BWA`, confined to the interval
 <img src="https://render.githubusercontent.com/render/math?math=[0..37]">.
+
+A recommended equivalent to a mapping quality threshold of 25 for BWA mapped data is 20 for mapAD output.
 
 ## BAM Output
 
