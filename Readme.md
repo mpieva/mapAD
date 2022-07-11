@@ -140,12 +140,12 @@ the center of a read is approached.
 ./mapad -vv map \
 --library single_stranded                                  `# Library preparation protocol (single- or double-stranded)` \
 -p 0.03                                                    `# Allowed mismatches under `-D` base error rate (similar to BWA backtrack)` \
--f 0.5                                                     `# Five-prime overhang parameter` \
--t 0.5                                                     `# Three-prime overhang parameter` \
--d 0.01                                                    `# Deamination rate in double-stranded parts` \
+-f 0.5                                                     `# Five-prime overhang parameter` (generic overhang parameter when "--library" is set to "double_stranded") \
+-t 0.5                                                     `# Three-prime overhang parameter` (not used if "--library" is set to "double_stranded") \
+-d 0.02                                                    `# Deamination rate in double-stranded parts` \
 -s 1.0                                                     `# Deamination rate in single-stranded overhangs` \
--D 0.02                                                    `# Base error rate / divergence` \
--i 0.0001                                                  `# InDel rate (corresponds to gap open penalty)` \
+-i 0.0005                                                  `# InDel rate (corresponds to gap open penalty)` \
+-x 0.7                                                     `# Gap extension penalty as a fraction of the repr. mismatch penalty` \
 --reads "${input_bam}" \
 --reference "/path/to/reference/hg19.fasta"                `# Prefix of index files` \
 --output "${output_bam}"
@@ -168,26 +168,6 @@ Spawn workers:
    ```bash
    qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vv worker --host $(hostname)
    ```
-
-##### 2) Vindija-like Deamination Parameters
-
-The following example aligns reads that are expected to have a Vindija-like deamination pattern to an existing index of
-the hg19 reference.
-
-```bash
-./mapad -vv map \
---library single_stranded \
--p 0.03 \
--f 0.475 \
--t 0.475 \
--d 0.01 \
--s 0.9 \
--D 0.02 \
--i 0.0001 \
---reads "${input_bam}" \
---reference "/path/to/reference/hg19.fasta" \
---output "${output_bam}"
-```
 
 ## Mapping Quality
 
