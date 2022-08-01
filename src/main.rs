@@ -245,7 +245,7 @@ fn define_cli() -> ArgMatches {
                 .arg(
                     Arg::new("gap_dist_ends")
                         .long("gap_dist_ends")
-                        .help("Disallow allow gaps at read ends (configurable range)")
+                        .help("Disallow gaps at read ends (configurable range)")
                         .takes_value(true)
                         .default_value("5")
                         .value_name("INT")
