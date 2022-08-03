@@ -250,6 +250,7 @@ mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let pattern = b"CCCCCCC";

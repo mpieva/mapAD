@@ -926,6 +926,7 @@ fn create_bam_record(
 
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
+#[allow(clippy::too_many_arguments)]
 fn check_and_push_stack_frame<MB>(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
@@ -934,6 +935,7 @@ fn check_and_push_stack_frame<MB>(
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
     intervals: &mut BinaryHeap<HitInterval>,
     mismatch_bound: &MB,
+    alignment_parameters: &AlignmentParameters,
 ) where
     MB: MismatchBound,
 {
@@ -948,6 +950,10 @@ fn check_and_push_stack_frame<MB>(
         ) {
             return;
         }
+    }
+
+    if stack_frame.num_gaps_open > alignment_parameters.max_num_gaps_open {
+        return;
     }
 
     stack_frame.edit_node_id = edit_tree
@@ -1038,6 +1044,7 @@ where
         direction: Direction::Forward,
         gap_backwards: GapState::Closed,
         gap_forwards: GapState::Closed,
+        num_gaps_open: 0,
         alignment_score: 0.0,
         edit_node_id: root_node,
     });
@@ -1058,6 +1065,7 @@ where
             deletion_score,
             next_closed_gap_backward,
             next_closed_gap_forward,
+            num_gaps_open,
         );
         let mut mm_scores = [0_f32; 4];
         match stack_frame.direction {
@@ -1093,6 +1101,11 @@ where
                     ) - optimal_penalty
                         + stack_frame.alignment_score;
                 }
+                num_gaps_open = if stack_frame.gap_forwards == GapState::Closed {
+                    stack_frame.num_gaps_open + 1
+                } else {
+                    stack_frame.num_gaps_open
+                };
             }
             Direction::Backward => {
                 next_forward_index = stack_frame.forward_index;
@@ -1126,6 +1139,11 @@ where
                     ) - optimal_penalty
                         + stack_frame.alignment_score;
                 }
+                num_gaps_open = if stack_frame.gap_backwards == GapState::Closed {
+                    stack_frame.num_gaps_open + 1
+                } else {
+                    stack_frame.num_gaps_open
+                };
             }
         };
 
@@ -1161,6 +1179,7 @@ where
                         gap_backwards: next_insertion_backward,
                         gap_forwards: next_insertion_forward,
                         alignment_score: insertion_score,
+                        num_gaps_open,
                         ..stack_frame
                     },
                     pattern,
@@ -1169,6 +1188,7 @@ where
                     stack,
                     &mut hit_intervals,
                     mismatch_bound,
+                    parameters,
                 );
             }
         }
@@ -1205,6 +1225,7 @@ where
                             gap_backwards: next_deletion_backward,
                             gap_forwards: next_deletion_forward,
                             alignment_score: deletion_score,
+                            num_gaps_open,
                             ..stack_frame
                         },
                         pattern,
@@ -1213,6 +1234,7 @@ where
                         stack,
                         &mut hit_intervals,
                         mismatch_bound,
+                        parameters,
                     );
                 }
             }
@@ -1244,6 +1266,7 @@ where
                         stack,
                         &mut hit_intervals,
                         mismatch_bound,
+                        parameters,
                     );
                 }
             }
@@ -1322,6 +1345,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "ACGTACGTACGTACGT".as_bytes().to_owned();
@@ -1379,6 +1403,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "GAAAAG".as_bytes().to_owned();
@@ -1433,6 +1458,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "TAT".as_bytes().to_owned(); // revcomp = "ATA"
@@ -1487,6 +1513,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 5,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "AAAAAGGGGAAAAA".as_bytes().to_owned();
@@ -1545,6 +1572,90 @@ pub mod tests {
     }
 
     #[test]
+    fn test_gap_open_limit() {
+        let difference_model = TestDifferenceModel {
+            deam_score: -10.0,
+            mm_score: -10.0,
+            match_score: 0.0,
+        };
+        let mmb = TestBound {
+            threshold: -6.0,
+            representative_mm_bound: -10.0,
+        };
+
+        let parameters = AlignmentParameters {
+            difference_model: difference_model.clone().into(),
+            mismatch_bound: mmb.clone().into(),
+            penalty_gap_open: -2.0,
+            penalty_gap_extend: -1.0,
+            chunk_size: 1,
+            gap_dist_ends: 5,
+            stack_limit_abort: false,
+            max_num_gaps_open: 1,
+        };
+
+        let ref_seq = "CTAGCCAGCGATTTACATGCTCTCGGAATATCGACATGTA"
+            .as_bytes()
+            .to_owned();
+
+        // Reference
+        let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
+        let (fmd_index, suffix_array) = build_auxiliary_structures(ref_seq, alphabet);
+
+        // One gap (allowed)
+        let pattern = "CTAGCCAGCGAACATGCTCTCGGAATATCGACATGTA"
+            .as_bytes()
+            .to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+            &mut tree_buf,
+            &difference_model,
+            &mmb,
+        );
+
+        let positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        assert!(positions.contains(&0));
+
+        // Two gap (not allowed)
+        let pattern = "CTAGCCAGCGATTACATGCTCTCGGAATTCGACATGTA"
+            .as_bytes()
+            .to_owned();
+        let base_qualities = vec![0; pattern.len()];
+
+        let mut stack_buf = MinMaxHeap::new();
+        let mut tree_buf = Tree::new();
+        let intervals = k_mismatch_search(
+            &pattern,
+            &base_qualities,
+            &parameters,
+            &fmd_index,
+            &mut stack_buf,
+            &mut tree_buf,
+            &difference_model,
+            &mmb,
+        );
+
+        let positions: Vec<usize> = intervals
+            .into_iter()
+            .map(|f| f.interval.forward().occ(&suffix_array))
+            .flatten()
+            .collect();
+        assert!(positions.is_empty());
+    }
+
+    #[test]
     fn test_vindija_pwm_alignment() {
         let difference_model = VindijaPwm::new();
         let mmb = TestBound {
@@ -1561,6 +1672,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "CCCCCC".as_bytes().to_owned(); // revcomp = "ATA"
@@ -1673,6 +1785,7 @@ pub mod tests {
             direction: Direction::Backward,
             gap_forwards: GapState::Closed,
             gap_backwards: GapState::Closed,
+            num_gaps_open: 0,
             edit_node_id: root_id,
         };
         let map_params_small = MismatchSearchStackFrame {
@@ -1687,6 +1800,7 @@ pub mod tests {
             direction: Direction::Backward,
             gap_forwards: GapState::Closed,
             gap_backwards: GapState::Closed,
+            num_gaps_open: 0,
             edit_node_id: root_id,
         };
 
@@ -1709,6 +1823,7 @@ pub mod tests {
             mismatch_bound: mmb.clone().into(),
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         // "correct" "AAAAAAAAAAAAAAAAAAAA" (20x 'A') "incorrect"
@@ -1778,6 +1893,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         //
@@ -1957,6 +2073,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let mut stack_buf = MinMaxHeap::new();
@@ -2006,6 +2123,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         //
@@ -2063,6 +2181,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let mut stack_buf = MinMaxHeap::new();
@@ -2195,6 +2314,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "AAAGCGTTTGCG".as_bytes().to_owned();
@@ -2267,6 +2387,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let ref_seq = "GATTACA".as_bytes().to_owned(); // revcomp = "TGTAATC"
@@ -2352,6 +2473,7 @@ pub mod tests {
             chunk_size: 1,
             gap_dist_ends: 0,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
@@ -2524,6 +2646,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             chunk_size: 1,
             gap_dist_ends: 5,
             stack_limit_abort: false,
+            max_num_gaps_open: 2,
         };
 
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);

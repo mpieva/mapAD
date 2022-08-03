@@ -26,6 +26,7 @@ pub struct AlignmentParameters {
     pub penalty_gap_extend: f32,
     pub chunk_size: usize,
     pub gap_dist_ends: u8,
+    pub max_num_gaps_open: u8,
     pub stack_limit_abort: bool,
 }
 
@@ -111,6 +112,7 @@ pub struct MismatchSearchStackFrame {
     direction: Direction,
     gap_forwards: GapState,
     gap_backwards: GapState,
+    num_gaps_open: u8,
     alignment_score: f32,
     edit_node_id: NodeId,
 }

@@ -251,6 +251,14 @@ fn define_cli() -> ArgMatches {
                         .value_name("INT")
                 )
                 .arg(
+                    Arg::new("max_num_gaps_open")
+                        .long("max_num_gaps_open")
+                        .help("Max. number of opened gaps")
+                        .takes_value(true)
+                        .default_value("2")
+                        .value_name("INT")
+                )
+                .arg(
                     Arg::new("stack_limit_abort")
                         .long("stack_limit_abort")
                         .help("Abort alignment when stack size limit is reached instead of trying to recover.")
@@ -454,5 +462,8 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
             .value_of_t("gap_dist_ends")
             .unwrap_or_else(|e| e.exit()),
         stack_limit_abort: arg_matches.is_present("stack_limit_abort"),
+        max_num_gaps_open: arg_matches
+            .value_of_t("max_num_gaps_open")
+            .unwrap_or_else(|e| e.exit()),
     }
 }
