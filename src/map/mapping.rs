@@ -1312,8 +1312,6 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use std::mem;
-
     use assert_approx_eq::assert_approx_eq;
     use bio::alphabets;
     use noodles::sam;
@@ -2806,10 +2804,5 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
             );
             assert_eq!(intervals.len(), 1);
         }
-    }
-
-    #[test]
-    fn stack_frame_size() {
-        assert_eq!(40, mem::size_of::<MismatchSearchStackFrame>());
     }
 }

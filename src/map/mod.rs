@@ -164,3 +164,15 @@ struct IntToCoordOutput<'a> {
     num_skipped: usize,
     interval: &'a HitInterval,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::mem;
+
+    use super::*;
+
+    #[test]
+    fn stack_frame_size() {
+        assert_eq!(40, mem::size_of::<MismatchSearchStackFrame>());
+    }
+}
