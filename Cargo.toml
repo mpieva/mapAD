@@ -34,6 +34,9 @@ time = { version = "0.3", features = ["local-offset"] }
 criterion = "0.3"
 tempfile = "3.3"
 
+[build-dependencies]
+built = { version = "0.5", features = ["git2"] }
+
 [[bench]]
 name = "benchmark"
 harness = false

@@ -10,7 +10,7 @@ use std::{
 };
 
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
-use clap::{crate_description, crate_version};
+use clap::crate_description;
 use log::{debug, info, trace, warn};
 use min_max_heap::MinMaxHeap;
 use noodles::{bam, sam};
@@ -18,6 +18,7 @@ use rand::RngCore;
 use rayon::prelude::*;
 
 use crate::{
+    build_info,
     errors::{Error, Result},
     index::{
         load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
@@ -330,7 +331,7 @@ pub fn create_bam_header(
         sam::header::Program::builder()
             .set_id(pg_id)
             .set_name(CRATE_NAME)
-            .set_version(crate_version!())
+            .set_version(build_info::get_software_version())
             .set_description(crate_description!())
             .set_command_line(cmdline)
     };

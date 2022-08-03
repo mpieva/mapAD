@@ -1,4 +1,4 @@
-use clap::{crate_description, crate_version, Arg, ArgMatches, Command};
+use clap::{crate_description, Arg, ArgMatches, Command};
 use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
@@ -6,6 +6,7 @@ use simple_logger::SimpleLogger;
 use time::UtcOffset;
 
 use mapad::{
+    build_info,
     distributed::{dispatcher, worker},
     index::indexing,
     map::{
@@ -42,7 +43,7 @@ fn define_cli() -> ArgMatches {
 
     Command::new(CRATE_NAME)
         .about(crate_description!())
-        .version(crate_version!())
+        .version(&*build_info::get_software_version())
         .subcommand_required(true)
         .arg_required_else_help(true)
         .arg(
@@ -82,7 +83,6 @@ fn define_cli() -> ArgMatches {
         .subcommand(
             Command::new("index")
                 .about("Indexes a genome file")
-                .version(crate_version!())
                 .arg(
                     Arg::new("reference")
                         .required(true)
@@ -96,7 +96,6 @@ fn define_cli() -> ArgMatches {
         .subcommand(
             Command::new("map")
                 .about("Maps reads to an indexed genome")
-                .version(crate_version!())
                 .arg(
                     Arg::new("reads")
                         .required(true)
@@ -269,7 +268,6 @@ fn define_cli() -> ArgMatches {
         .subcommand(
             Command::new("worker")
                 .about("Spawns worker")
-                .version(crate_version!())
                 .arg(
                     Arg::new("host")
                         .required(true)
