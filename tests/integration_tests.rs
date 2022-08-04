@@ -7,7 +7,7 @@ use std::{
 use noodles::{
     bam,
     core::Position,
-    sam::{self, AlignmentRecord, AlignmentWriter},
+    sam::{self, AlignmentWriter},
 };
 use tempfile::tempdir;
 
@@ -84,7 +84,13 @@ TGATCGATCATGCTAAAAATCGAT";
 
     // Create test reads and store them in a BAM file
     {
-        let sam_content = "\
+        let sam_content = b"\
+        @HD\tVN:1.0\n\
+        @RG\tID:A12345\tSM:Sample1\n\
+        @SQ\tSN:chr1\tLN:600\n\
+        @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
+        @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
+        @PG\tID:mapAD.1\tPN:mapAD\tCL:mapad map\tPP:mapAD\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
         A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
         A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t589\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
         A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t16\t*\t0\t0\t28M\t*\t0\t0\tCCTGGTCGTTCCCTAAGTTCATTGTTAA\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\n\
@@ -96,25 +102,18 @@ TGATCGATCATGCTAAAAATCGAT";
         A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCCTCAT\t]]]]]]\n\
         A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
 
-        let input_bam_header =
-            "\
-            @HD\tVN:1.0\n\
-            @RG\tID:A12345\tSM:Sample1\n\
-            @SQ\tSN:chr1\tLN:600\n\
-            @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
-            @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
-            @PG\tID:mapAD.1\tPN:mapAD\tCL:mapad map\tPP:mapAD\tDS:An aDNA aware short-read mapper\tVN:0.0.33\n\
-            ".parse().unwrap();
+        let mut sam_reader = sam::Reader::new(&sam_content[..]);
+        let input_sam_header = sam_reader.read_header().unwrap().parse().unwrap();
 
         let mut input_bam_file = bam::Writer::new(File::create(&input_bam_path).unwrap());
-        input_bam_file.write_header(&input_bam_header).unwrap();
+        input_bam_file.write_header(&input_sam_header).unwrap();
         input_bam_file
-            .write_reference_sequences(input_bam_header.reference_sequences())
+            .write_reference_sequences(input_sam_header.reference_sequences())
             .unwrap();
-        for sam_line in sam_content.lines() {
-            let sam_record = sam_line.parse::<sam::Record>().unwrap();
+        for sam_record in sam_reader.records(&input_sam_header) {
+            let sam_record = sam_record.unwrap();
             input_bam_file
-                .write_alignment_record(&input_bam_header, &sam_record)
+                .write_alignment_record(&input_sam_header, &sam_record)
                 .unwrap();
         }
     }
@@ -201,7 +200,7 @@ TGATCGATCATGCTAAAAATCGAT";
                         name: record.read_name().cloned(),
                         flags: record.flags().to_owned(),
                         tid: record.reference_sequence_id(),
-                        pos: record.position(),
+                        pos: record.alignment_start(),
                         mq: record.mapping_quality(),
                         cigar: record.cigar().to_owned(),
                         seq_len: record.sequence().len(),
@@ -226,7 +225,7 @@ TGATCGATCATGCTAAAAATCGAT";
                         xt: record
                             .data()
                             .get(b"XT".as_slice().try_into().unwrap())
-                            .map(|field| field.value().as_char().unwrap()),
+                            .map(|field| field.value().as_character().unwrap().into()),
                     })
                 })
                 .collect::<io::Result<Vec<_>>>()

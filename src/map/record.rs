@@ -2,10 +2,7 @@ use std::{collections::BTreeMap, fmt};
 
 use bio::{alphabets::dna, io::fastq};
 use either::Either;
-use noodles::{
-    bam,
-    sam::{self, AlignmentRecord},
-};
+use noodles::sam;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -43,7 +40,7 @@ impl From<&sam::record::data::field::Value> for BamAuxField {
     fn from(input: &sam::record::data::field::Value) -> Self {
         use sam::record::data::field::Value;
         match input {
-            Value::Char(v) => BamAuxField::Char(*v as u8),
+            Value::Character(v) => BamAuxField::Char(u8::from(*v)),
             Value::Int8(v) => BamAuxField::I8(*v),
             Value::UInt8(v) => BamAuxField::U8(*v),
             Value::Int16(v) => BamAuxField::I16(*v),
@@ -69,7 +66,9 @@ impl From<BamAuxField> for sam::record::data::field::Value {
     fn from(input: BamAuxField) -> Self {
         use sam::record::data::field::Value;
         match input {
-            BamAuxField::Char(v) => Value::Char(v.into()),
+            BamAuxField::Char(v) => {
+                Value::Character(v.try_into().expect("Char is guaranteed to be ASCII"))
+            }
             BamAuxField::I8(v) => Value::Int8(v),
             BamAuxField::U8(v) => Value::UInt8(v),
             BamAuxField::I16(v) => Value::Int16(v),
@@ -100,8 +99,8 @@ pub struct Record {
     pub bam_flags: u16,
 }
 
-impl From<bam::Record> for Record {
-    fn from(input: bam::Record) -> Self {
+impl From<sam::alignment::Record> for Record {
+    fn from(input: sam::alignment::Record) -> Self {
         let mut sequence = input.sequence().to_string().into_bytes();
 
         let mut base_qualities = input

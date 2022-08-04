@@ -118,6 +118,7 @@ pub fn run(
                 &suffix_array,
                 alignment_parameters,
                 &identifier_position_map,
+                &header,
                 &mut out_file,
             )?
         }
@@ -132,6 +133,7 @@ pub fn run(
                 &suffix_array,
                 alignment_parameters,
                 &identifier_position_map,
+                &header,
                 &mut out_file,
             )?
         }
@@ -150,6 +152,7 @@ fn run_inner<S, T, W>(
     suffix_array: &S,
     alignment_parameters: &AlignmentParameters,
     identifier_position_map: &FastaIdPositions,
+    out_header: &sam::Header,
     out_file: &mut bam::Writer<W>,
 ) -> Result<()>
 where
@@ -285,7 +288,7 @@ where
             })
             .map_init(
                 rand::thread_rng,
-                |mut rng, (record, hit_interval, duration)| -> Result<bam::Record> {
+                |mut rng, (record, hit_interval, duration)| -> Result<sam::alignment::Record> {
                     intervals_to_bam(
                         record,
                         hit_interval,
@@ -301,7 +304,7 @@ where
 
         debug!("Write chunk of BAM records to output file");
         for record in bam_records.iter() {
-            out_file.write_record(record)?;
+            out_file.write_record(out_header, record)?;
         }
     }
     Ok(())
@@ -400,7 +403,13 @@ pub fn create_bam_header(
                         identifier_position.identifier
                     ))
                 })?,
-                (identifier_position.end - identifier_position.start + 1) as i32,
+                usize::try_from(identifier_position.end - identifier_position.start + 1).map_err(
+                    |_e| {
+                        Error::InvalidIndex(
+                            "Could not create header. Reference genome size seems too large to be processed on this machine.".into(),
+                        )
+                    },
+                )?,
             )
             .map_err(|_e| {
                 Error::InvalidIndex("Could not create header. Contig length invalid?".into())
@@ -423,7 +432,7 @@ pub fn intervals_to_bam<R, S>(
     duration: Option<&Duration>,
     alignment_parameters: &AlignmentParameters,
     rng: &mut R,
-) -> Result<bam::Record>
+) -> Result<sam::alignment::Record>
 where
     R: RngCore,
     S: SuffixArray,
@@ -480,7 +489,8 @@ where
                                     Direction::Backward => '-',
                                 },
                                 i2co.relative_pos + 1,
-                                sam::record::Cigar::from(pre_cigar),
+                                sam::record::Cigar::try_from(pre_cigar)
+                                    .expect("Generated CIGAR string should always be valid"),
                                 String::from_utf8_lossy(&md),
                                 nm,
                                 i2co.interval.interval.size,
@@ -712,8 +722,8 @@ fn create_bam_record(
     duration: Option<&Duration>,
     // Contains valid content for the `YA` tag
     alternative_hits: Option<AlternativeAlignments>,
-) -> Result<bam::Record> {
-    let mut bam_builder = bam::Record::builder();
+) -> Result<sam::alignment::Record> {
+    let mut bam_builder = sam::alignment::Record::builder();
 
     let (cigar, md_tag, edit_distance) = if let Some(hit_interval) = hit_interval {
         let (cigar, md_tag, edit_distance) = hit_interval
@@ -729,7 +739,7 @@ fn create_bam_record(
 
     if let Some(position) = position {
         flags.remove(sam::record::Flags::UNMAPPED);
-        bam_builder = bam_builder.set_position(
+        bam_builder = bam_builder.set_alignment_start(
             usize::try_from(position + 1)
                 .ok()
                 .and_then(|pos| pos.try_into().ok())
@@ -806,7 +816,11 @@ fn create_bam_record(
 
     // CIGAR strings and MD tags are reversed during generation
     if let Some(cigar) = cigar {
-        bam_builder = bam_builder.set_cigar(cigar.into());
+        bam_builder = bam_builder.set_cigar(
+            cigar
+                .try_into()
+                .expect("Generated CIGAR string should always be valid"),
+        );
     }
 
     if let Some(mapq) = mapq {
@@ -901,7 +915,12 @@ fn create_bam_record(
                 .as_slice()
                 .try_into()
                 .expect("This is not expected to fail"),
-            sam::record::data::field::Value::Char(alternative_hits.xt),
+            sam::record::data::field::Value::Character(
+                alternative_hits
+                    .xt
+                    .try_into()
+                    .expect("Char is guaranteed to be ASCII"),
+            ),
         ));
     }
 

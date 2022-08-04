@@ -10,6 +10,7 @@ use std::{
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, info, warn};
 use mio::{net::TcpListener, *};
+use noodles::sam::AlignmentWriter;
 use noodles::{bam, sam};
 use rayon::prelude::*;
 
@@ -164,6 +165,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &suffix_array,
                     &identifier_position_map,
                     &mut listener,
+                    &header,
                     &mut out_file,
                 )
             }
@@ -180,6 +182,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &suffix_array,
                     &identifier_position_map,
                     &mut listener,
+                    &header,
                     &mut out_file,
                 )
             }
@@ -195,6 +198,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
         listener: &mut TcpListener,
+        out_header: &sam::Header,
         out_file: &mut bam::Writer<W>,
     ) -> Result<()>
     where
@@ -268,6 +272,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                         suffix_array,
                                         identifier_position_map,
                                         self.alignment_parameters,
+                                        out_header,
                                         out_file,
                                     )?;
                                     debug!("Finished task {}", results.chunk_id,);
@@ -367,6 +372,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
         alignment_parameters: &AlignmentParameters,
+        out_header: &sam::Header,
         out_file: &mut bam::Writer<W>,
     ) -> Result<()>
     where
@@ -394,7 +400,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         debug!("Write chunk of BAM records to output file");
         for record in bam_records.iter() {
-            out_file.write_record(record)?;
+            out_file.write_alignment_record(out_header, record)?;
         }
 
         Ok(())
