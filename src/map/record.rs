@@ -166,7 +166,7 @@ impl fmt::Display for Record {
 }
 
 /// Variants store position in the read and, if necessary, the reference base
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EditOperation {
     Insertion(u16),
     Deletion(u16, u8),

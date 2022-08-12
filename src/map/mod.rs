@@ -61,7 +61,7 @@ impl PartialEq for HitInterval {
 impl Eq for HitInterval {}
 
 /// Simple zero-cost direction enum to increase readability
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Direction {
     Forward,
     Backward,
