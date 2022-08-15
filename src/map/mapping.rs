@@ -1046,7 +1046,7 @@ where
 
     let optimal_penalties =
         compute_optimal_scores(pattern, base_qualities, sequence_difference_model);
-    let mut hit_intervals = BinaryHeap::new();
+    let mut hit_intervals: BinaryHeap<HitInterval> = BinaryHeap::new();
 
     let mut stack_size_limit_reported = false;
     stack.clear();
