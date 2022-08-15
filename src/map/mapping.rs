@@ -987,37 +987,34 @@ fn check_and_push_stack_frame<MB>(
             alignment_score: stack_frame.alignment_score,
             edit_operations,
         });
-        print_debug(&stack_frame, intervals, edit_tree); // FIXME
+        //print_debug(&stack_frame, intervals, edit_tree);
         return;
     }
 
     stack.push(stack_frame);
 }
 
-/// FIXME
+/// Prints backtracking trace to stderr
+#[allow(dead_code)]
 fn print_debug(
     stack_frame: &MismatchSearchStackFrame,
     intervals: &BinaryHeap<HitInterval>,
     edit_tree: &Tree<EditOperation>,
 ) {
-    let switch = false; // TODO: Switch me on/off!
+    let best_as = match intervals.peek() {
+        Some(v) => v.alignment_score,
+        None => 0.0,
+    };
 
-    if switch {
-        let best_as = match intervals.peek() {
-            Some(v) => v.alignment_score,
-            None => 0.0,
-        };
-
-        eprintln!(
-            "{}\t{}\t{}\t{}\t{}\t{:?}",
-            stack_frame.alignment_score,
-            stack_frame.alignment_score,
-            stack_frame.backward_index,
-            stack_frame.forward_index,
-            best_as,
-            edit_tree.ancestors(stack_frame.edit_node_id).next(),
-        );
-    }
+    eprintln!(
+        "{}\t{}\t{}\t{}\t{}\t{:?}",
+        stack_frame.alignment_score,
+        stack_frame.alignment_score,
+        stack_frame.backward_index,
+        stack_frame.forward_index,
+        best_as,
+        edit_tree.ancestors(stack_frame.edit_node_id).next(),
+    );
 }
 
 /// Finds all suffix array intervals for the current pattern
@@ -1168,7 +1165,7 @@ where
         // Calculate the lower bounds for extension
         let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
 
-        print_debug(&stack_frame, &hit_intervals, edit_tree); // FIXME
+        //print_debug(&stack_frame, &hit_intervals, edit_tree);
 
         // Since we operate on a priority stack, we can assume that there are no
         // better scoring frames on the stack, so we are going to stop the search.
