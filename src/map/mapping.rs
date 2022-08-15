@@ -959,10 +959,8 @@ fn check_and_push_stack_frame<MB>(
 ) where
     MB: MismatchBound,
 {
-    // TODO: Check performance impact
-    // This is technically redundant. Our micro-benchmarks suggest
-    // that having this here improves the performance but it might
-    // be that actually the opposite is true for large real data.
+    // This is technically redundant. However, our benchmarks suggest
+    // that having this here improves mapping speed
     if let Some(best_scoring_interval) = intervals.peek() {
         if mismatch_bound.reject_iterative(
             stack_frame.alignment_score,
