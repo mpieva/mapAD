@@ -38,6 +38,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             penalty_gap_extend: representative_mismatch_penalty,
             chunk_size: 1,
             gap_dist_ends: 5,
+            max_num_gaps_open: 2,
             stack_limit_abort: false,
         };
 
@@ -189,6 +190,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         penalty_gap_extend: representative_mismatch_penalty,
         chunk_size: 1,
         gap_dist_ends: 5,
+        max_num_gaps_open: 2,
         stack_limit_abort: false,
     };
 
