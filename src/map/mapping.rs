@@ -1064,6 +1064,8 @@ where
         edit_node_id: root_node,
     });
 
+    let mut mm_scores = [0_f32; 4];
+
     while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
         let (
@@ -1082,7 +1084,6 @@ where
             next_closed_gap_forward,
             num_gaps_open,
         );
-        let mut mm_scores = [0_f32; 4];
         match stack_frame.direction {
             Direction::Forward => {
                 next_forward_index = stack_frame.forward_index + 1;
