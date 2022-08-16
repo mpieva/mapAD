@@ -144,8 +144,8 @@ the center of a read is approached.
 -t 0.5                                                     `# Three-prime overhang parameter` (not used if "--library" is set to "double_stranded") \
 -d 0.02                                                    `# Deamination rate in double-stranded parts` \
 -s 1.0                                                     `# Deamination rate in single-stranded overhangs` \
--i 0.0005                                                  `# InDel rate (corresponds to gap open penalty)` \
--x 0.7                                                     `# Gap extension penalty as a fraction of the repr. mismatch penalty` \
+-i 0.001                                                   `# InDel rate (corresponds to gap open penalty)` \
+-x 0.5                                                     `# Gap extension penalty as a fraction of the repr. mismatch penalty` \
 --reads "${input_bam}" \
 --reference "/path/to/reference/hg19.fasta"                `# Prefix of index files` \
 --output "${output_bam}"
