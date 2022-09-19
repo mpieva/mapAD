@@ -23,7 +23,7 @@ Besides Rust, no additional dependencies are needed to compile.
 
 1. Git clone mapAD or simply download a release zip file:
 
-   `git clone https://vcs.eva.mpg.de/christian_heide/mapAD.git && cd mapAD`
+   `git clone https://github.com/mpieva/mapAD.git && cd mapAD`
 
 3. Build:
 
@@ -49,7 +49,7 @@ or this (not recommended; reduced portability)
 
 `RUSTFLAGS="-C target-cpu=native" cargo build --release`
 
-Please note that the resulting binary is not portable.
+Please note that the resulting binary is not necessarily portable between different CPU architectures.
 
 - The number of `v`s passed to the program determines the level of verbosity:
 
