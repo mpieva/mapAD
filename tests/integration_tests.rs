@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{self, Write},
+    path::{Path, PathBuf},
     thread,
 };
 
@@ -9,7 +10,7 @@ use noodles::{
     core::Position,
     sam::{self, AlignmentWriter},
 };
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 
 use mapad::{
     distributed::{dispatcher::Dispatcher, worker::Worker},
@@ -40,14 +41,19 @@ struct BamFieldSubset {
     xt: Option<char>,
 }
 
-#[test]
-fn integration_1() {
+#[derive(Debug)]
+struct Environment {
+    temp_dir: TempDir,
+    alignment_parameters: AlignmentParameters,
+    test_genome_path: PathBuf,
+    input_bam_path: PathBuf,
+}
+
+fn prepare() -> Environment {
     let temp_dir = tempdir().unwrap();
 
     let test_genome_path = temp_dir.path().join("test_genome.fa");
     let input_bam_path = temp_dir.path().join("input_reads.bam");
-    let output_bam_path_local = temp_dir.path().join("output_reads_local.bam");
-    let output_bam_path_distr = temp_dir.path().join("output_reads_distr.bam");
 
     // Create test genome and index it
     {
@@ -118,7 +124,7 @@ TGATCGATCATGCTAAAAATCGAT";
         }
     }
 
-    // Start mapping
+    // Mapping parameters
     {
         let base_error_rate = 0.02;
         let adna_scoring_model = SimpleAncientDnaModel::new(
@@ -144,304 +150,329 @@ TGATCGATCATGCTAAAAATCGAT";
             max_num_gaps_open: 2,
         };
 
-        // Local run
-        mapping::run(
-            input_bam_path.to_str().unwrap(),
-            test_genome_path.to_str().unwrap(),
-            output_bam_path_local.to_str().unwrap(),
-            &alignment_parameters,
-        )
+        Environment {
+            temp_dir,
+            alignment_parameters,
+            test_genome_path,
+            input_bam_path,
+        }
+    }
+}
+
+#[test]
+fn integration_1_local() {
+    let env = prepare();
+    let output_bam_path_local = env.temp_dir.path().join("output_reads_local.bam");
+
+    mapping::run(
+        env.input_bam_path.to_str().unwrap(),
+        env.test_genome_path.to_str().unwrap(),
+        output_bam_path_local.to_str().unwrap(),
+        &env.alignment_parameters,
+    )
+    .unwrap();
+
+    check_results(&output_bam_path_local);
+}
+
+/// This test is disabled by default since it is flaky. Sometimes one of the workers can not
+/// connect to the dispatcher because the mapping process is finished already, causing the test to
+/// fail.
+#[test]
+#[ignore]
+fn integration_1_distributed() {
+    let env = prepare();
+    let output_bam_path_distr = env.temp_dir.path().join("output_reads_distr.bam");
+    let port = 4321;
+
+    let dispatcher_handle = {
+        let output_bam_path_distr_clone = output_bam_path_distr.clone();
+        thread::spawn(move || {
+            let mut dispatcher = Dispatcher::new(
+                env.input_bam_path.to_str().unwrap(),
+                env.test_genome_path.to_str().unwrap(),
+                output_bam_path_distr_clone.to_str().unwrap(),
+                &env.alignment_parameters,
+            )
+            .unwrap();
+            dispatcher.run(port).unwrap();
+        })
+    };
+
+    let w0_handle = thread::spawn(move || {
+        let mut worker = Worker::new("127.0.0.1", port).unwrap();
+        worker.run().unwrap();
+    });
+    let w1_handle = thread::spawn(move || {
+        let mut worker = Worker::new("127.0.0.1", port).unwrap();
+        worker.run().unwrap();
+    });
+
+    w0_handle.join().unwrap();
+    w1_handle.join().unwrap();
+    dispatcher_handle.join().unwrap();
+
+    check_results(&output_bam_path_distr);
+}
+
+fn check_results<P>(bam_path: P)
+where
+    P: AsRef<Path>,
+{
+    let mut bam_reader = bam::Reader::new(File::open(bam_path).unwrap());
+
+    // Move cursor to the right place
+    let _header = bam_reader.read_header().unwrap();
+    let _header_reference_sequences = bam_reader.read_reference_sequences().unwrap();
+
+    let mut result_sample = bam_reader
+        .records()
+        .map(|maybe_record| {
+            maybe_record.map(|record| BamFieldSubset {
+                name: record.read_name().cloned(),
+                flags: record.flags().to_owned(),
+                tid: record.reference_sequence_id(),
+                pos: record.alignment_start(),
+                mq: record.mapping_quality(),
+                cigar: record.cigar().to_owned(),
+                seq_len: record.sequence().len(),
+                seq: record.sequence().to_owned(),
+                qual: record.quality_scores().to_owned(),
+                x0: record
+                    .data()
+                    .get(b"X0".as_slice().try_into().unwrap())
+                    .map(|field| field.value().as_int32().unwrap()),
+                x1: record
+                    .data()
+                    .get(b"X1".as_slice().try_into().unwrap())
+                    .map(|field| field.value().as_int32().unwrap()),
+                xa: record
+                    .data()
+                    .get(b"XA".as_slice().try_into().unwrap())
+                    .map(|field| field.value().as_str().unwrap().to_owned()),
+                xs: record
+                    .data()
+                    .get(b"XS".as_slice().try_into().unwrap())
+                    .map(|field| field.value().as_float().unwrap().to_owned()),
+                xt: record
+                    .data()
+                    .get(b"XT".as_slice().try_into().unwrap())
+                    .map(|field| field.value().as_character().unwrap().into()),
+            })
+        })
+        .collect::<io::Result<Vec<_>>>()
         .unwrap();
 
-        // Distributed run
-        {
-            let port = 4321;
+    let comp = vec![
+        BamFieldSubset {
+            name: Some(
+                "A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 0.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "28M".parse().unwrap(),
+            seq_len: 28,
+            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 585.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "28M".parse().unwrap(),
+            seq_len: 28,
+            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 0.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "28M".parse().unwrap(),
+            seq_len: 28,
+            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 16.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "28M".parse().unwrap(),
+            seq_len: 28,
+            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 16.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(20_u8.try_into().unwrap()),
+            cigar: "14M1D13M".parse().unwrap(),
+            seq_len: 27,
+            seq: "TTAACAATGAACTTGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 16.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(20_u8.try_into().unwrap()),
+            cigar: "15M1I13M".parse().unwrap(),
+            seq_len: 29,
+            seq: "TTAACAATGAACTTAAGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 0.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "28M".parse().unwrap(),
+            seq_len: 28,
+            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 4.into(),
+            tid: None,
+            pos: None,
+            mq: Some(0_u8.try_into().unwrap()),
+            cigar: sam::record::Cigar::default(),
+            seq_len: 28,
+            seq: "GATTGGTGCACGGACGCGCGTTGAAAGG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            x0: None,
+            x1: None,
+            xa: None,
+            xs: None,
+            xt: None,
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 0.into(),
+            tid: Some(1),
+            pos: Some(85.try_into().unwrap()),
+            mq: Some(3_u8.try_into().unwrap()),
+            cigar: "6M".parse().unwrap(),
+            seq_len: 6,
+            seq: "CCTCAT".parse().unwrap(),
+            qual: "]]]]]]".parse().unwrap(),
+            x0: Some(2),
+            x1: Some(0),
+            xa: Some("Chromosome_02,+139,6M,6,0,2,0.00;".into()),
+            xs: None,
+            xt: Some('R'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 0.into(),
+            tid: Some(1),
+            pos: Some(188.try_into().unwrap()),
+            mq: Some(3_u8.try_into().unwrap()),
+            cigar: "42M".parse().unwrap(),
+            seq_len: 42,
+            seq: "TCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT"
+                .parse()
+                .unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .parse()
+                .unwrap(),
+            x0: Some(1),
+            x1: Some(2),
+            xa: Some(
+                "Chromosome_03,+43,42M,0C41,1,1,-0.72;Chromosome_03,+1,42M,0C40C0,2,1,-1.56;"
+                    .into(),
+            ),
+            xs: Some(-0.7209588),
+            xt: Some('U'),
+        },
+    ];
+    result_sample.sort_by_key(|k| k.name.clone());
 
-            let output_bam_path_distr_clone = output_bam_path_distr.clone();
-            let dispatcher_handle = thread::spawn(move || {
-                let mut dispatcher = Dispatcher::new(
-                    input_bam_path.to_str().unwrap(),
-                    test_genome_path.to_str().unwrap(),
-                    output_bam_path_distr_clone.to_str().unwrap(),
-                    &alignment_parameters,
-                )
-                .unwrap();
-                dispatcher.run(port).unwrap();
-            });
-
-            let w0_handle = thread::spawn(move || {
-                let mut worker = Worker::new("127.0.0.1", port).unwrap();
-                worker.run().unwrap();
-            });
-            let w1_handle = thread::spawn(move || {
-                let mut worker = Worker::new("127.0.0.1", port).unwrap();
-                worker.run().unwrap();
-            });
-
-            w0_handle.join().unwrap();
-            w1_handle.join().unwrap();
-            dispatcher_handle.join().unwrap();
-        }
-    }
-
-    // Check mappings
-    {
-        for output in [output_bam_path_local, output_bam_path_distr].iter() {
-            let mut bam_reader = bam::Reader::new(File::open(output).unwrap());
-
-            // Move cursor to the right place
-            let _header = bam_reader.read_header().unwrap();
-            let _header_reference_sequences = bam_reader.read_reference_sequences().unwrap();
-
-            let mut result_sample = bam_reader
-                .records()
-                .map(|maybe_record| {
-                    maybe_record.map(|record| BamFieldSubset {
-                        name: record.read_name().cloned(),
-                        flags: record.flags().to_owned(),
-                        tid: record.reference_sequence_id(),
-                        pos: record.alignment_start(),
-                        mq: record.mapping_quality(),
-                        cigar: record.cigar().to_owned(),
-                        seq_len: record.sequence().len(),
-                        seq: record.sequence().to_owned(),
-                        qual: record.quality_scores().to_owned(),
-                        x0: record
-                            .data()
-                            .get(b"X0".as_slice().try_into().unwrap())
-                            .map(|field| field.value().as_int32().unwrap()),
-                        x1: record
-                            .data()
-                            .get(b"X1".as_slice().try_into().unwrap())
-                            .map(|field| field.value().as_int32().unwrap()),
-                        xa: record
-                            .data()
-                            .get(b"XA".as_slice().try_into().unwrap())
-                            .map(|field| field.value().as_str().unwrap().to_owned()),
-                        xs: record
-                            .data()
-                            .get(b"XS".as_slice().try_into().unwrap())
-                            .map(|field| field.value().as_float().unwrap().to_owned()),
-                        xt: record
-                            .data()
-                            .get(b"XT".as_slice().try_into().unwrap())
-                            .map(|field| field.value().as_character().unwrap().into()),
-                    })
-                })
-                .collect::<io::Result<Vec<_>>>()
-                .unwrap();
-
-            let comp = vec![
-                BamFieldSubset {
-                    name: Some(
-                        "A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 0.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(37_u8.try_into().unwrap()),
-                    cigar: "28M".parse().unwrap(),
-                    seq_len: 28,
-                    seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 585.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(37_u8.try_into().unwrap()),
-                    cigar: "28M".parse().unwrap(),
-                    seq_len: 28,
-                    seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 0.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(37_u8.try_into().unwrap()),
-                    cigar: "28M".parse().unwrap(),
-                    seq_len: 28,
-                    seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 16.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(37_u8.try_into().unwrap()),
-                    cigar: "28M".parse().unwrap(),
-                    seq_len: 28,
-                    seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 16.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(20_u8.try_into().unwrap()),
-                    cigar: "14M1D13M".parse().unwrap(),
-                    seq_len: 27,
-                    seq: "TTAACAATGAACTTGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 16.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(20_u8.try_into().unwrap()),
-                    cigar: "15M1I13M".parse().unwrap(),
-                    seq_len: 29,
-                    seq: "TTAACAATGAACTTAAGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 0.into(),
-                    tid: Some(0_i32.try_into().unwrap()),
-                    pos: Some(269.try_into().unwrap()),
-                    mq: Some(37_u8.try_into().unwrap()),
-                    cigar: "28M".parse().unwrap(),
-                    seq_len: 28,
-                    seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: Some(1),
-                    x1: Some(0),
-                    xa: None,
-                    xs: None,
-                    xt: Some('U'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 4.into(),
-                    tid: None,
-                    pos: None,
-                    mq: Some(0_u8.try_into().unwrap()),
-                    cigar: sam::record::Cigar::default(),
-                    seq_len: 28,
-                    seq: "GATTGGTGCACGGACGCGCGTTGAAAGG".parse().unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
-                    x0: None,
-                    x1: None,
-                    xa: None,
-                    xs: None,
-                    xt: None,
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 0.into(),
-                    tid: Some(1),
-                    pos: Some(85.try_into().unwrap()),
-                    mq: Some(3_u8.try_into().unwrap()),
-                    cigar: "6M".parse().unwrap(),
-                    seq_len: 6,
-                    seq: "CCTCAT".parse().unwrap(),
-                    qual: "]]]]]]".parse().unwrap(),
-                    x0: Some(2),
-                    x1: Some(0),
-                    xa: Some("Chromosome_02,+139,6M,6,0,2,0.00;".into()),
-                    xs: None,
-                    xt: Some('R'),
-                },
-                BamFieldSubset {
-                    name: Some(
-                        "A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                            .parse()
-                            .unwrap(),
-                    ),
-                    flags: 0.into(),
-                    tid: Some(1),
-                    pos: Some(188.try_into().unwrap()),
-                    mq: Some(3_u8.try_into().unwrap()),
-                    cigar: "42M".parse().unwrap(),
-                    seq_len: 42,
-                    seq: "TCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT"
-                        .parse()
-                        .unwrap(),
-                    qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
-                        .parse()
-                        .unwrap(),
-                    x0: Some(1),
-                    x1: Some(2),
-                    xa: Some("Chromosome_03,+43,42M,0C41,1,1,-0.72;Chromosome_03,+1,42M,0C40C0,2,1,-1.56;".into()),
-                    xs: Some(-0.7209588),
-                    xt: Some('U'),
-                },
-            ];
-            result_sample.sort_by_key(|k| k.name.clone());
-
-            assert_eq!(result_sample, comp);
-        }
-    }
-
-    temp_dir.close().unwrap();
+    assert_eq!(result_sample, comp);
 }
