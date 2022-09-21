@@ -1,4 +1,4 @@
-use std::{fs::File, iter};
+use std::{fs::File, iter, num::NonZeroUsize};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
@@ -90,7 +90,7 @@ fn index<T: Rng>(
     // using the closures defined above
     run_apply(
         &mut ref_seq,
-        10,
+        10.try_into().expect("number to be non-zero"),
         randomly_replace_ambiguous,
         summarize_ambiguous,
     );
@@ -189,13 +189,15 @@ fn index<T: Rng>(
 }
 
 /// Calls different closures on each symbol depending on whether this symbol sits inside or outside of a run of equal symbols
-fn run_apply<T, U>(ref_seq: &mut [u8], min_run_len: usize, mut non_run_fun: T, mut run_fun: U)
-where
+fn run_apply<T, U>(
+    ref_seq: &mut [u8],
+    min_run_len: NonZeroUsize,
+    mut non_run_fun: T,
+    mut run_fun: U,
+) where
     T: FnMut(u8) -> u8,
     U: FnMut(u8) -> u8,
 {
-    assert!(min_run_len > 0);
-
     let mut run_symbol = ref_seq[0];
     let mut run_length = 1;
 
@@ -205,7 +207,7 @@ where
             run_length += 1;
             if i >= ref_seq.len() - 1 {
                 let slice = &mut ref_seq[i - run_length..=i];
-                if run_length < min_run_len {
+                if run_length < min_run_len.into() {
                     for mutable_symbol in slice.iter_mut() {
                         *mutable_symbol = non_run_fun(*mutable_symbol);
                     }
@@ -220,7 +222,7 @@ where
         }
         run_symbol = ref_seq[i];
         let slice = &mut ref_seq[i - run_length..i];
-        if run_length < min_run_len {
+        if run_length < min_run_len.into() {
             for mutable_symbol in slice.iter_mut() {
                 *mutable_symbol = non_run_fun(*mutable_symbol);
             }
@@ -262,7 +264,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                1,
+                1.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -273,7 +275,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                2,
+                2.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -284,7 +286,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                3,
+                3.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -295,7 +297,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                4,
+                4.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -309,7 +311,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                1,
+                1.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -320,7 +322,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                2,
+                2.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -331,7 +333,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                3,
+                3.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -342,7 +344,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                4,
+                4.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -356,7 +358,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                1,
+                1.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -367,7 +369,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                2,
+                2.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -378,7 +380,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                3,
+                3.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -389,7 +391,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                4,
+                4.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -403,7 +405,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                1,
+                1.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
@@ -416,7 +418,7 @@ mod tests {
             let mut ref_seq = ref_seq.clone();
             run_apply(
                 &mut ref_seq,
-                2,
+                2.try_into().unwrap(),
                 test_randomly_replace_ambiguous,
                 test_unify_ambiguous_symbols,
             );
