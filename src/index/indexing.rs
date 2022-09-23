@@ -198,42 +198,32 @@ fn run_apply<T, U>(
     T: FnMut(u8) -> u8,
     U: FnMut(u8) -> u8,
 {
-    let mut run_symbol = ref_seq[0];
-    let mut run_length = 1;
-
-    let mut i = 1;
-    while i < ref_seq.len() {
-        while ref_seq[i] == run_symbol {
-            run_length += 1;
-            if i >= ref_seq.len() - 1 {
-                let slice = &mut ref_seq[i - run_length..=i];
-                if run_length < min_run_len.into() {
-                    for mutable_symbol in slice.iter_mut() {
-                        *mutable_symbol = non_run_fun(*mutable_symbol);
-                    }
-                } else {
-                    for mutable_symbol in slice.iter_mut() {
-                        *mutable_symbol = run_fun(*mutable_symbol);
-                    }
+    let mut i = 0;
+    while i < ref_seq.len() - 1 {
+        let symbol_i = ref_seq[i];
+        let run_len = ref_seq[i + 1..]
+            .iter()
+            .enumerate()
+            .find(|&(_j, &symbol_j)| symbol_j != symbol_i)
+            // Correct length for starting at position i+1
+            .map(|(j, _symbol_j)| j + 1)
+            .unwrap_or(ref_seq.len() - i);
+        // Apply closures on runs of non-alphabet symbols
+        if !DNA_UPPERCASE_ALPHABET.contains(&symbol_i) {
+            let run = &mut ref_seq[i..][..run_len];
+            // Short run
+            if run_len < min_run_len.into() {
+                for base in run.iter_mut() {
+                    *base = non_run_fun(*base);
                 }
-                break;
-            }
-            i += 1;
-        }
-        run_symbol = ref_seq[i];
-        let slice = &mut ref_seq[i - run_length..i];
-        if run_length < min_run_len.into() {
-            for mutable_symbol in slice.iter_mut() {
-                *mutable_symbol = non_run_fun(*mutable_symbol);
-            }
-        } else {
-            for mutable_symbol in slice.iter_mut() {
-                *mutable_symbol = run_fun(*mutable_symbol);
+            // Long run
+            } else {
+                for base in run.iter_mut() {
+                    *base = run_fun(*base);
+                }
             }
         }
-
-        i += 1;
-        run_length = 1;
+        i += run_len;
     }
 }
 
