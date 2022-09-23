@@ -16,7 +16,7 @@ use rand::{
 };
 
 use crate::{
-    errors::Result,
+    errors::{Error, Result},
     index::{
         versioned_index::VersionedIndexItem, FastaIdPosition, FastaIdPositions,
         SampledSuffixArrayOwned, DNA_AMINO, DNA_KETONE, DNA_NOT_A, DNA_NOT_C, DNA_NOT_G, DNA_NOT_T,
@@ -59,9 +59,15 @@ fn index<T: Rng>(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    // Replace single occurrences of ambiguous base symbols with random ones, leave runs alone
-    // Calling `unwrap()` here will never panic because the slices to `choose()` from are
-    // `const`.
+    // Check if reference only contains valid IUPAC base symbols
+    if !dna::iupac_alphabet().is_word(&ref_seq) {
+        return Err(Error::ParseError(
+            "Found non-IUPAC symbol in reference sequence".into(),
+        ));
+    }
+
+    // Replace occurrences of ambiguous IUPAC DNA base symbols with random ones.
+    // Calling `unwrap()` here will never panic because the slices to `choose()` from are `const`.
     let randomly_replace_ambiguous = |base| match base {
         b'U' => b'T',
         b'R' => *DNA_PURINE.choose(rng).unwrap(),
@@ -75,16 +81,11 @@ fn index<T: Rng>(
         b'H' => *DNA_NOT_G.choose(rng).unwrap(),
         b'V' => *DNA_NOT_T.choose(rng).unwrap(),
         b'N' => *DNA_UPPERCASE_ALPHABET.choose(rng).unwrap(),
-        _ => base,
+        _ => unreachable!(),
     };
 
-    let summarize_ambiguous = |base| {
-        if !DNA_UPPERCASE_ALPHABET.contains(&base) {
-            b'X'
-        } else {
-            base
-        }
-    };
+    // Unconditionally return `X`
+    let summarize_ambiguous = |_base| b'X';
 
     // Start by replacing ambiguous bases that do not occur in stretches exceeding a certain length,
     // using the closures defined above
