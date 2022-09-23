@@ -199,8 +199,8 @@ fn run_apply<T, U>(
     U: FnMut(u8) -> u8,
 {
     let mut i = 0;
-    while i < ref_seq.len() - 1 {
-        let symbol_i = ref_seq[i];
+    while let Some(&symbol_i) = ref_seq.get(i) {
+        // `&array[array.len()..]` works and yields an empty slice
         let run_len = ref_seq[i + 1..]
             .iter()
             .enumerate()
