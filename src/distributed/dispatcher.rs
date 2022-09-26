@@ -93,26 +93,19 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         // Things that determine the concrete values of the generics used in `run_inner(...)`
         // are set up here to allow static dispatch
-        info!("Load position map");
-        let identifier_position_map =
-            load_id_pos_map_from_path(self.reference_path.to_str().ok_or_else(|| {
-                Error::InvalidIndex(
-                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
-                )
-            })?)?;
 
-        info!("Load suffix array");
-        let sampled_suffix_array_owned =
-            load_suffix_array_from_path(self.reference_path.to_str().ok_or_else(|| {
-                Error::InvalidIndex(
-                    "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
-                )
-            })?)?;
-        let fmd_index = load_index_from_path(self.reference_path.to_str().ok_or_else(|| {
+        let reference_path = self.reference_path.to_str().ok_or_else(|| {
             Error::InvalidIndex(
                 "Cannot access the index (file paths contain invalid UTF-8 unicode)".into(),
             )
-        })?)?;
+        })?;
+
+        info!("Load position map");
+        let identifier_position_map = load_id_pos_map_from_path(reference_path)?;
+
+        info!("Load suffix array");
+        let sampled_suffix_array_owned = load_suffix_array_from_path(reference_path)?;
+        let fmd_index = load_index_from_path(reference_path)?;
         let suffix_array = sampled_suffix_array_owned.into_sampled_suffix_array(
             &fmd_index.bwt,
             &fmd_index.less,
