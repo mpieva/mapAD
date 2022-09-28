@@ -290,7 +290,7 @@ where
                     .parse()
                     .unwrap(),
             ),
-            flags: 585.into(),
+            flags: 577.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),

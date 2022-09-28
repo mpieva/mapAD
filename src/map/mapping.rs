@@ -737,6 +737,13 @@ fn create_bam_record(
     // Copy flags from input record
     let mut flags = sam::record::Flags::from(input_record.bam_flags);
 
+    // Remove flags mapAD does not know about (yet)
+    flags.remove(sam::record::Flags::MATE_UNMAPPED);
+    flags.remove(sam::record::Flags::MATE_REVERSE_COMPLEMENTED);
+    flags.remove(sam::record::Flags::PROPERLY_ALIGNED);
+    flags.remove(sam::record::Flags::SECONDARY);
+    flags.remove(sam::record::Flags::SUPPLEMENTARY);
+
     if let Some(position) = position {
         flags.remove(sam::record::Flags::UNMAPPED);
         bam_builder = bam_builder.set_alignment_start(
