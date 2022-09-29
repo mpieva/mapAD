@@ -57,9 +57,9 @@ fn define_cli() -> ArgMatches {
             Arg::new("num_threads")
                 .global(true)
                 .long("threads")
-                .help(&*format!("Maximum number of threads. If 0 or unspecified, {} will select the number of threads automatically.", CRATE_NAME))
+                .help(&*format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
                 .takes_value(true)
-                .default_value("0")
+                .default_value("1")
                 .value_name("INT")
         )
         .arg(
