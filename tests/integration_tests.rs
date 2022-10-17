@@ -221,8 +221,19 @@ where
 {
     let mut bam_reader = bam::Reader::new(File::open(bam_path).unwrap());
 
+    // Check header
+    let header = bam_reader.read_header().unwrap();
+    let header_prefix = "\
+    @HD\tVN:1.6\tSO:unsorted\n\
+    @SQ\tSN:chr1\tLN:600\n\
+    @SQ\tSN:Chromosome_02\tLN:600\n\
+    @SQ\tSN:Chromosome_03\tLN:84\n\
+    @RG\tID:A12345\tSM:Sample1\n\
+    @PG\tID:samtools\tPN:samtools\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\tVN:1.13\n\
+    @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
+    assert!(&header.as_str().starts_with(header_prefix));
+
     // Move cursor to the right place
-    let _header = bam_reader.read_header().unwrap();
     let _header_reference_sequences = bam_reader.read_reference_sequences().unwrap();
 
     let mut result_sample = bam_reader
