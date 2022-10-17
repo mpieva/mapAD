@@ -1,4 +1,4 @@
-use clap::{crate_description, Arg, ArgMatches, Command};
+use clap::{crate_description, Arg, ArgAction, ArgMatches, Command};
 use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
@@ -43,22 +43,21 @@ fn define_cli() -> ArgMatches {
 
     Command::new(CRATE_NAME)
         .about(crate_description!())
-        .version(&*build_info::get_software_version())
+        .version(build_info::get_software_version())
         .subcommand_required(true)
         .arg_required_else_help(true)
         .arg(
             Arg::new("v")
                 .global(true)
                 .short('v')
-                .multiple_occurrences(true)
+                .action(ArgAction::Count)
                 .help("Sets the level of verbosity"),
         )
         .arg(
             Arg::new("num_threads")
                 .global(true)
                 .long("threads")
-                .help(&*format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
-                .takes_value(true)
+                .help(format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
                 .default_value("1")
                 .value_name("INT")
         )
@@ -67,7 +66,6 @@ fn define_cli() -> ArgMatches {
                 .global(true)
                 .long("port")
                 .help("TCP port to communicate over")
-                .takes_value(true)
                 .default_value("3130")
                 .value_name("INT")
         )
@@ -76,7 +74,6 @@ fn define_cli() -> ArgMatches {
                 .global(true)
                 .long("seed")
                 .help("Seed for the random number generator")
-                .takes_value(true)
                 .default_value("1234")
                 .value_name("INT"),
         )
@@ -89,7 +86,6 @@ fn define_cli() -> ArgMatches {
                         .short('g')
                         .long("reference")
                         .help("FASTA file containing the genome to be indexed")
-                        .takes_value(true)
                         .value_name("FASTA FILE"),
                 )
         )
@@ -102,7 +98,6 @@ fn define_cli() -> ArgMatches {
                         .short('r')
                         .long("reads")
                         .help("BAM or FASTQ file that contains the reads to be aligned")
-                        .takes_value(true)
                         .value_name("STRING"),
                 )
                 .arg(
@@ -111,7 +106,6 @@ fn define_cli() -> ArgMatches {
                         .short('g')
                         .long("reference")
                         .help("Prefix of the file names of the index files. The reference FASTA file itself does not need to be present.")
-                        .takes_value(true)
                         .value_name("STRING"),
                 )
                 .arg(
@@ -120,7 +114,6 @@ fn define_cli() -> ArgMatches {
                         .short('o')
                         .long("output")
                         .help("Path to output BAM file")
-                        .takes_value(true)
                         .value_name("STRING"),
                 )
                 .arg(
@@ -128,23 +121,20 @@ fn define_cli() -> ArgMatches {
                         .short('p')
                         .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under `-D` base error rate")
-                        .takes_value(true)
                         .value_name("FLOAT")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("as_cutoff")
                         .short('c')
                         .group("allowed_mm")
                         .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
-                        .takes_value(true)
                         .value_name("FLOAT"),
                 )
                 .arg(
                     Arg::new("as_cutoff_exponent")
                         .short('e')
                         .help("Exponent to be applied to the read length (ignored if `-c` is not used)")
-                        .takes_value(true)
                         .default_value("1.0")
                         .value_name("FLOAT"),
                 )
@@ -154,8 +144,7 @@ fn define_cli() -> ArgMatches {
                         .short('l')
                         .long("library")
                         .help("Library preparation method")
-                        .takes_value(true)
-                        .possible_values(&["single_stranded", "double_stranded"])
+                        .value_parser(["single_stranded", "double_stranded"])
                         .value_name("STRING")
                 )
                 .arg(
@@ -163,69 +152,61 @@ fn define_cli() -> ArgMatches {
                         .required(true)
                         .short('f')
                         .help("5'-overhang length parameter")
-                        .takes_value(true)
                         .value_name("FLOAT")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("three_prime_overhang")
                         .required_if_eq("library", "single_stranded")
                         .short('t')
                         .help("3'-overhang length parameter")
-                        .takes_value(true)
                         .value_name("FLOAT")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("ds_deamination_rate")
                         .required(true)
                         .short('d')
                         .help("Deamination rate in double-stranded stem of a read")
-                        .takes_value(true)
                         .value_name("FLOAT")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("ss_deamination_rate")
                         .required(true)
                         .short('s')
                         .help("Deamination rate in single-stranded ends of a read")
-                        .takes_value(true)
                         .value_name("FLOAT")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("divergence")
                         .short('D')
                         .help("Divergence / base error rate")
-                        .takes_value(true)
                         .value_name("FLOAT")
                         .default_value("0.02")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("indel_rate")
                         .required(true)
                         .short('i')
                         .help("Expected rate of indels between reads and reference")
-                        .takes_value(true)
                         .value_name("FLOAT")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("gap_extension_penalty")
                         .short('x')
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
-                        .takes_value(true)
                         .value_name("FLOAT")
                         .default_value("1.0")
-                        .validator(probability_validator),
+                        .value_parser(probability_validator),
                 )
                 .arg(
                     Arg::new("chunk_size")
                         .long("batch_size")
                         .help("The number of reads that are processed in parallel")
-                        .takes_value(true)
                         .default_value("250000")
                         .value_name("INT")
                 )
@@ -233,19 +214,18 @@ fn define_cli() -> ArgMatches {
                     Arg::new("ignore_base_quality")
                         .long("ignore_base_quality")
                         .help("Ignore base qualities in scoring models")
-                        .takes_value(false)
+                        .action(ArgAction::SetTrue)
                 )
                 .arg(
                     Arg::new("dispatcher")
                         .long("dispatcher")
                         .help("Run in dispatcher mode for distributed computing in a network. Needs workers to be spawned externally to distribute work among them.")
-                        .takes_value(false)
+                        .action(ArgAction::SetTrue)
                 )
                 .arg(
                     Arg::new("gap_dist_ends")
                         .long("gap_dist_ends")
                         .help("Disallow gaps at read ends (configurable range)")
-                        .takes_value(true)
                         .default_value("5")
                         .value_name("INT")
                 )
@@ -253,7 +233,6 @@ fn define_cli() -> ArgMatches {
                     Arg::new("max_num_gaps_open")
                         .long("max_num_gaps_open")
                         .help("Max. number of opened gaps")
-                        .takes_value(true)
                         .default_value("2")
                         .value_name("INT")
                 )
@@ -261,7 +240,7 @@ fn define_cli() -> ArgMatches {
                     Arg::new("stack_limit_abort")
                         .long("stack_limit_abort")
                         .help("Abort alignment when stack size limit is reached instead of trying to recover.")
-                        .takes_value(false)
+                        .action(ArgAction::SetTrue)
                 ),
 
         )
@@ -273,7 +252,6 @@ fn define_cli() -> ArgMatches {
                         .required(true)
                         .long("host")
                         .help("Hostname or IP address of the running dispatcher node")
-                        .takes_value(true)
                         .value_name("HOST")
                 )
         )
@@ -281,10 +259,10 @@ fn define_cli() -> ArgMatches {
 }
 
 fn handle_arguments(matches: ArgMatches) {
-    let mut logger_builder = SimpleLogger::new().with_level(match matches.occurrences_of("v") {
+    let mut logger_builder = SimpleLogger::new().with_level(match matches.get_count("v") {
         0 => log::LevelFilter::Info,
         1 => log::LevelFilter::Debug,
-        _ => log::LevelFilter::Trace,
+        2.. => log::LevelFilter::Trace,
     });
     if let Ok(local_offset) = UtcOffset::current_local_offset() {
         logger_builder = logger_builder.with_utc_offset(local_offset);
@@ -294,7 +272,9 @@ fn handle_arguments(matches: ArgMatches) {
     }
     logger_builder.init().expect("This is not expected to fail");
 
-    let seed = matches.value_of_t("seed").unwrap_or_else(|e| e.exit());
+    let seed = *matches
+        .get_one("seed")
+        .expect("Presence ensured by CLI definition");
     match matches.subcommand() {
         Some(("index", arg_matches)) => {
             start_indexer(arg_matches, seed);
@@ -311,7 +291,7 @@ fn handle_arguments(matches: ArgMatches) {
 
 fn start_indexer(arg_matches: &ArgMatches, seed: u64) {
     let reference_path = arg_matches
-        .value_of("reference")
+        .get_one::<String>("reference")
         .expect("Presence is ensured by CLI definition");
 
     if let Err(e) = indexing::run(reference_path, seed) {
@@ -321,18 +301,18 @@ fn start_indexer(arg_matches: &ArgMatches, seed: u64) {
 
 fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
     let reads_path = map_matches
-        .value_of("reads")
+        .get_one::<String>("reads")
         .expect("Presence is ensured by CLI definition");
     let reference_path = map_matches
-        .value_of("reference")
+        .get_one::<String>("reference")
         .expect("Presence is ensured by CLI definition");
     let out_file_path = map_matches
-        .value_of("output")
+        .get_one::<String>("output")
         .expect("Presence is ensured by CLI definition");
 
-    let num_threads = map_matches
-        .value_of_t("num_threads")
-        .unwrap_or_else(|e| e.exit());
+    let num_threads = *map_matches
+        .get_one("num_threads")
+        .expect("Presence ensured by CLI definition");
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build_global()
@@ -340,9 +320,11 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
 
     let alignment_parameters = build_alignment_parameters(map_matches);
 
-    if let Err(e) = if map_matches.is_present("dispatcher") {
+    if let Err(e) = if map_matches.get_flag("dispatcher") {
         info!("Dispatcher mode");
-        let port = map_matches.value_of_t("port").unwrap_or_else(|e| e.exit());
+        let port = *map_matches
+            .get_one("port")
+            .expect("Presence ensured by CLI definition");
         dispatcher::Dispatcher::new(
             reads_path,
             reference_path,
@@ -364,13 +346,15 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
 
 fn start_worker(arg_matches: &ArgMatches, _seed: u64) {
     let host = arg_matches
-        .value_of("host")
+        .get_one::<String>("host")
         .expect("Presence is ensured by CLI definition");
-    let port = arg_matches.value_of_t("port").unwrap_or_else(|e| e.exit());
+    let port = *arg_matches
+        .get_one("port")
+        .expect("Presence ensured by CLI definition");
 
-    let num_threads = arg_matches
-        .value_of_t("num_threads")
-        .unwrap_or_else(|e| e.exit());
+    let num_threads = *arg_matches
+        .get_one("num_threads")
+        .expect("Presence ensured by CLI definition");
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build_global()
@@ -382,48 +366,48 @@ fn start_worker(arg_matches: &ArgMatches, _seed: u64) {
 }
 
 fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
-    let library_prep = match arg_matches
-        .value_of("library")
+    let library_prep = match &**arg_matches
+        .get_one::<String>("library")
         .expect("Presence is ensured by CLI definition")
     {
         "single_stranded" => LibraryPrep::SingleStranded {
-            five_prime_overhang: arg_matches
-                .value_of_t("five_prime_overhang")
-                .unwrap_or_else(|e| e.exit()),
-            three_prime_overhang: arg_matches
-                .value_of_t("three_prime_overhang")
-                .unwrap_or_else(|e| e.exit()),
+            five_prime_overhang: *arg_matches
+                .get_one("five_prime_overhang")
+                .expect("Presence ensured by CLI definition"),
+            three_prime_overhang: *arg_matches
+                .get_one("three_prime_overhang")
+                .expect("Presence ensured by CLI definition"),
         },
         "double_stranded" => LibraryPrep::DoubleStranded(
-            arg_matches
-                .value_of_t("five_prime_overhang")
-                .unwrap_or_else(|e| e.exit()),
+            *arg_matches
+                .get_one("five_prime_overhang")
+                .expect("Presence ensured by CLI definition"),
         ),
         _ => unreachable!(),
     };
 
-    let divergence = arg_matches
-        .value_of_t("divergence")
-        .unwrap_or_else(|e| e.exit());
+    let divergence = *arg_matches
+        .get_one("divergence")
+        .expect("Presence ensured by CLI definition");
 
     let difference_model = SimpleAncientDnaModel::new(
         library_prep,
-        arg_matches
-            .value_of_t("ds_deamination_rate")
-            .unwrap_or_else(|e| e.exit()),
-        arg_matches
-            .value_of_t("ss_deamination_rate")
-            .unwrap_or_else(|e| e.exit()),
+        *arg_matches
+            .get_one("ds_deamination_rate")
+            .expect("Presence ensured by CLI definition"),
+        *arg_matches
+            .get_one("ss_deamination_rate")
+            .expect("Presence ensured by CLI definition"),
         // Divergence is divided by three because it is used for testing each of the three possible substitutions
         divergence / 3.0,
-        arg_matches.is_present("ignore_base_quality"),
+        arg_matches.get_flag("ignore_base_quality"),
     );
 
-    let mismatch_bound = if arg_matches.is_present("poisson_prob") {
+    let mismatch_bound = if arg_matches.get_flag("poisson_prob") {
         Discrete::new(
-            arg_matches
-                .value_of_t("poisson_prob")
-                .unwrap_or_else(|e| e.exit()),
+            *arg_matches
+                .get_one("poisson_prob")
+                .expect("Presence ensured by CLI definition"),
             divergence,
             difference_model.get_representative_mismatch_penalty(),
         )
@@ -431,12 +415,12 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
     } else {
         Continuous::new(
             arg_matches
-                .value_of_t::<f32>("as_cutoff")
-                .unwrap_or_else(|e| e.exit())
+                .get_one::<f32>("as_cutoff")
+                .expect("Presence ensured by CLI definition")
                 * -1.0,
-            arg_matches
-                .value_of_t("as_cutoff_exponent")
-                .unwrap_or_else(|e| e.exit()),
+            *arg_matches
+                .get_one::<f32>("as_cutoff_exponent")
+                .expect("Presence ensured by CLI definition"),
             difference_model.get_representative_mismatch_penalty(),
         )
         .into()
@@ -444,24 +428,24 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
 
     AlignmentParameters {
         penalty_gap_open: arg_matches
-            .value_of_t::<f32>("indel_rate")
-            .unwrap_or_else(|e| e.exit())
+            .get_one::<f32>("indel_rate")
+            .expect("Presence ensured by CLI definition")
             .log2(),
         penalty_gap_extend: arg_matches
-            .value_of_t::<f32>("gap_extension_penalty")
-            .unwrap_or_else(|e| e.exit())
+            .get_one::<f32>("gap_extension_penalty")
+            .expect("Presence ensured by CLI definition")
             * difference_model.get_representative_mismatch_penalty(),
         difference_model: difference_model.into(),
-        chunk_size: arg_matches
-            .value_of_t("chunk_size")
-            .unwrap_or_else(|e| e.exit()),
+        chunk_size: *arg_matches
+            .get_one("chunk_size")
+            .expect("Presence ensured by CLI definition"),
         mismatch_bound,
-        gap_dist_ends: arg_matches
-            .value_of_t("gap_dist_ends")
-            .unwrap_or_else(|e| e.exit()),
-        stack_limit_abort: arg_matches.is_present("stack_limit_abort"),
-        max_num_gaps_open: arg_matches
-            .value_of_t("max_num_gaps_open")
-            .unwrap_or_else(|e| e.exit()),
+        gap_dist_ends: *arg_matches
+            .get_one("gap_dist_ends")
+            .expect("Presence ensured by CLI definition"),
+        stack_limit_abort: arg_matches.get_flag("stack_limit_abort"),
+        max_num_gaps_open: *arg_matches
+            .get_one("max_num_gaps_open")
+            .expect("Presence ensured by CLI definition"),
     }
 }
