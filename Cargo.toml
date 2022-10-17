@@ -27,7 +27,7 @@ slab = "0.4"
 anyhow = "1.0"
 fxhash = "0.2"
 mimalloc = { version = "0.1", default-features = false }
-noodles = { version = "0.26", features = ["bam", "sam", "core"] }
+noodles = { version = "0.27", features = ["bam", "sam", "core"] }
 time = { version = "0.3", features = ["local-offset"] }
 
 [dev-dependencies]

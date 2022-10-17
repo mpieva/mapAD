@@ -316,12 +316,11 @@ pub fn create_bam_header(
     src_header: Option<&sam::Header>,
     identifier_position_map: &FastaIdPositions,
 ) -> Result<sam::Header> {
-    let mut header_builder = sam::Header::builder();
-    let mut header_header_builder = sam::header::header::Header::builder();
-    header_header_builder =
-        header_header_builder.set_version(sam::header::header::Version::new(1, 6));
-    header_header_builder =
-        header_header_builder.set_sort_order(sam::header::header::SortOrder::Unsorted);
+    use sam::header::record::value::map::{self, Map};
+
+    let mut sam_header_builder = sam::Header::builder();
+    let mut sam_header_header = Map::<map::Header>::new(map::header::Version::new(1, 6));
+    *sam_header_header.sort_order_mut() = Some(map::header::SortOrder::Unsorted);
 
     let pg_id = CRATE_NAME;
 
@@ -331,7 +330,7 @@ pub fn create_bam_header(
             let _ = out.pop();
             out
         };
-        sam::header::Program::builder()
+        Map::<map::Program>::builder()
             .set_id(pg_id)
             .set_name(CRATE_NAME)
             .set_version(build_info::get_software_version())
@@ -340,18 +339,11 @@ pub fn create_bam_header(
     };
 
     if let Some(src_header) = src_header {
-        // We've got an header to work with!
-        // Retrieve custom header (@HD) fields (version is not included):
-        let header = src_header.header().map(|header| header.fields());
-        if let Some(fields) = header {
-            for (custom_tag, value) in fields.iter() {
-                header_header_builder = header_header_builder.insert(custom_tag.to_owned(), value);
-            }
-        }
+        // We've got an header to copy some data from
 
         // @PG chain of old entries
         for (_id, pg) in src_header.programs().iter() {
-            header_builder = header_builder.add_program(pg.clone());
+            sam_header_builder = sam_header_builder.add_program(pg.clone());
         }
 
         // Append our program line to the latest end of a chain
@@ -379,11 +371,11 @@ pub fn create_bam_header(
         }
 
         for comment in src_header.comments().iter() {
-            header_builder = header_builder.add_comment(comment);
+            sam_header_builder = sam_header_builder.add_comment(comment);
         }
 
         for (_id, read_group) in src_header.read_groups().iter() {
-            header_builder = header_builder.add_read_group(read_group.clone());
+            sam_header_builder = sam_header_builder.add_read_group(read_group.clone());
         }
     }
 
@@ -391,12 +383,12 @@ pub fn create_bam_header(
     let program = program_builder
         .build()
         .expect("This is not expected to fail");
-    header_builder = header_builder.add_program(program);
+    sam_header_builder = sam_header_builder.add_program(program);
 
     // @SQ entries
     for identifier_position in identifier_position_map.iter() {
-        header_builder = header_builder.add_reference_sequence(
-            sam::header::ReferenceSequence::new(
+        sam_header_builder = sam_header_builder.add_reference_sequence(
+            Map::<map::ReferenceSequence>::new(
                 identifier_position.identifier.parse().map_err(|_e| {
                     Error::InvalidIndex(format!(
                         "Could not create header. Contig name \"{}\" can not be used as @SQ ID.",
@@ -418,9 +410,9 @@ pub fn create_bam_header(
     }
 
     // @HD entries
-    header_builder = header_builder.set_header(header_header_builder.build());
+    sam_header_builder = sam_header_builder.set_header(sam_header_header);
 
-    Ok(header_builder.build())
+    Ok(sam_header_builder.build())
 }
 
 /// Convert suffix array intervals to positions and BAM records
