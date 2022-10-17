@@ -346,7 +346,8 @@ pub fn create_bam_header(
             sam_header_builder = sam_header_builder.add_program(pg.clone());
         }
 
-        // Append our program line to the latest end of a chain
+        // Append our program line to the latest end of a chain.
+        // We assume new program entries are appended to the bottom of the header's `@PG` lines.
         for pg_id in src_header.programs().keys().rev() {
             // Ensure it's really the end of a chain
             if !src_header
