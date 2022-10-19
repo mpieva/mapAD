@@ -9,7 +9,7 @@ publish = false
 rust-version = "1.59"
 
 [dependencies]
-clap = { version = "4.0", features = ["cargo", "string"] }
+clap = { version = "4.0", features = ["cargo", "string", "error-context"] }
 log = "0.4"
 simple_logger = "2.1"
 bincode = "1.3"
