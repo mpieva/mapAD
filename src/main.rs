@@ -45,7 +45,7 @@ impl TypedValueParser for ProbabilityValueParser {
         value: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         if let Some(value) = value.to_str().and_then(|value_str| value_str.parse().ok()) {
-            if (0.0_f32..=1.0).contains(&value) {
+            if (0.0..=1.0).contains(&value) {
                 return Ok(value);
             }
         }
