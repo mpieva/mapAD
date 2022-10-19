@@ -1,4 +1,4 @@
-use clap::{crate_description, Arg, ArgAction, ArgMatches, Command};
+use clap::{crate_authors, crate_description, Arg, ArgAction, ArgMatches, Command};
 use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
@@ -44,6 +44,7 @@ fn define_cli() -> ArgMatches {
     Command::new(CRATE_NAME)
         .about(crate_description!())
         .version(build_info::get_software_version())
+        .author(crate_authors!())
         .subcommand_required(true)
         .arg_required_else_help(true)
         .arg(
@@ -60,6 +61,7 @@ fn define_cli() -> ArgMatches {
                 .help(format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
                 .default_value("1")
                 .value_name("INT")
+                .value_parser(clap::value_parser!(usize)),
         )
         .arg(
             Arg::new("port")
@@ -68,6 +70,7 @@ fn define_cli() -> ArgMatches {
                 .help("TCP port to communicate over")
                 .default_value("3130")
                 .value_name("INT")
+                .value_parser(clap::value_parser!(u16)),
         )
         .arg(
             Arg::new("seed")
@@ -130,14 +133,16 @@ fn define_cli() -> ArgMatches {
                         .short('c')
                         .group("allowed_mm")
                         .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
-                        .value_name("FLOAT"),
+                        .value_name("FLOAT")
+                        .value_parser(clap::value_parser!(f32)),
                 )
                 .arg(
                     Arg::new("as_cutoff_exponent")
                         .short('e')
                         .help("Exponent to be applied to the read length (ignored if `-c` is not used)")
                         .default_value("1.0")
-                        .value_name("FLOAT"),
+                        .value_name("FLOAT")
+                    .value_parser(clap::value_parser!(f32)),
                 )
                 .arg(
                     Arg::new("library")
@@ -210,6 +215,7 @@ fn define_cli() -> ArgMatches {
                         .help("The number of reads that are processed in parallel")
                         .default_value("250000")
                         .value_name("INT")
+                        .value_parser(clap::value_parser!(usize)),
                 )
                 .arg(
                     Arg::new("ignore_base_quality")
@@ -229,6 +235,7 @@ fn define_cli() -> ArgMatches {
                         .help("Disallow gaps at read ends (configurable range)")
                         .default_value("5")
                         .value_name("INT")
+                        .value_parser(clap::value_parser!(u8)),
                 )
                 .arg(
                     Arg::new("max_num_gaps_open")
@@ -236,6 +243,7 @@ fn define_cli() -> ArgMatches {
                         .help("Max. number of opened gaps")
                         .default_value("2")
                         .value_name("INT")
+                        .value_parser(clap::value_parser!(u8)),
                 )
                 .arg(
                     Arg::new("stack_limit_abort")
