@@ -429,11 +429,9 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         arg_matches.get_flag("ignore_base_quality"),
     );
 
-    let mismatch_bound = if arg_matches.get_flag("poisson_prob") {
+    let mismatch_bound = if let Some(&pprob) = arg_matches.get_one("poisson_prob") {
         Discrete::new(
-            *arg_matches
-                .get_one("poisson_prob")
-                .expect("Presence ensured by CLI definition"),
+            pprob,
             divergence,
             difference_model.get_representative_mismatch_penalty(),
         )
