@@ -41,19 +41,26 @@ impl TypedValueParser for ProbabilityValueParser {
     fn parse_ref(
         &self,
         cmd: &Command,
-        _arg: Option<&Arg>,
+        arg: Option<&Arg>,
         value: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        let value = value
-            .to_str()
-            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::ValueValidation))?
-            .parse()
-            .map_err(|_| clap::Error::new(clap::error::ErrorKind::ValueValidation))?;
-        if (0.0..=1.0).contains(&value) {
-            Ok(value)
-        } else {
-            Err(clap::Error::new(clap::error::ErrorKind::ValueValidation).with_cmd(cmd))
+        if let Some(value) = value.to_str().and_then(|value_str| value_str.parse().ok()) {
+            if (0.0_f32..=1.0).contains(&value) {
+                return Ok(value);
+            }
         }
+        let err = {
+            // Prepare error with context
+            let mut err = clap::Error::new(clap::error::ErrorKind::ValueValidation).with_cmd(cmd);
+            if let Some(arg) = arg {
+                err.insert(
+                    clap::error::ContextKind::InvalidArg,
+                    clap::error::ContextValue::String(arg.to_string()),
+                );
+            }
+            err
+        };
+        Err(err)
     }
 }
 
