@@ -75,7 +75,8 @@ fn define_cli() -> ArgMatches {
                 .long("seed")
                 .help("Seed for the random number generator")
                 .default_value("1234")
-                .value_name("INT"),
+                .value_name("INT")
+                .value_parser(clap::value_parser!(u64)),
         )
         .subcommand(
             Command::new("index")
