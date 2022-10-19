@@ -1,4 +1,9 @@
-use clap::{crate_authors, crate_description, Arg, ArgAction, ArgMatches, Command};
+use std::ffi::OsStr;
+
+use clap::{
+    builder::TypedValueParser, crate_authors, crate_description, value_parser, Arg, ArgAction,
+    ArgMatches, Command,
+};
 use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
@@ -27,20 +32,32 @@ fn main() {
     handle_arguments(define_cli());
 }
 
-fn define_cli() -> ArgMatches {
-    let probability_validator = |v: &str| {
-        let error_message = String::from("Please specify a value between 0 and 1");
-        let v: f32 = match v.parse() {
-            Ok(s) => s,
-            Err(_) => return Err(error_message),
-        };
-        if (0.0..=1.0).contains(&v) {
-            Ok(())
-        } else {
-            Err(error_message)
-        }
-    };
+#[derive(Debug, Copy, Clone)]
+struct ProbabilityValueParser {}
 
+impl TypedValueParser for ProbabilityValueParser {
+    type Value = f32;
+
+    fn parse_ref(
+        &self,
+        cmd: &Command,
+        _arg: Option<&Arg>,
+        value: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let value = value
+            .to_str()
+            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::ValueValidation))?
+            .parse()
+            .map_err(|_| clap::Error::new(clap::error::ErrorKind::ValueValidation))?;
+        if (0.0..=1.0).contains(&value) {
+            Ok(value)
+        } else {
+            Err(clap::Error::new(clap::error::ErrorKind::ValueValidation).with_cmd(cmd))
+        }
+    }
+}
+
+fn define_cli() -> ArgMatches {
     Command::new(CRATE_NAME)
         .about(crate_description!())
         .version(build_info::get_software_version())
@@ -61,7 +78,7 @@ fn define_cli() -> ArgMatches {
                 .help(format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
                 .default_value("1")
                 .value_name("INT")
-                .value_parser(clap::value_parser!(usize)),
+                .value_parser(value_parser!(usize)),
         )
         .arg(
             Arg::new("port")
@@ -70,7 +87,7 @@ fn define_cli() -> ArgMatches {
                 .help("TCP port to communicate over")
                 .default_value("3130")
                 .value_name("INT")
-                .value_parser(clap::value_parser!(u16)),
+                .value_parser(value_parser!(u16)),
         )
         .arg(
             Arg::new("seed")
@@ -79,7 +96,7 @@ fn define_cli() -> ArgMatches {
                 .help("Seed for the random number generator")
                 .default_value("1234")
                 .value_name("INT")
-                .value_parser(clap::value_parser!(u64)),
+                .value_parser(value_parser!(u64)),
         )
         .subcommand(
             Command::new("index")
@@ -126,7 +143,7 @@ fn define_cli() -> ArgMatches {
                         .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under `-D` base error rate")
                         .value_name("FLOAT")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("as_cutoff")
@@ -134,7 +151,7 @@ fn define_cli() -> ArgMatches {
                         .group("allowed_mm")
                         .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
                         .value_name("FLOAT")
-                        .value_parser(clap::value_parser!(f32)),
+                        .value_parser(value_parser!(f32)),
                 )
                 .arg(
                     Arg::new("as_cutoff_exponent")
@@ -142,7 +159,7 @@ fn define_cli() -> ArgMatches {
                         .help("Exponent to be applied to the read length (ignored if `-c` is not used)")
                         .default_value("1.0")
                         .value_name("FLOAT")
-                    .value_parser(clap::value_parser!(f32)),
+                    .value_parser(value_parser!(f32)),
                 )
                 .arg(
                     Arg::new("library")
@@ -159,7 +176,7 @@ fn define_cli() -> ArgMatches {
                         .short('f')
                         .help("5'-overhang length parameter")
                         .value_name("FLOAT")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("three_prime_overhang")
@@ -167,7 +184,7 @@ fn define_cli() -> ArgMatches {
                         .short('t')
                         .help("3'-overhang length parameter")
                         .value_name("FLOAT")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("ds_deamination_rate")
@@ -175,7 +192,7 @@ fn define_cli() -> ArgMatches {
                         .short('d')
                         .help("Deamination rate in double-stranded stem of a read")
                         .value_name("FLOAT")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("ss_deamination_rate")
@@ -183,7 +200,7 @@ fn define_cli() -> ArgMatches {
                         .short('s')
                         .help("Deamination rate in single-stranded ends of a read")
                         .value_name("FLOAT")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("divergence")
@@ -191,7 +208,7 @@ fn define_cli() -> ArgMatches {
                         .help("Divergence / base error rate")
                         .value_name("FLOAT")
                         .default_value("0.02")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("indel_rate")
@@ -199,7 +216,7 @@ fn define_cli() -> ArgMatches {
                         .short('i')
                         .help("Expected rate of indels between reads and reference")
                         .value_name("FLOAT")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("gap_extension_penalty")
@@ -207,7 +224,7 @@ fn define_cli() -> ArgMatches {
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
                         .value_name("FLOAT")
                         .default_value("1.0")
-                        .value_parser(probability_validator),
+                        .value_parser(ProbabilityValueParser{}),
                 )
                 .arg(
                     Arg::new("chunk_size")
@@ -215,7 +232,7 @@ fn define_cli() -> ArgMatches {
                         .help("The number of reads that are processed in parallel")
                         .default_value("250000")
                         .value_name("INT")
-                        .value_parser(clap::value_parser!(usize)),
+                        .value_parser(value_parser!(usize)),
                 )
                 .arg(
                     Arg::new("ignore_base_quality")
@@ -235,7 +252,7 @@ fn define_cli() -> ArgMatches {
                         .help("Disallow gaps at read ends (configurable range)")
                         .default_value("5")
                         .value_name("INT")
-                        .value_parser(clap::value_parser!(u8)),
+                        .value_parser(value_parser!(u8)),
                 )
                 .arg(
                     Arg::new("max_num_gaps_open")
@@ -243,7 +260,7 @@ fn define_cli() -> ArgMatches {
                         .help("Max. number of opened gaps")
                         .default_value("2")
                         .value_name("INT")
-                        .value_parser(clap::value_parser!(u8)),
+                        .value_parser(value_parser!(u8)),
                 )
                 .arg(
                     Arg::new("stack_limit_abort")
