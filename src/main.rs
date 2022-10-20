@@ -1,9 +1,4 @@
-use std::ffi::OsStr;
-
-use clap::{
-    builder::TypedValueParser, crate_authors, crate_description, value_parser, Arg, ArgAction,
-    ArgMatches, Command,
-};
+use clap::{crate_authors, crate_description, value_parser, Arg, ArgAction, ArgMatches, Command};
 use log::{error, info, warn};
 #[cfg(all(target_env = "musl"))]
 use mimalloc::MiMalloc;
@@ -32,39 +27,15 @@ fn main() {
     handle_arguments(define_cli());
 }
 
-#[derive(Debug, Copy, Clone)]
-struct ProbabilityValueParser {}
-
-impl TypedValueParser for ProbabilityValueParser {
-    type Value = f32;
-
-    fn parse_ref(
-        &self,
-        cmd: &Command,
-        arg: Option<&Arg>,
-        value: &OsStr,
-    ) -> Result<Self::Value, clap::Error> {
-        if let Some(value) = value.to_str().and_then(|value_str| value_str.parse().ok()) {
-            if (0.0..=1.0).contains(&value) {
-                return Ok(value);
-            }
-        }
-        let err = {
-            // Prepare error with context
-            let mut err = clap::Error::new(clap::error::ErrorKind::ValueValidation).with_cmd(cmd);
-            if let Some(arg) = arg {
-                err.insert(
-                    clap::error::ContextKind::InvalidArg,
-                    clap::error::ContextValue::String(arg.to_string()),
-                );
-            }
-            err
-        };
-        Err(err)
-    }
-}
-
 fn define_cli() -> ArgMatches {
+    fn parse_validate_prob(raw_arg: &str) -> Result<f32, clap::Error> {
+        raw_arg
+            .parse()
+            .ok()
+            .and_then(|value| (0.0..=1.0).contains(&value).then_some(value))
+            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::ValueValidation))
+    }
+
     Command::new(CRATE_NAME)
         .about(crate_description!())
         .version(build_info::get_software_version())
@@ -150,7 +121,7 @@ fn define_cli() -> ArgMatches {
                         .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under `-D` base error rate")
                         .value_name("FLOAT")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("as_cutoff")
@@ -183,7 +154,7 @@ fn define_cli() -> ArgMatches {
                         .short('f')
                         .help("5'-overhang length parameter")
                         .value_name("FLOAT")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("three_prime_overhang")
@@ -191,7 +162,7 @@ fn define_cli() -> ArgMatches {
                         .short('t')
                         .help("3'-overhang length parameter")
                         .value_name("FLOAT")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("ds_deamination_rate")
@@ -199,7 +170,7 @@ fn define_cli() -> ArgMatches {
                         .short('d')
                         .help("Deamination rate in double-stranded stem of a read")
                         .value_name("FLOAT")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("ss_deamination_rate")
@@ -207,7 +178,7 @@ fn define_cli() -> ArgMatches {
                         .short('s')
                         .help("Deamination rate in single-stranded ends of a read")
                         .value_name("FLOAT")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("divergence")
@@ -215,7 +186,7 @@ fn define_cli() -> ArgMatches {
                         .help("Divergence / base error rate")
                         .value_name("FLOAT")
                         .default_value("0.02")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("indel_rate")
@@ -223,7 +194,7 @@ fn define_cli() -> ArgMatches {
                         .short('i')
                         .help("Expected rate of indels between reads and reference")
                         .value_name("FLOAT")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("gap_extension_penalty")
@@ -231,7 +202,7 @@ fn define_cli() -> ArgMatches {
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
                         .value_name("FLOAT")
                         .default_value("1.0")
-                        .value_parser(ProbabilityValueParser{}),
+                        .value_parser(parse_validate_prob),
                 )
                 .arg(
                     Arg::new("chunk_size")
