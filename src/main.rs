@@ -28,6 +28,9 @@ fn main() {
 }
 
 fn define_cli() -> ArgMatches {
+    /// Parse `f32` float and check if the value is between 0 and 1.
+    /// `clap` impls `TypedValueParser` for functions with the following signature,
+    /// so it is directly pluggable into its `Arg::value_parser()` method.
     fn parse_validate_prob(raw_arg: &str) -> Result<f32, clap::Error> {
         raw_arg
             .parse()
