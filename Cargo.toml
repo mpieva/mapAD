@@ -6,7 +6,7 @@ authors = ["J. Christian Heide <christian_heide@eva.mpg.de>"]
 edition = "2021"
 readme = "Readme.md"
 publish = false
-rust-version = "1.59"
+rust-version = "1.62.1"
 
 [dependencies]
 clap = { version = "4.0", features = ["cargo", "string"] }
