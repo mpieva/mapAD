@@ -25,9 +25,9 @@ checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
 name = "anyhow"
-version = "1.0.65"
+version = "1.0.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98161a4e3e2184da77bb14f02184cdd111e83bbbcc9979dfee3c44b9a85f5602"
+checksum = "216261ddc8289130e551ddcd5ce8a064710c0d064a4d2895c67151c92b5443f6"
 
 [[package]]
 name = "approx"
@@ -272,9 +272,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.0.17"
+version = "4.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06badb543e734a2d6568e19a40af66ed5364360b9226184926f89d229b4b4267"
+checksum = "335867764ed2de42325fafe6d18b8af74ba97ee0c590fa016f157535b42ab04b"
 dependencies = [
  "atty",
  "bitflags",
@@ -517,9 +517,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eb1a864a501629691edf6c15a593b7a51eebaa1e8468e9ddc623de7c9b58ec6"
+checksum = "c05aeb6a22b8f62540c194aac980f2115af067bfe15a0734d7277a768d396b31"
 dependencies = [
  "cfg-if",
  "libc",
@@ -797,7 +797,7 @@ dependencies = [
  "bincode",
  "bio",
  "built",
- "clap 4.0.17",
+ "clap 4.0.18",
  "criterion",
  "either",
  "fxhash",
@@ -938,9 +938,9 @@ dependencies = [
 
 [[package]]
 name = "noodles"
-version = "0.27.0"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c14a3149bba9ffbce03cee96455e4e4887c981f614ea28bd82cfe19182913191"
+checksum = "c316c8ec942acc62a673918f1f3e0efbb4388a201da0f0423d0eea706bf4e120"
 dependencies = [
  "noodles-bam",
  "noodles-core",
@@ -949,9 +949,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-bam"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bda6d1b98ae636635ca73759511b6d59dd93d7efc608a7a020007f70d751d68"
+checksum = "955994c6824e090770e302bd36a8710d65d55860fdd631f73cfe0477e7391466"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -965,9 +965,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-bgzf"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e5c5c36c59b29fa6441e593187b2cc48bd0c483c3c825ae846318ba51747302"
+checksum = "a22abe9012eb99734cda8f3b409b7c264d232484a3bd32bee61bcd4172c793fc"
 dependencies = [
  "byteorder",
  "bytes",
@@ -977,15 +977,15 @@ dependencies = [
 
 [[package]]
 name = "noodles-core"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba58b998fe20d6e7f0c67386c1901daaf8fd2d2c4e7cfb5cf5f47ed22d96a8c8"
+checksum = "a535f23a76e1d159401d70d5766ab116154d6774961e00559978bf7615f72fe4"
 
 [[package]]
 name = "noodles-csi"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12611457c5ef6aff23d10fc786097a977e5e6791859393c27b4d03077d3a7a67"
+checksum = "9572ef5fd9fee3b8ad2a5b2f96ea113a0325d54d4d3a998f70902d249aa8cc39"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -995,9 +995,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-fasta"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3080b4a8233503eba431c4a78a81859057c3a92344592f78f11c7c4b3b6efb52"
+checksum = "00d7ee96e1404c0ef7e1406fe1303aa4c0c0f308b738ed6420493cc582c88bc0"
 dependencies = [
  "bytes",
  "memchr",
@@ -1007,9 +1007,9 @@ dependencies = [
 
 [[package]]
 name = "noodles-sam"
-version = "0.19.0"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dcef88a771e89366f2323d7469f2b20a1c073f689ee4018432708df53ce9817"
+checksum = "3af665f170cdb2fe92cdd6189e140e7d2ee52c3f5ed2754cb3daef66d9c94fd0"
 dependencies = [
  "bitflags",
  "indexmap",
@@ -1382,18 +1382,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.145"
+version = "1.0.146"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "728eb6351430bccb993660dfffc5a72f91ccc1295abaa8ce19b27ebe4f75568b"
+checksum = "6df50b7a60a0ad48e1b42eb38373eac8ff785d619fb14db917b4e63d5439361f"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.145"
+version = "1.0.146"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81fa1584d3d1bcacd84c277a0dfe21f5b0f6accf4a23d04d4c6d61f1af522b4c"
+checksum = "a714fd32ba1d66047ce7d53dabd809e9922d538f9047de13cc4cffca47b36205"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1516,9 +1516,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fcd952facd492f9be3ef0d0b7032a6e442ee9b361d4acc2b1d0c4aaa5f613a1"
+checksum = "a864042229133ada95abf3b54fdc62ef5ccabe9515b64717bcb9a1919e59445d"
 dependencies = [
  "proc-macro2",
  "quote",
