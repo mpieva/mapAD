@@ -50,7 +50,7 @@ fn define_cli() -> ArgMatches {
                 .global(true)
                 .short('v')
                 .action(ArgAction::Count)
-                .help("Sets the level of verbosity"),
+                .help("Sets the level of verbosity")
         )
         .arg(
             Arg::new("num_threads")
@@ -59,7 +59,7 @@ fn define_cli() -> ArgMatches {
                 .help(format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
                 .default_value("1")
                 .value_name("INT")
-                .value_parser(value_parser!(usize)),
+                .value_parser(value_parser!(usize))
         )
         .arg(
             Arg::new("port")
@@ -68,7 +68,7 @@ fn define_cli() -> ArgMatches {
                 .help("TCP port to communicate over")
                 .default_value("3130")
                 .value_name("INT")
-                .value_parser(value_parser!(u16)),
+                .value_parser(value_parser!(u16))
         )
         .arg(
             Arg::new("seed")
@@ -77,7 +77,7 @@ fn define_cli() -> ArgMatches {
                 .help("Seed for the random number generator")
                 .default_value("1234")
                 .value_name("INT")
-                .value_parser(value_parser!(u64)),
+                .value_parser(value_parser!(u64))
         )
         .subcommand(
             Command::new("index")
@@ -88,7 +88,7 @@ fn define_cli() -> ArgMatches {
                         .short('g')
                         .long("reference")
                         .help("FASTA file containing the genome to be indexed")
-                        .value_name("FASTA FILE"),
+                        .value_name("FASTA FILE")
                 )
         )
         .subcommand(
@@ -100,7 +100,7 @@ fn define_cli() -> ArgMatches {
                         .short('r')
                         .long("reads")
                         .help("BAM or FASTQ file that contains the reads to be aligned")
-                        .value_name("STRING"),
+                        .value_name("STRING")
                 )
                 .arg(
                     Arg::new("reference")
@@ -108,7 +108,7 @@ fn define_cli() -> ArgMatches {
                         .short('g')
                         .long("reference")
                         .help("Prefix of the file names of the index files. The reference FASTA file itself does not need to be present.")
-                        .value_name("STRING"),
+                        .value_name("STRING")
                 )
                 .arg(
                     Arg::new("output")
@@ -116,7 +116,7 @@ fn define_cli() -> ArgMatches {
                         .short('o')
                         .long("output")
                         .help("Path to output BAM file")
-                        .value_name("STRING"),
+                        .value_name("STRING")
                 )
                 .arg(
                     Arg::new("poisson_prob")
@@ -124,7 +124,7 @@ fn define_cli() -> ArgMatches {
                         .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under `-D` base error rate")
                         .value_name("FLOAT")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("as_cutoff")
@@ -132,7 +132,7 @@ fn define_cli() -> ArgMatches {
                         .group("allowed_mm")
                         .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
                         .value_name("FLOAT")
-                        .value_parser(value_parser!(f32)),
+                        .value_parser(value_parser!(f32))
                 )
                 .arg(
                     Arg::new("as_cutoff_exponent")
@@ -140,7 +140,7 @@ fn define_cli() -> ArgMatches {
                         .help("Exponent to be applied to the read length (ignored if `-c` is not used)")
                         .default_value("1.0")
                         .value_name("FLOAT")
-                    .value_parser(value_parser!(f32)),
+                    .value_parser(value_parser!(f32))
                 )
                 .arg(
                     Arg::new("library")
@@ -157,7 +157,7 @@ fn define_cli() -> ArgMatches {
                         .short('f')
                         .help("5'-overhang length parameter")
                         .value_name("FLOAT")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("three_prime_overhang")
@@ -165,7 +165,7 @@ fn define_cli() -> ArgMatches {
                         .short('t')
                         .help("3'-overhang length parameter")
                         .value_name("FLOAT")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("ds_deamination_rate")
@@ -173,7 +173,7 @@ fn define_cli() -> ArgMatches {
                         .short('d')
                         .help("Deamination rate in double-stranded stem of a read")
                         .value_name("FLOAT")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("ss_deamination_rate")
@@ -181,7 +181,7 @@ fn define_cli() -> ArgMatches {
                         .short('s')
                         .help("Deamination rate in single-stranded ends of a read")
                         .value_name("FLOAT")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("divergence")
@@ -189,7 +189,7 @@ fn define_cli() -> ArgMatches {
                         .help("Divergence / base error rate")
                         .value_name("FLOAT")
                         .default_value("0.02")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("indel_rate")
@@ -197,7 +197,7 @@ fn define_cli() -> ArgMatches {
                         .short('i')
                         .help("Expected rate of indels between reads and reference")
                         .value_name("FLOAT")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("gap_extension_penalty")
@@ -205,7 +205,7 @@ fn define_cli() -> ArgMatches {
                         .help("Gap extension penalty as a fraction of the representative mismatch penalty")
                         .value_name("FLOAT")
                         .default_value("1.0")
-                        .value_parser(parse_validate_prob),
+                        .value_parser(parse_validate_prob)
                 )
                 .arg(
                     Arg::new("chunk_size")
@@ -213,7 +213,7 @@ fn define_cli() -> ArgMatches {
                         .help("The number of reads that are processed in parallel")
                         .default_value("250000")
                         .value_name("INT")
-                        .value_parser(value_parser!(usize)),
+                        .value_parser(value_parser!(usize))
                 )
                 .arg(
                     Arg::new("ignore_base_quality")
@@ -233,7 +233,7 @@ fn define_cli() -> ArgMatches {
                         .help("Disallow gaps at read ends (configurable range)")
                         .default_value("5")
                         .value_name("INT")
-                        .value_parser(value_parser!(u8)),
+                        .value_parser(value_parser!(u8))
                 )
                 .arg(
                     Arg::new("max_num_gaps_open")
@@ -241,7 +241,7 @@ fn define_cli() -> ArgMatches {
                         .help("Max. number of opened gaps")
                         .default_value("2")
                         .value_name("INT")
-                        .value_parser(value_parser!(u8)),
+                        .value_parser(value_parser!(u8))
                 )
                 .arg(
                     Arg::new("stack_limit_abort")
