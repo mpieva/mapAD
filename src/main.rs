@@ -121,15 +121,15 @@ fn define_cli() -> ArgMatches {
                 .arg(
                     Arg::new("poisson_prob")
                         .short('p')
-                        .group("allowed_mm")
                         .help("Minimum probability of the number of mismatches under `-D` base error rate")
                         .value_name("FLOAT")
                         .value_parser(parse_validate_prob)
+                        .conflicts_with("as_cutoff")
+                        .required_unless_present("as_cutoff")
                 )
                 .arg(
                     Arg::new("as_cutoff")
                         .short('c')
-                        .group("allowed_mm")
                         .help("Per-base average alignment score cutoff (-c > AS / read_len^e ?)")
                         .value_name("FLOAT")
                         .value_parser(value_parser!(f32))
@@ -248,8 +248,7 @@ fn define_cli() -> ArgMatches {
                         .long("stack_limit_abort")
                         .help("Abort alignment when stack size limit is reached instead of trying to recover.")
                         .action(ArgAction::SetTrue)
-                ),
-
+                )
         )
         .subcommand(
             Command::new("worker")
