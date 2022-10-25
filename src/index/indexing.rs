@@ -149,8 +149,12 @@ fn index<T: Rng>(
 
     {
         info!("Compress suffix array");
-        let owned_sampled_suffix_array =
-            SampledSuffixArrayOwned::sample(&suffix_array, &ref_seq, &bwt, 32);
+        let owned_sampled_suffix_array = SampledSuffixArrayOwned::sample(
+            &suffix_array,
+            &ref_seq,
+            &bwt,
+            32.try_into().expect("to be non-zero"),
+        );
 
         info!("Save compressed suffix array");
         let versioned_suffix_array = VersionedIndexItem::new(owned_sampled_suffix_array);

@@ -2,7 +2,7 @@ pub mod indexing;
 
 mod versioned_index;
 
-use std::{collections::HashMap, hash::BuildHasherDefault};
+use std::{collections::HashMap, hash::BuildHasherDefault, num::NonZeroUsize};
 
 use bio::data_structures::{
     bwt::{Less, Occ, BWT},
@@ -86,7 +86,7 @@ impl FastaIdPositions {
 #[derive(Serialize, Deserialize)]
 pub struct SampledSuffixArrayOwned {
     sample: Vec<usize>,
-    s: usize, // Rate of sampling
+    s: NonZeroUsize, // Rate of sampling
     extra_rows: HashMapFx<usize, usize>,
     sentinel: u8,
 }
@@ -94,12 +94,18 @@ pub struct SampledSuffixArrayOwned {
 impl SampledSuffixArrayOwned {
     /// Sample the suffix array with the given sample rate.
     /// This is copied from the `bio` crate because we need more serde flexibility.
-    pub fn sample<S>(suffix_array: &S, text: &[u8], bwt: &BWT, sampling_rate: usize) -> Self
+    pub fn sample<S>(suffix_array: &S, text: &[u8], bwt: &BWT, sampling_rate: NonZeroUsize) -> Self
     where
         S: SuffixArray,
     {
-        let mut sample =
-            Vec::with_capacity((suffix_array.len() as f32 / sampling_rate as f32).ceil() as usize);
+        let mut sample = {
+            let mut vec_cap = suffix_array.len() / sampling_rate;
+            // Ceil
+            if suffix_array.len() % sampling_rate != 0 {
+                vec_cap += 1
+            }
+            Vec::with_capacity(vec_cap)
+        };
         let mut extra_rows = HashMapFx::default();
         let sentinel = *text
             .last()
@@ -152,7 +158,7 @@ pub struct SampledSuffixArray<'a, 'b, 'c> {
     less: &'b Less,
     occ: &'c Occ,
     sample: Vec<usize>,
-    s: usize, // Rate of sampling
+    s: NonZeroUsize, // Rate of sampling
     extra_rows: HashMapFx<usize, usize>,
     sentinel: u8,
 }
