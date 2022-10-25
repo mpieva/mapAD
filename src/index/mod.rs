@@ -86,7 +86,7 @@ impl FastaIdPositions {
 #[derive(Serialize, Deserialize)]
 pub struct SampledSuffixArrayOwned {
     sample: Vec<usize>,
-    sample_rate: NonZeroUsize,
+    sampling_rate: NonZeroUsize,
     extra_rows: HashMapFx<usize, usize>,
     sentinel: u8,
 }
@@ -127,7 +127,7 @@ impl SampledSuffixArrayOwned {
 
         Self {
             sample,
-            sample_rate: sampling_rate,
+            sampling_rate,
             extra_rows,
             sentinel,
         }
@@ -144,7 +144,7 @@ impl SampledSuffixArrayOwned {
             less,
             occ,
             sample: self.sample,
-            sample_rate: self.sample_rate,
+            sampling_rate: self.sampling_rate,
             extra_rows: self.extra_rows,
             sentinel: self.sentinel,
         }
@@ -158,7 +158,7 @@ pub struct SampledSuffixArray<'a, 'b, 'c> {
     less: &'b Less,
     occ: &'c Occ,
     sample: Vec<usize>,
-    sample_rate: NonZeroUsize,
+    sampling_rate: NonZeroUsize,
     extra_rows: HashMapFx<usize, usize>,
     sentinel: u8,
 }
@@ -169,8 +169,8 @@ impl<'a, 'b, 'c> SuffixArray for SampledSuffixArray<'a, 'b, 'c> {
             let mut pos = index;
             let mut offset = 0;
             loop {
-                if pos % self.sample_rate == 0 {
-                    return Some(self.sample[pos / self.sample_rate] + offset);
+                if pos % self.sampling_rate == 0 {
+                    return Some(self.sample[pos / self.sampling_rate] + offset);
                 }
 
                 let c = self.bwt[pos];
