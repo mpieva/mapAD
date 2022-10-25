@@ -138,6 +138,7 @@ the center of a read is approached.
 
 ```bash
 ./mapad -vv map \
+--threads 32                                               `# Number of threads to use (runs on all available cores when set to 0).` \
 --library single_stranded                                  `# Library preparation protocol (single- or double-stranded)` \
 -p 0.03                                                    `# Allowed mismatches under `-D` base error rate (similar to BWA backtrack)` \
 -f 0.5                                                     `# Five-prime overhang parameter` (generic overhang parameter when "--library" is set to "double_stranded") \
@@ -166,7 +167,7 @@ Start the dispatcher:
 Spawn workers:
 
    ```bash
-   qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vv worker --host $(hostname)
+   qsub -N "mapAD_worker" -pe "smp" 1-32 -t 1-128 -l "h_vmem=30G,s_vmem=30G,virtual_free=30G,mem_free=30G,class=*" -j "y" -R "y" -b "y" ./mapad -vv worker --threads 8 --host $(hostname)
    ```
 
 ## Mapping Quality
