@@ -23,6 +23,7 @@ pub enum Error {
     AnyhowError(String),
     ContigBoundaryOverlap,
     InternalError,
+    ArchitectureError,
 }
 
 impl fmt::Display for Error {
@@ -40,6 +41,7 @@ impl fmt::Display for Error {
             Error::AnyhowError(err) => write!(f, "Internal error: {}", err),
             Error::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
             Error::InternalError => write!(f, "Internal error"),
+            Error::ArchitectureError => write!(f, "Host CPU architecture not suitable for the size of data {} is supposed to run on", CRATE_NAME),
         }
     }
 }

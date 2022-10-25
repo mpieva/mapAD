@@ -2,7 +2,7 @@ use std::iter;
 
 use crate::{
     distributed::{Message, ResultSheet},
-    errors::Result,
+    errors::{Error, Result},
     map::input_chunk_reader::TaskSheet,
 };
 
@@ -42,7 +42,9 @@ impl TaskRxBuffer {
 
     pub fn decode_header(&mut self) -> Result<()> {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
-        self.expected_size = message_size as usize;
+        self.expected_size = message_size
+            .try_into()
+            .map_err(|_e| Error::ArchitectureError)?;
         self.buf
             .extend(iter::repeat(0).take(self.expected_size - TaskSheet::PROTO_LEN));
         Ok(())
@@ -84,7 +86,9 @@ impl ResultRxBuffer {
 
     pub fn decode_header(&mut self) -> Result<()> {
         let message_size: u64 = bincode::deserialize(&self.buf)?;
-        self.expected_size = message_size as usize;
+        self.expected_size = message_size
+            .try_into()
+            .map_err(|_e| Error::ArchitectureError)?;
         self.buf
             .extend(iter::repeat(0).take(self.expected_size - ResultSheet::PROTO_LEN));
         Ok(())
