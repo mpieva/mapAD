@@ -797,7 +797,6 @@ dependencies = [
  "clap 4.0.18",
  "criterion",
  "either",
- "fxhash",
  "log",
  "mimalloc",
  "min-max-heap",

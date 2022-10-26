@@ -25,7 +25,6 @@ mio = { version = "0.8", features = ["os-poll", "net"] }
 min-max-heap = { git = "https://github.com/tov/min-max-heap-rs", branch = "master"}
 slab = "0.4"
 anyhow = "1.0"
-fxhash = "0.2"
 mimalloc = { version = "0.1", default-features = false }
 noodles = { version = "0.28", features = ["bam", "sam", "core"] }
 time = { version = "0.3", features = ["local-offset"] }

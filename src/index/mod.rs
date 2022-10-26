@@ -2,13 +2,12 @@ pub mod indexing;
 
 mod versioned_index;
 
-use std::{collections::HashMap, hash::BuildHasherDefault, num::NonZeroUsize};
+use std::{collections::BTreeMap, num::NonZeroUsize};
 
 use bio::data_structures::{
     bwt::{Less, Occ, BWT},
     suffix_array::SuffixArray,
 };
-use fxhash::FxHasher;
 use log::debug;
 use serde::{Deserialize, Serialize};
 
@@ -29,9 +28,6 @@ const DNA_NOT_A: &[u8; 3] = b"CGT";
 const DNA_NOT_C: &[u8; 3] = b"AGT";
 const DNA_NOT_G: &[u8; 3] = b"ACT";
 const DNA_NOT_T: &[u8; 3] = b"ACG";
-
-// HashMap using a fast hasher
-type HashMapFx<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 
 /// For multi-identifier reference sequences like the human genome (that is split by chromosome)
 /// this struct is used to keep a map of IDs and positions
@@ -87,7 +83,7 @@ impl FastaIdPositions {
 pub struct SampledSuffixArrayOwned {
     sample: Vec<usize>,
     sampling_rate: NonZeroUsize,
-    extra_rows: HashMapFx<usize, usize>,
+    extra_rows: BTreeMap<usize, usize>,
     sentinel: u8,
 }
 
@@ -106,7 +102,7 @@ impl SampledSuffixArrayOwned {
             }
             Vec::with_capacity(vec_cap)
         };
-        let mut extra_rows = HashMapFx::default();
+        let mut extra_rows = BTreeMap::default();
         let sentinel = *text
             .last()
             .expect("The text should not be empty at this point");
@@ -159,7 +155,7 @@ pub struct SampledSuffixArray<'a, 'b, 'c> {
     occ: &'c Occ,
     sample: Vec<usize>,
     sampling_rate: NonZeroUsize,
-    extra_rows: HashMapFx<usize, usize>,
+    extra_rows: BTreeMap<usize, usize>,
     sentinel: u8,
 }
 
