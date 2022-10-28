@@ -197,12 +197,30 @@ impl<'a, 'b, 'c> SuffixArray for SampledSuffixArray<'a, 'b, 'c> {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OriginalSymbols(BTreeMap<usize, u8>);
+
+impl OriginalSymbols {
+    pub fn new(map_data: BTreeMap<usize, u8>) -> Self {
+        Self(map_data)
+    }
+
+    /// Returns the original symbol at a _forward strand_ position
+    pub fn get(&self, idx: usize) -> Option<u8> {
+        self.0.get(&idx).copied()
+    }
+}
+
 pub fn load_suffix_array_from_path(reference_path: &str) -> Result<SampledSuffixArrayOwned> {
     VersionedIndexItem::read_from_path(format!("{}.tsa", reference_path))?.try_take()
 }
 
 pub fn load_id_pos_map_from_path(reference_path: &str) -> Result<FastaIdPositions> {
     VersionedIndexItem::read_from_path(format!("{}.tpi", reference_path))?.try_take()
+}
+
+pub fn load_original_symbols_from_path(reference_path: &str) -> Result<OriginalSymbols> {
+    VersionedIndexItem::read_from_path(format!("{}.tos", reference_path))?.try_take()
 }
 
 pub fn load_index_from_path(reference_path: &str) -> Result<RtFmdIndex> {

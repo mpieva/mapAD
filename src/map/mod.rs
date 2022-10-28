@@ -160,6 +160,7 @@ struct IntToCoordOutput<'a> {
     tid: u32,
     contig_name: &'a str,
     relative_pos: u64,
+    absolute_pos: usize,
     strand: Direction,
     num_skipped: usize,
     interval: &'a HitInterval,

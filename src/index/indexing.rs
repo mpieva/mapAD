@@ -1,4 +1,4 @@
-use std::{fs::File, iter, num::NonZeroUsize};
+use std::{collections::BTreeMap, fs::File, iter, num::NonZeroUsize};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
@@ -18,7 +18,7 @@ use rand::{
 use crate::{
     errors::{Error, Result},
     index::{
-        versioned_index::VersionedIndexItem, FastaIdPosition, FastaIdPositions,
+        versioned_index::VersionedIndexItem, FastaIdPosition, FastaIdPositions, OriginalSymbols,
         SampledSuffixArrayOwned, DNA_AMINO, DNA_KETONE, DNA_NOT_A, DNA_NOT_C, DNA_NOT_G, DNA_NOT_T,
         DNA_PURINE, DNA_PYRIMIDINE, DNA_STRONG, DNA_UPPERCASE_ALPHABET, DNA_UPPERCASE_X_ALPHABET,
         DNA_WEAK,
@@ -59,6 +59,7 @@ fn index<T: Rng>(
         })
         .collect::<Result<Vec<_>>>()?;
 
+    info!("Validate reference sequence");
     // Check if reference only contains valid IUPAC base symbols
     if !dna::iupac_alphabet().is_word(&ref_seq) {
         return Err(Error::ParseError(
@@ -87,14 +88,22 @@ fn index<T: Rng>(
     // Unconditionally return `X`
     let summarize_ambiguous = |_base| b'X';
 
-    // Start by replacing ambiguous bases that do not occur in stretches exceeding a certain length,
-    // using the closures defined above
-    run_apply(
-        &mut ref_seq,
-        10.try_into().expect("number to be non-zero"),
-        randomly_replace_ambiguous,
-        summarize_ambiguous,
-    );
+    {
+        info!("Modify reference sequence");
+        // Start by replacing ambiguous bases that do not occur in stretches exceeding a certain length,
+        // using the closures defined above
+        let original_symbols = run_apply(
+            &mut ref_seq,
+            10.try_into().expect("number to be non-zero"),
+            randomly_replace_ambiguous,
+            summarize_ambiguous,
+        );
+
+        info!("Save original symbols");
+        let versioned_original_symbols = VersionedIndexItem::new(original_symbols);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tos", name))?);
+        bincode::serialize_into(&mut writer, &versioned_original_symbols)?;
+    }
 
     {
         info!("Map identifiers to positions");
@@ -199,10 +208,12 @@ fn run_apply<T, U>(
     min_run_len: NonZeroUsize,
     mut non_run_fun: T,
     mut run_fun: U,
-) where
+) -> OriginalSymbols
+where
     T: FnMut(u8) -> u8,
     U: FnMut(u8) -> u8,
 {
+    let mut original_symbols = BTreeMap::new();
     let mut i = 0;
     while let Some(&symbol_i) = ref_seq.get(i) {
         // `&array[array.len()..]` works and yields an empty slice
@@ -218,8 +229,11 @@ fn run_apply<T, U>(
             let run = &mut ref_seq[i..][..run_len];
             // Short run
             if run_len < min_run_len.into() {
-                for base in run.iter_mut() {
-                    *base = non_run_fun(*base);
+                for (j, base) in run.iter_mut().enumerate() {
+                    let new_symbol_tmp = non_run_fun(*base);
+                    let prev_value = original_symbols.insert(i + j, *base);
+                    assert!(prev_value.is_none());
+                    *base = new_symbol_tmp;
                 }
             // Long run
             } else {
@@ -230,6 +244,7 @@ fn run_apply<T, U>(
         }
         i += run_len;
     }
+    OriginalSymbols::new(original_symbols)
 }
 
 #[cfg(test)]

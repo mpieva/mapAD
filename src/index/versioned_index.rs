@@ -16,7 +16,7 @@ pub struct VersionedIndexItem<T> {
 
 impl<T> VersionedIndexItem<T> {
     /// Increase this number once the on-disk index changes
-    const INDEX_VERSION: u8 = 3;
+    const INDEX_VERSION: u8 = 4;
 
     /// Creates a new versioned index item with the version set to the current value of
     /// `Self::INDEX_VERSION`

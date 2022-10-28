@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::binary_heap::BinaryHeap,
+    collections::BinaryHeap,
     env,
     fs::{File, OpenOptions},
     io::{self, Write},
@@ -21,8 +21,8 @@ use crate::{
     build_info,
     errors::{Error, Result},
     index::{
-        load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
-        FastaIdPositions,
+        load_id_pos_map_from_path, load_index_from_path, load_original_symbols_from_path,
+        load_suffix_array_from_path, FastaIdPositions, OriginalSymbols,
     },
     map::{
         backtrack_tree::Tree,
@@ -74,6 +74,9 @@ pub fn run(
     info!("Load position map");
     let identifier_position_map = load_id_pos_map_from_path(reference_path)?;
 
+    info!("Load original symbols");
+    let original_symbols = load_original_symbols_from_path(reference_path)?;
+
     let mut out_file = bam::Writer::new(
         OpenOptions::new()
             .read(false)
@@ -118,6 +121,7 @@ pub fn run(
                 &suffix_array,
                 alignment_parameters,
                 &identifier_position_map,
+                &original_symbols,
                 &header,
                 &mut out_file,
             )?
@@ -133,6 +137,7 @@ pub fn run(
                 &suffix_array,
                 alignment_parameters,
                 &identifier_position_map,
+                &original_symbols,
                 &header,
                 &mut out_file,
             )?
@@ -146,12 +151,14 @@ pub fn run(
 
 /// This part has been extracted from the main run() function to allow static dispatch based on the
 /// input file type
+#[allow(clippy::too_many_arguments)]
 fn run_inner<S, T, W>(
     records: TaskQueue<T>,
     fmd_index: &RtFmdIndex,
     suffix_array: &S,
     alignment_parameters: &AlignmentParameters,
     identifier_position_map: &FastaIdPositions,
+    original_symbols: &OriginalSymbols,
     out_header: &sam::Header,
     out_file: &mut bam::Writer<W>,
 ) -> Result<()>
@@ -294,6 +301,7 @@ where
                         hit_interval,
                         suffix_array,
                         identifier_position_map,
+                        original_symbols,
                         Some(&duration),
                         alignment_parameters,
                         &mut rng,
@@ -417,11 +425,13 @@ pub fn create_bam_header(
 }
 
 /// Convert suffix array intervals to positions and BAM records
+#[allow(clippy::too_many_arguments)]
 pub fn intervals_to_bam<R, S>(
     input_record: Record,
     intervals: BinaryHeap<HitInterval>,
     suffix_array: &S,
     identifier_position_map: &FastaIdPositions,
+    original_symbols: &OriginalSymbols,
     duration: Option<&Duration>,
     alignment_parameters: &AlignmentParameters,
     rng: &mut R,
@@ -437,7 +447,6 @@ where
     while let Some(best_alignment) = intervals.pop() {
         // REMEMBER: The best-scoring alignment has been `pop()`ed,
         // so `intervals`, from here, only contains suboptimal alignments
-
         let mut best_i2co_iter =
             interval2coordinate(&best_alignment, suffix_array, identifier_position_map, rng)?;
 
@@ -472,8 +481,11 @@ where
                                 .flatten(),
                         )
                         .map(|i2co| {
-                            let (pre_cigar, md, nm) =
-                                i2co.interval.edit_operations.to_bam_fields(i2co.strand);
+                            let (pre_cigar, md, nm) = i2co.interval.edit_operations.to_bam_fields(
+                                i2co.strand,
+                                i2co.absolute_pos,
+                                original_symbols,
+                            );
                             format!(
                                 "{},{}{},{},{},{},{},{:.2};",
                                 i2co.contig_name,
@@ -522,6 +534,7 @@ where
                 return create_bam_record(
                     input_record,
                     Some(best_i2co.relative_pos),
+                    Some(best_i2co.absolute_pos),
                     Some(&best_alignment),
                     Some(estimate_mapping_quality(
                         &best_alignment,
@@ -533,6 +546,7 @@ where
                     Some(best_i2co.strand),
                     duration,
                     Some(alternative_hits),
+                    original_symbols,
                 );
             }
             None => {
@@ -553,11 +567,13 @@ where
         input_record,
         None,
         None,
+        None,
         Some(0),
         None,
         None,
         duration,
         None,
+        original_symbols,
     )
 }
 
@@ -592,8 +608,8 @@ where
     R: RngCore,
     S: SuffixArray,
 {
-    // Calculate length of reference strand ignoring sentinel characters
-    let strand_len = (suffix_array.len() - 2) / 2;
+    // Calculate length of reference strand including sentinel characters
+    let strand_len = suffix_array.len() / 2;
     // Get amount of positions in the genome covered by the read
     let effective_read_len = interval.edit_operations.effective_len();
 
@@ -613,6 +629,10 @@ where
                         (absolute_pos, Direction::Forward)
                     } else {
                         (
+                            // Due to the sentinel of the forward strand, we'd need to subtract 2
+                            // to map a reverse strand position to the forward strand.
+                            // The following mapping is a slightly shorter version of the equivalent
+                            // `suffix_array.len() - absolute_pos - (effective_read_len - 1) - 2`.
                             suffix_array.len() - absolute_pos - effective_read_len - 1,
                             Direction::Backward,
                         )
@@ -628,6 +648,7 @@ where
                             interval,
                             contig_name,
                             relative_pos: rel_pos,
+                            absolute_pos,
                             strand,
                             num_skipped: i,
                         })
@@ -707,7 +728,8 @@ fn estimate_mapping_quality(
 #[allow(clippy::too_many_arguments)]
 fn create_bam_record(
     input_record: Record,
-    position: Option<u64>,
+    relative_position: Option<u64>,
+    absolute_position: Option<usize>,
     hit_interval: Option<&HitInterval>,
     mapq: Option<u8>,
     tid: Option<u32>,
@@ -715,13 +737,16 @@ fn create_bam_record(
     duration: Option<&Duration>,
     // Contains valid content for the `YA` tag
     alternative_hits: Option<AlternativeAlignments>,
+    original_symbols: &OriginalSymbols,
 ) -> Result<sam::alignment::Record> {
     let mut bam_builder = sam::alignment::Record::builder();
 
     let (cigar, md_tag, edit_distance) = if let Some(hit_interval) = hit_interval {
-        let (cigar, md_tag, edit_distance) = hit_interval
-            .edit_operations
-            .to_bam_fields(strand.expect("This is not expected to fail"));
+        let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields(
+            strand.expect("This is not expected to fail"),
+            absolute_position.expect("to be set as `hit_interval` is `Some()`"),
+            original_symbols,
+        );
         (Some(cigar), Some(md_tag), Some(edit_distance))
     } else {
         (None, None, None)
@@ -737,7 +762,7 @@ fn create_bam_record(
     flags.remove(sam::record::Flags::SECONDARY);
     flags.remove(sam::record::Flags::SUPPLEMENTARY);
 
-    if let Some(position) = position {
+    if let Some(position) = relative_position {
         flags.remove(sam::record::Flags::UNMAPPED);
         bam_builder = bam_builder.set_alignment_start(
             usize::try_from(position + 1)
@@ -1328,6 +1353,8 @@ where
 
 #[cfg(test)]
 pub mod tests {
+    use std::collections::BTreeMap;
+
     use assert_approx_eq::assert_approx_eq;
     use bio::alphabets;
     use noodles::sam;
@@ -1917,7 +1944,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1936,7 +1963,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(
             cigar,
@@ -1954,7 +1985,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -1974,7 +2005,11 @@ pub mod tests {
         );
 
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(best_hit.alignment_score, -4.0);
         assert_eq!(
@@ -1993,7 +2028,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2012,7 +2047,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(best_hit.alignment_score, -3.0);
         assert_eq!(
@@ -2031,7 +2070,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2050,7 +2089,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(best_hit.alignment_score, -4.0);
         assert_eq!(
@@ -2069,7 +2112,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGTGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2104,7 +2147,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (cigar, _, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(best_hit.alignment_score, -5.0);
         assert_eq!(
@@ -2147,7 +2194,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTATA".as_bytes().to_owned();
         let base_qualities = vec![40; pattern.len()];
@@ -2166,7 +2213,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(md_tag, "5C1".as_bytes());
 
@@ -2177,7 +2228,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "ATTACA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2212,7 +2263,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(md_tag, "4^G2".as_bytes());
 
@@ -2223,7 +2278,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATCAG".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2243,7 +2298,11 @@ pub mod tests {
         );
 
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(md_tag, "3^TA3".as_bytes());
 
@@ -2254,7 +2313,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2273,7 +2332,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(md_tag, "7".as_bytes());
 
@@ -2284,7 +2347,7 @@ pub mod tests {
 
         // Reference
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         let pattern = "GATTAGGCA".as_bytes().to_owned();
         let base_qualities = vec![0; pattern.len()];
@@ -2303,7 +2366,11 @@ pub mod tests {
             &mmb,
         );
         let best_hit = intervals.pop().unwrap();
-        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(Direction::Forward);
+        let (_, md_tag, _) = best_hit.edit_operations.to_bam_fields(
+            Direction::Forward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
 
         assert_eq!(md_tag, "7".as_bytes());
     }
@@ -2448,9 +2515,11 @@ pub mod tests {
             .collect::<Vec<_>>();
         assert_eq!(positions, vec![(1, Direction::Backward),]);
 
-        let (_cigar, md, edop) = best_alignment
-            .edit_operations
-            .to_bam_fields(Direction::Backward);
+        let (_cigar, md, edop) = best_alignment.edit_operations.to_bam_fields(
+            Direction::Backward,
+            0,
+            &OriginalSymbols::new(BTreeMap::new()),
+        );
         assert_eq!(md, b"1T2");
 
         assert_eq!(edop, 1);
@@ -2664,7 +2733,7 @@ GCCTGTATGCAACCCATGAGTTTCCTTCGACTAGATCCAAACTCGAGGAGGTCATGGCGAGTCAAATTGTATATCTAGCG
         };
 
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
-        let (fmd_index, _sar) = build_auxiliary_structures(ref_seq, alphabet);
+        let (fmd_index, __sar) = build_auxiliary_structures(ref_seq, alphabet);
 
         // bench_exogenous_read
         {

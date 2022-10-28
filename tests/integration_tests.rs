@@ -34,6 +34,7 @@ struct BamFieldSubset {
     seq_len: usize,
     seq: sam::record::Sequence,
     qual: sam::record::QualityScores,
+    md: Option<String>,
     x0: Option<i32>,
     x1: Option<i32>,
     xa: Option<String>,
@@ -78,7 +79,7 @@ TCCAATTGGAGGTCTTTACATTAGGACCTGACTCACTACGTACGCTGTGGTACATAATAG
 CGATACTCATCGTCCAAGTTCAACGTGGGTAACAACCCTACTGGCTCCCCCGAATAGTAG
 TACCAGGACGGGCTCAACAATACTGGAAGTAACGGAATTTTTTGCCGTAATTCTCAAAAT
 AAAGAGGTAATTGACCGAAAACCCTGTAACTCACCAATATGGGTTGGCAATCTTACCAAA
-ATTCTGATGACGAAGTGTATACCCTGGCGTGCTAGTCCCTCGGCGTTGGATATCCTAGAT
+ATTCTGATGACGAAGTGTATACCCTGGCGTGCTNGTCCCTCGGCGTTGGATATCCTAGAT
 TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA
 >Chromosome_03
 CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGACCCAAGAATCCGTAGACTC
@@ -106,7 +107,10 @@ TGATCGATCATGCTAAAAATCGAT";
         A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t0\tchr1\t269\t37\t28M\t*\t0\t0\tTTAACAATGAACTTAGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\tXI:Z:ACGACGT\tYI:Z::BBBBGG\tXJ:Z:TGCTGCA\tYJ:Z:AAAAABB\tFF:i:3\tZ0:i:0\tRG:Z:A12345\tAS:i:0\tNM:i:0\tMD:Z:28\tXD:i:195\n\
         A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tGATTGGTGCACGGACGCGCGTTGAAAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n\
         A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCCTCAT\t]]]]]]\n\
-        A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
+        A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n\
+        A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCTGGCGTGCTAGTCCCTCGGCG\t]]]]]]]]]]]]]]]]]]]]]]\n\
+        A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACGCCAG\t]]]]]]]]]]]]]]]]]]]]]]\n\
+        A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACCCCAG\t]]]]]]]]]]]]]]]]]]]]]]";
 
         let mut sam_reader = sam::Reader::new(&sam_content[..]);
         let input_sam_header = sam_reader.read_header().unwrap().parse().unwrap();
@@ -249,6 +253,10 @@ where
                 seq_len: record.sequence().len(),
                 seq: record.sequence().to_owned(),
                 qual: record.quality_scores().to_owned(),
+                md: record
+                    .data()
+                    .get(sam::record::data::field::Tag::MismatchedPositions)
+                    .map(|field| field.value().as_str().unwrap().into()),
                 x0: record
                     .data()
                     .get(b"X0".as_slice().try_into().unwrap())
@@ -289,6 +297,7 @@ where
             seq_len: 28,
             seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -309,6 +318,7 @@ where
             seq_len: 28,
             seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -329,6 +339,7 @@ where
             seq_len: 28,
             seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -349,6 +360,7 @@ where
             seq_len: 28,
             seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -369,6 +381,7 @@ where
             seq_len: 27,
             seq: "TTAACAATGAACTTGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("14^A13".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -389,6 +402,7 @@ where
             seq_len: 29,
             seq: "TTAACAATGAACTTAAGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -409,6 +423,7 @@ where
             seq_len: 28,
             seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
@@ -429,6 +444,7 @@ where
             seq_len: 28,
             seq: "GATTGGTGCACGGACGCGCGTTGAAAGG".parse().unwrap(),
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: None,
             x0: None,
             x1: None,
             xa: None,
@@ -449,6 +465,7 @@ where
             seq_len: 6,
             seq: "CCTCAT".parse().unwrap(),
             qual: "]]]]]]".parse().unwrap(),
+            md: Some("6".into()),
             x0: Some(2),
             x1: Some(0),
             xa: Some("Chromosome_02,+139,6M,6,0,2,0.00;".into()),
@@ -473,6 +490,7 @@ where
             qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
                 .parse()
                 .unwrap(),
+            md: Some("42".into()),
             x0: Some(1),
             x1: Some(2),
             xa: Some(
@@ -480,6 +498,69 @@ where
                     .into(),
             ),
             xs: Some(-0.7209588),
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 0.into(),
+            tid: Some(1),
+            pos: Some(504.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "22M".parse().unwrap(),
+            seq_len: 22,
+            seq: "CTGGCGTGCTAGTCCCTCGGCG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("10N11".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 16.into(),
+            tid: Some(1),
+            pos: Some(504.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "22M".parse().unwrap(),
+            seq_len: 22,
+            seq: "CTGGCGTGCTAGTCCCTCGGCG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("10N11".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(
+                "A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
+                    .parse()
+                    .unwrap(),
+            ),
+            flags: 16.into(),
+            tid: Some(1),
+            pos: Some(504.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: "22M".parse().unwrap(),
+            seq_len: 22,
+            seq: "CTGGGGTGCTAGTCCCTCGGCG".parse().unwrap(),
+            qual: "]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            md: Some("4C5N11".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
             xt: Some('U'),
         },
     ];

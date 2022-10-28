@@ -18,8 +18,8 @@ use crate::{
     distributed::comm_buffers::{ResultRxBuffer, TaskTxBuffer},
     errors::{Error, Result},
     index::{
-        load_id_pos_map_from_path, load_index_from_path, load_suffix_array_from_path,
-        FastaIdPositions,
+        load_id_pos_map_from_path, load_index_from_path, load_original_symbols_from_path,
+        load_suffix_array_from_path, FastaIdPositions, OriginalSymbols,
     },
     map::{
         input_chunk_reader::{IntoTaskQueue, TaskQueue, TaskSheet},
@@ -103,6 +103,9 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         info!("Load position map");
         let identifier_position_map = load_id_pos_map_from_path(reference_path)?;
 
+        info!("Load original symbols");
+        let original_symbols = load_original_symbols_from_path(reference_path)?;
+
         info!("Load suffix array");
         let sampled_suffix_array_owned = load_suffix_array_from_path(reference_path)?;
         let fmd_index = load_index_from_path(reference_path)?;
@@ -157,6 +160,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut task_queue,
                     &suffix_array,
                     &identifier_position_map,
+                    &original_symbols,
                     &mut listener,
                     &header,
                     &mut out_file,
@@ -174,6 +178,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     &mut task_queue,
                     &suffix_array,
                     &identifier_position_map,
+                    &original_symbols,
                     &mut listener,
                     &header,
                     &mut out_file,
@@ -185,11 +190,13 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     /// This part has been extracted from the main run() function to allow static dispatch based on the
     /// input file type
+    #[allow(clippy::too_many_arguments)]
     fn run_inner<S, T, W>(
         &mut self,
         task_queue: &mut TaskQueue<T>,
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
+        original_symbols: &OriginalSymbols,
         listener: &mut TcpListener,
         out_header: &sam::Header,
         out_file: &mut bam::Writer<W>,
@@ -264,6 +271,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                         results.results,
                                         suffix_array,
                                         identifier_position_map,
+                                        original_symbols,
                                         self.alignment_parameters,
                                         out_header,
                                         out_file,
@@ -359,11 +367,13 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn write_results<S, W>(
         &self,
         hits: Vec<(Record, BinaryHeap<HitInterval>, Duration)>,
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
+        original_symbols: &OriginalSymbols,
         alignment_parameters: &AlignmentParameters,
         out_header: &sam::Header,
         out_file: &mut bam::Writer<W>,
@@ -383,6 +393,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                         hit_interval,
                         suffix_array,
                         identifier_position_map,
+                        original_symbols,
                         Some(&duration),
                         alignment_parameters,
                         &mut rng,

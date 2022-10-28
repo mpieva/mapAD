@@ -6,9 +6,12 @@ use noodles::sam;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use crate::map::{
-    backtrack_tree::{NodeId, Tree},
-    Direction,
+use crate::{
+    index::OriginalSymbols,
+    map::{
+        backtrack_tree::{NodeId, Tree},
+        Direction,
+    },
 };
 
 /// An owned representation of the `bam::record::Aux` data
@@ -180,8 +183,8 @@ impl Default for EditOperation {
     }
 }
 
-impl From<&EditOperation> for sam::record::cigar::op::Kind {
-    fn from(src: &EditOperation) -> Self {
+impl From<EditOperation> for sam::record::cigar::op::Kind {
+    fn from(src: EditOperation) -> Self {
         use sam::record::cigar::op::Kind;
         match src {
             EditOperation::Insertion(_) => Kind::Insertion,
@@ -192,14 +195,14 @@ impl From<&EditOperation> for sam::record::cigar::op::Kind {
     }
 }
 
-impl From<&EditOperation> for sam::record::cigar::Op {
-    fn from(src: &EditOperation) -> Self {
+impl From<EditOperation> for sam::record::cigar::Op {
+    fn from(src: EditOperation) -> Self {
         use sam::record::cigar::op::{Kind, Op};
         match src {
-            EditOperation::Insertion(l) => Op::new(Kind::Insertion, (*l).into()),
-            EditOperation::Deletion(l, _) => Op::new(Kind::Deletion, (*l).into()),
-            EditOperation::Match(l) => Op::new(Kind::Match, (*l).into()),
-            EditOperation::Mismatch(l, _) => Op::new(Kind::Match, (*l).into()),
+            EditOperation::Insertion(l) => Op::new(Kind::Insertion, l.into()),
+            EditOperation::Deletion(l, _) => Op::new(Kind::Deletion, l.into()),
+            EditOperation::Match(l) => Op::new(Kind::Match, l.into()),
+            EditOperation::Mismatch(l, _) => Op::new(Kind::Match, l.into()),
         }
     }
 }
@@ -224,7 +227,12 @@ impl EditOperationsTrack {
 
     /// Constructs CIGAR, MD tag, and edit distance from correctly ordered track of edit operations and yields them as a tuple
     /// The strand a read is mapped to is taken into account here.
-    pub fn to_bam_fields(&self, strand: Direction) -> (Vec<sam::record::cigar::Op>, Vec<u8>, u16) {
+    pub fn to_bam_fields(
+        &self,
+        strand: Direction,
+        absolute_pos: usize,
+        original_symbols: &OriginalSymbols,
+    ) -> (Vec<sam::record::cigar::Op>, Vec<u8>, u16) {
         use sam::record::cigar::Op;
         // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut num_matches: u32 = 0;
@@ -238,8 +246,31 @@ impl EditOperationsTrack {
             Direction::Forward => Either::Left(self.0.iter()),
             Direction::Backward => Either::Right(self.0.iter().rev()),
         };
-        for edit_operation in track {
-            edit_distance = Self::add_edit_distance(edit_operation, edit_distance);
+        for (i, edit_operation) in track.enumerate() {
+            let edit_operation = match edit_operation {
+                EditOperation::Insertion(_) => *edit_operation,
+                EditOperation::Match(j) => {
+                    if let Some(original_symbol) = original_symbols.get(absolute_pos + i) {
+                        EditOperation::Mismatch(*j, original_symbol)
+                    } else {
+                        *edit_operation
+                    }
+                }
+                EditOperation::Deletion(j, reference_base) => EditOperation::Deletion(
+                    *j,
+                    original_symbols
+                        .get(absolute_pos + i)
+                        .unwrap_or(*reference_base),
+                ),
+                EditOperation::Mismatch(j, reference_base) => EditOperation::Mismatch(
+                    *j,
+                    original_symbols
+                        .get(absolute_pos + i)
+                        .unwrap_or(*reference_base),
+                ),
+            };
+
+            edit_distance = Self::add_edit_distance(&edit_operation, edit_distance);
 
             num_matches = Self::add_md_edit_operation(
                 Some(edit_operation),
@@ -308,8 +339,8 @@ impl EditOperationsTrack {
     }
 
     fn add_md_edit_operation(
-        edit_operation: Option<&EditOperation>,
-        last_edit_operation: Option<&EditOperation>,
+        edit_operation: Option<EditOperation>,
+        last_edit_operation: Option<EditOperation>,
         strand: Direction,
         mut k: u32,
         md_tag: &mut Vec<u8>,
@@ -322,7 +353,7 @@ impl EditOperationsTrack {
         match edit_operation {
             Some(EditOperation::Match(_)) => k += 1,
             Some(EditOperation::Mismatch(_, reference_base)) => {
-                let reference_base = comp_if_necessary(*reference_base);
+                let reference_base = comp_if_necessary(reference_base);
                 md_tag.extend_from_slice(format!("{}{}", k, reference_base as char).as_bytes());
                 k = 0;
             }
@@ -330,7 +361,7 @@ impl EditOperationsTrack {
                 // Insertions are ignored in MD tags
             }
             Some(EditOperation::Deletion(_, reference_base)) => {
-                let reference_base = comp_if_necessary(*reference_base);
+                let reference_base = comp_if_necessary(reference_base);
                 match last_edit_operation {
                     Some(EditOperation::Deletion(_, _)) => {
                         md_tag.extend_from_slice(format!("{}", reference_base as char).as_bytes());
@@ -387,11 +418,11 @@ pub fn extract_edit_operations(
     pattern_len: usize,
 ) -> EditOperationsTrack {
     // Restore outer ordering of the edit operation by the positions they carry as values.
-    // Whenever there are deletions in the pattern, there is no simple rule to reconstruct the ordering.
+    // Whenever there are deletions in the query, there is no simple rule to reconstruct the ordering.
     // So, edit operations carrying the same position are pushed onto the same bucket and dealt with later.
     let mut cigar_order_outer: BTreeMap<u16, SmallVec<[EditOperation; 8]>> = BTreeMap::new();
 
-    edit_tree.ancestors(end_node).for_each(|&edit_operation| {
+    for &edit_operation in edit_tree.ancestors(end_node) {
         let position = match edit_operation {
             EditOperation::Insertion(position) => position,
             EditOperation::Deletion(position, _) => position,
@@ -402,7 +433,7 @@ pub fn extract_edit_operations(
             .entry(position)
             .or_insert_with(SmallVec::new)
             .push(edit_operation);
-    });
+    }
 
     EditOperationsTrack(
         cigar_order_outer
