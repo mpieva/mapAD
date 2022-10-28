@@ -94,7 +94,7 @@ fn index<T: Rng>(
         // using the closures defined above
         let original_symbols = run_apply(
             &mut ref_seq,
-            10.try_into().expect("number to be non-zero"),
+            20.try_into().expect("number to be non-zero"),
             randomly_replace_ambiguous,
             summarize_ambiguous,
         );
