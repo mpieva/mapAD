@@ -102,6 +102,7 @@ pub struct SimpleAncientDnaModel {
     // Deamination rate in single-stranded overhangs
     ss_deamination_rate: f32,
     divergence: f32,
+    use_default_base_quality: Option<f32>,
     cache: Vec<f32>,
 }
 
@@ -142,15 +143,18 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
             (c_to_t, g_to_a)
         };
 
-        let sequencing_error = match self.cache.get(base_quality as usize) {
-            Some(&v) => v,
-            None => 10_f32.powf(-1.0 * base_quality as f32 / 10.0) / 3.0,
-        };
+        let sequencing_error = self.use_default_base_quality.unwrap_or_else(|| {
+            // We need the specific value
+            self.cache
+                .get(base_quality as usize)
+                .copied()
+                // We need to actually compute the value
+                .unwrap_or_else(|| Self::qual2prob(base_quality))
+        });
 
         // Probability of seeing a mutation or sequencing error
-        // Artificial boundary at 0.25 to ensure the model's output won't be negative
         let independent_error =
-            (sequencing_error + self.divergence - sequencing_error * self.divergence).min(0.25);
+            sequencing_error + self.divergence - sequencing_error * self.divergence;
 
         match from {
             b'A' => match to {
@@ -185,6 +189,7 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
             },
             _ => independent_error,
         }
+        .max(f32::EPSILON)
         .log2()
     }
 }
@@ -250,6 +255,10 @@ impl Display for SimpleAncientDnaModel {
 }
 
 impl SimpleAncientDnaModel {
+    fn qual2prob(encoded_base_quality: u8) -> f32 {
+        10_f32.powf(-1.0 * encoded_base_quality as f32 / 10.0) / 3.0
+    }
+
     pub fn new(
         library_prep: LibraryPrep,
         ds_deamination_rate: f32,
@@ -257,20 +266,24 @@ impl SimpleAncientDnaModel {
         divergence: f32,
         ignore_base_qualities: bool,
     ) -> Self {
-        let default_base_quality = 10_f32.powf(-1.0 * MAX_ENCODED_BASE_QUALITY as f32 / 10.0) / 3.0;
+        let use_default_base_quality =
+            ignore_base_qualities.then_some(Self::qual2prob(MAX_ENCODED_BASE_QUALITY));
 
-        let cache = if ignore_base_qualities {
-            vec![default_base_quality; MAX_ENCODED_BASE_QUALITY as usize + 1]
+        let cache = if use_default_base_quality.is_some() {
+            // No cache needed
+            Vec::new()
         } else {
             (0..=MAX_ENCODED_BASE_QUALITY)
-                .map(|quality_encoded| 10_f32.powf(-1.0 * quality_encoded as f32 / 10.0) / 3.0)
+                .map(Self::qual2prob)
                 .collect::<Vec<_>>()
         };
+
         let out = Self {
             library_prep,
             ds_deamination_rate,
             ss_deamination_rate,
             divergence,
+            use_default_base_quality,
             cache,
         };
 
