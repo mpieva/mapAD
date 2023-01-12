@@ -37,14 +37,14 @@ impl BiDArray {
         const MAX_OFFSET: u16 = 15;
 
         // Compute a backward-D-iterator for every offset
-        let mut offset_d_backward_iterators = (0..MAX_OFFSET as usize)
+        let mut offset_d_backward_iterators = (0..MAX_OFFSET)
             .map(|offset| {
                 Self::compute_part(
                     &pattern[..split],
                     &base_qualities[..split],
                     Direction::Forward,
                     pattern.len(),
-                    offset as i16,
+                    offset,
                     alignment_parameters,
                     fmd_index,
                     sdm,
@@ -72,7 +72,7 @@ impl BiDArray {
                     &base_qualities[split..],
                     Direction::Backward,
                     pattern.len(),
-                    offset as i16,
+                    offset,
                     alignment_parameters,
                     fmd_index,
                     sdm,
@@ -106,7 +106,7 @@ impl BiDArray {
         base_qualities_part: &'a [u8],
         direction: Direction,
         full_pattern_length: usize,
-        initial_skip: i16,
+        initial_skip: u16,
         alignment_parameters: &'a AlignmentParameters,
         fmd_index: &'a RtFmdIndex,
         sdm: &'a SDM,
@@ -127,9 +127,13 @@ impl BiDArray {
                 Direction::Backward => Either::Right(pattern_part.iter().rev()),
             }
             .enumerate()
-            .skip(initial_skip as usize)
+            .skip(usize::from(initial_skip))
             .scan(
-                (0.0, initial_skip - 1, fmd_index.init_interval()),
+                (
+                    0.0,
+                    i16::try_from(initial_skip).unwrap_or(0) - 1,
+                    fmd_index.init_interval(),
+                ),
                 move |(z, last_mismatch_pos, interval), (index, &base)| {
                     *interval = match direction {
                         Direction::Forward => fmd_index.forward_ext(interval, base),
