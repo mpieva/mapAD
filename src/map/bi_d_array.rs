@@ -187,18 +187,28 @@ impl BiDArray {
     }
 
     pub fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
-        let d_rev = if backward_index < 0 {
-            0.0
-        } else {
-            self.d_composite[backward_index as usize]
-        };
-        let d_fwd =
-            // Cover case forward_index == self.d_composite.len()
-            if forward_index as usize >= self.d_composite.len() {
-                0.0
-            } else {
-                self.d_composite[self.d_composite.len() - 1 - forward_index as usize + self.split]
-            };
+        debug_assert!(backward_index < forward_index);
+        debug_assert!(backward_index < self.d_composite.len() as i16);
+        debug_assert!(forward_index >= 0);
+
+        debug_assert!(backward_index >= -1);
+        let d_rev = usize::try_from(backward_index)
+            .ok()
+            .and_then(|composite_idx| self.d_composite.get(composite_idx).copied())
+            .unwrap_or(0.0);
+
+        debug_assert!((forward_index as usize) <= self.d_composite.len());
+        let d_fwd = self
+            .d_composite
+            .len()
+            // It is important that the following subtraction underflows if
+            // `forward_index >= d_composite.len()`.
+            // Reordering the subtraction and addition of `self.split` will break index calculation.
+            .checked_sub(1 + forward_index as usize)
+            .map(|left_half_idx| left_half_idx + self.split)
+            .and_then(|composite_idx| self.d_composite.get(composite_idx).copied())
+            .unwrap_or(0.0);
+
         d_rev + d_fwd
     }
 }
