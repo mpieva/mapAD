@@ -1003,8 +1003,8 @@ fn check_and_push_stack_frame<MB>(
         .add_node(edit_operation, stack_frame.edit_node_id)
         .expect("We bound the length of `edit_tree` at `STACK_LIMIT` < `u32`");
 
-    // This route through the read graph is finished successfully, push the interval
     if stack_frame.backward_index < 0 && stack_frame.forward_index > (pattern.len() as i16 - 1) {
+        // This route through the read graph is finished successfully, push the interval
         let edit_operations =
             extract_edit_operations(stack_frame.edit_node_id, edit_tree, pattern.len());
         intervals.push(HitInterval {
