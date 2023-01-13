@@ -1429,7 +1429,7 @@ pub mod tests {
         let difference_model = TestDifferenceModel {
             deam_score: -10.0,
             mm_score: -10.0,
-            match_score: 1.0,
+            match_score: 0.0,
         };
         let mmb = TestBound {
             threshold: -1.0,
