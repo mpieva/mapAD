@@ -172,6 +172,8 @@ impl BiDArray {
                             best_penalty_mm_only - optimal_penalty
                         })
                         .fold(f32::MIN, |acc, penalty| acc.max(penalty))
+                        // The following is not needed, since we can assume
+                        // penalty_gap_extend > penalty_gap_open + penalty_gap_extend
                         .max(
                             alignment_parameters.penalty_gap_open
                                 + alignment_parameters.penalty_gap_extend,
