@@ -1369,7 +1369,7 @@ pub mod tests {
     #[test]
     fn test_inexact_search() {
         let difference_model = TestDifferenceModel {
-            deam_score: 0.5,
+            deam_score: -0.5,
             mm_score: -1.0,
             match_score: 0.0,
         };

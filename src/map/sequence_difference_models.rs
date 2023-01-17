@@ -54,7 +54,6 @@ pub trait SequenceDifferenceModel {
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
         .fold(f32::MIN, |acc, v| acc.max(v))
-        .min(0.0)
     }
 }
 
