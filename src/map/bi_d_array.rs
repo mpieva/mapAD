@@ -174,10 +174,10 @@ impl BiDArray {
                         .fold(f32::MIN, |acc, penalty| acc.max(penalty))
                         // The following is not needed, since we can assume
                         // penalty_gap_extend > penalty_gap_open + penalty_gap_extend
-                        .max(
-                            alignment_parameters.penalty_gap_open
-                                + alignment_parameters.penalty_gap_extend,
-                        )
+                        // .max(
+                        //     alignment_parameters.penalty_gap_open
+                        //         + alignment_parameters.penalty_gap_extend,
+                        // )
                         .max(alignment_parameters.penalty_gap_extend);
                         *interval = fmd_index.init_interval();
                         *last_mismatch_pos = index as i16;
