@@ -44,7 +44,10 @@ pub trait SequenceDifferenceModel {
         if only_mismatches {
             Either::Left(iterator.filter(|&&base| base != to))
         } else {
-            if DNA_UPPERCASE_ALPHABET.iter().all(|&symbol| symbol != to) {
+            // Is the reference symbol ambiguous (not part of the DNA alphabet)? Then we don't want
+            // to subtract an optimal score since this would make the ambiguous symbol case
+            // penalty-free.
+            if !DNA_UPPERCASE_ALPHABET.contains(&to) {
                 return 0.0;
             }
             Either::Right(iterator)
