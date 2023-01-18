@@ -141,30 +141,29 @@ impl BiDArray {
                     };
                     if interval.size < 1 {
                         // Sub-read does not align perfectly, scan sub-sequence to find the most conservative penalty
+                        let pattern_qual_part_iter = pattern_part.iter().zip(base_qualities_part);
                         *z += match direction {
-                            Direction::Forward => Either::Left(pattern_part.iter()),
-                            Direction::Backward => Either::Right(pattern_part.iter().rev()),
+                            Direction::Forward => Either::Left(pattern_qual_part_iter),
+                            Direction::Backward => Either::Right(pattern_qual_part_iter.rev()),
                         }
                         .enumerate()
                         .take(index + 1)
                         .skip((*last_mismatch_pos + 1) as usize)
-                        .map(|(j, &base_j)| {
+                        .map(|(j, (&base_j, &qual_j))| {
                             let idx_mapped_to_read =
                                 directed_index(j, full_pattern_length, direction);
                             let best_penalty_mm_only = sdm.get_min_penalty(
                                 idx_mapped_to_read,
                                 full_pattern_length,
                                 base_j,
-                                base_qualities_part
-                                    [directed_index(j, base_qualities_part.len(), direction)],
+                                qual_j,
                                 true,
                             );
                             let optimal_penalty = sdm.get_min_penalty(
                                 idx_mapped_to_read,
                                 full_pattern_length,
                                 base_j,
-                                base_qualities_part
-                                    [directed_index(j, base_qualities_part.len(), direction)],
+                                qual_j,
                                 false,
                             );
                             // The optimal penalty, conditioning on position and base, is subtracted because we
