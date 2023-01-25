@@ -159,6 +159,7 @@ impl BiDArray {
                                 qual_j,
                                 true,
                             );
+
                             let optimal_penalty = sdm.get_min_penalty(
                                 idx_mapped_to_read,
                                 full_pattern_length,
@@ -168,16 +169,25 @@ impl BiDArray {
                             );
                             // The optimal penalty, conditioning on position and base, is subtracted because we
                             // optimize the ratio `AS/optimal_AS` (in log space) to find the best mappings
-                            best_penalty_mm_only - optimal_penalty
+                            let mm_retval = best_penalty_mm_only - optimal_penalty;
+
+                            // Don't count gap penalties where they are not allowed.
+                            // Sadly this is not expected to have much of an effect.
+                            if idx_mapped_to_read.min(full_pattern_length - idx_mapped_to_read - 1)
+                                > alignment_parameters.gap_dist_ends as usize
+                            {
+                                mm_retval.max(alignment_parameters.penalty_gap_extend)
+                                // The following is not needed, since we can assume
+                                // penalty_gap_extend > penalty_gap_open + penalty_gap_extend
+                                // .max(
+                                //     alignment_parameters.penalty_gap_open
+                                //         + alignment_parameters.penalty_gap_extend,
+                                // )
+                            } else {
+                                mm_retval
+                            }
                         })
-                        .fold(f32::MIN, |acc, penalty| acc.max(penalty))
-                        // The following is not needed, since we can assume
-                        // penalty_gap_extend > penalty_gap_open + penalty_gap_extend
-                        // .max(
-                        //     alignment_parameters.penalty_gap_open
-                        //         + alignment_parameters.penalty_gap_extend,
-                        // )
-                        .max(alignment_parameters.penalty_gap_extend);
+                        .fold(f32::MIN, |acc, penalty| acc.max(penalty));
                         *interval = fmd_index.init_interval();
                         *last_mismatch_pos = index as i16;
                     }
