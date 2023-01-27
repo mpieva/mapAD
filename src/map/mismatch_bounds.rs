@@ -31,19 +31,19 @@ pub enum MismatchBoundDispatch {
 
 impl From<Continuous> for MismatchBoundDispatch {
     fn from(value: Continuous) -> Self {
-        MismatchBoundDispatch::Continuous(value)
+        Self::Continuous(value)
     }
 }
 
 impl From<Discrete> for MismatchBoundDispatch {
     fn from(value: Discrete) -> Self {
-        MismatchBoundDispatch::Discrete(value)
+        Self::Discrete(value)
     }
 }
 
 impl From<TestBound> for MismatchBoundDispatch {
     fn from(value: TestBound) -> Self {
-        MismatchBoundDispatch::TestBound(value)
+        Self::TestBound(value)
     }
 }
 
@@ -138,7 +138,8 @@ impl MismatchBound for Discrete {
     }
 
     fn remaining_frac_of_repr_mm(&self, value: f32, read_length: usize) -> f32 {
-        (self.get(read_length) * self.representative_mismatch_penalty - value)
+        self.get(read_length)
+            .mul_add(self.representative_mismatch_penalty, -value)
             / self.representative_mismatch_penalty
     }
 }
@@ -189,7 +190,7 @@ impl Discrete {
         poisson_threshold: f32,
         base_error_rate: f32,
         representative_mismatch_penalty: f32,
-    ) -> Discrete {
+    ) -> Self {
         let cache = (0..MAX_CACHED_READ_LENGTH)
             .map(|idx| {
                 Self::calculate_max_num_mismatches(

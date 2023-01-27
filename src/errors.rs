@@ -30,18 +30,18 @@ impl fmt::Display for Error {
     #[cold]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::FastQ(_err) => write!(f, "Error reading FASTQ file"),
-            Error::Hts(err) => write!(f, "Error reading/writing HTS file format: {err}"),
-            Error::Io(err) => write!(f, "IO error: {err}"),
-            Error::Utf8Error(err) => write!(f, "UTF-8 error: {err}"),
-            Error::ParseError(err) => write!(f, "Parse error: {err}"),
-            Error::InvalidInputType => write!(f, "Please specify a path to an input file that ends either with \".bam\", \".fq\", or \".fastq\""),
-            Error::InvalidIndex(err) => write!(f, "Index is invalid: {err}"),
-            Error::IndexVersionMismatch { running, on_disk } => write!(f, "The provided index (v{on_disk}) is incompatible with version {} of {CRATE_NAME} (which expects index version v{running}). Please re-create the index.", crate_version!()),
-            Error::AnyhowError(err) => write!(f, "Internal error: {err}"),
-            Error::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
-            Error::InternalError => write!(f, "Internal error"),
-            Error::ArchitectureError => write!(f, "Host CPU architecture not suitable for the size of data {CRATE_NAME} is supposed to run on"),
+            Self::FastQ(_err) => write!(f, "Error reading FASTQ file"),
+            Self::Hts(err) => write!(f, "Error reading/writing HTS file format: {err}"),
+            Self::Io(err) => write!(f, "IO error: {err}"),
+            Self::Utf8Error(err) => write!(f, "UTF-8 error: {err}"),
+            Self::ParseError(err) => write!(f, "Parse error: {err}"),
+            Self::InvalidInputType => write!(f, "Please specify a path to an input file that ends either with \".bam\", \".fq\", or \".fastq\""),
+            Self::InvalidIndex(err) => write!(f, "Index is invalid: {err}"),
+            Self::IndexVersionMismatch { running, on_disk } => write!(f, "The provided index (v{on_disk}) is incompatible with version {} of {CRATE_NAME} (which expects index version v{running}). Please re-create the index.", crate_version!()),
+            Self::AnyhowError(err) => write!(f, "Internal error: {err}"),
+            Self::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
+            Self::InternalError => write!(f, "Internal error"),
+            Self::ArchitectureError => write!(f, "Host CPU architecture not suitable for the size of data {CRATE_NAME} is supposed to run on"),
         }
     }
 }
@@ -49,14 +49,14 @@ impl fmt::Display for Error {
 impl From<io::Error> for Error {
     #[cold]
     fn from(e: io::Error) -> Self {
-        Error::Io(e)
+        Self::Io(e)
     }
 }
 
 impl From<str::Utf8Error> for Error {
     #[cold]
     fn from(e: str::Utf8Error) -> Self {
-        Error::Utf8Error(e)
+        Self::Utf8Error(e)
     }
 }
 
@@ -64,8 +64,8 @@ impl From<bincode::Error> for Error {
     #[cold]
     fn from(e: bincode::Error) -> Self {
         match *e {
-            bincode::ErrorKind::Io(e) => Error::Io(e),
-            _ => Error::InvalidIndex("Invalid encoding".into()),
+            bincode::ErrorKind::Io(e) => Self::Io(e),
+            _ => Self::InvalidIndex("Invalid encoding".into()),
         }
     }
 }
@@ -73,21 +73,21 @@ impl From<bincode::Error> for Error {
 impl From<anyhow::Error> for Error {
     #[cold]
     fn from(e: anyhow::Error) -> Self {
-        Error::AnyhowError(e.to_string())
+        Self::AnyhowError(e.to_string())
     }
 }
 
 impl From<bio::io::fastq::Error> for Error {
     #[cold]
     fn from(e: bio::io::fastq::Error) -> Self {
-        Error::FastQ(e)
+        Self::FastQ(e)
     }
 }
 
 impl From<sam::header::ParseError> for Error {
     #[cold]
     fn from(e: sam::header::ParseError) -> Self {
-        Error::ParseError(e.to_string())
+        Self::ParseError(e.to_string())
     }
 }
 

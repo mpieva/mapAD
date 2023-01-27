@@ -125,8 +125,10 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
                     let five_prime_overhang = five_prime_overhang.powi(fp_dist as i32 + 1);
                     let three_prime_overhang = three_prime_overhang.powi(tp_dist as i32 + 1);
                     (
-                        (five_prime_overhang + three_prime_overhang)
-                            - (five_prime_overhang * three_prime_overhang),
+                        five_prime_overhang.mul_add(
+                            -three_prime_overhang,
+                            five_prime_overhang + three_prime_overhang,
+                        ),
                         0.0,
                     )
                 }
@@ -137,10 +139,12 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
             };
 
             // Probabilities of seeing C->T or G->A substitutions
-            let c_to_t =
-                self.ss_deamination_rate * p_fwd + self.ds_deamination_rate * (1.0 - p_fwd);
-            let g_to_a =
-                self.ss_deamination_rate * p_rev + self.ds_deamination_rate * (1.0 - p_rev);
+            let c_to_t = self
+                .ss_deamination_rate
+                .mul_add(p_fwd, self.ds_deamination_rate * (1.0 - p_fwd));
+            let g_to_a = self
+                .ss_deamination_rate
+                .mul_add(p_rev, self.ds_deamination_rate * (1.0 - p_rev));
 
             (c_to_t, g_to_a)
         };
@@ -156,37 +160,39 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
 
         // Probability of seeing a mutation or sequencing error
         let independent_error =
-            sequencing_error + self.divergence - sequencing_error * self.divergence;
+            sequencing_error.mul_add(-self.divergence, sequencing_error + self.divergence);
 
         match from {
             b'A' => match to {
-                b'A' => 1.0 - 3.0 * independent_error,
+                b'A' => 3.0f32.mul_add(-independent_error, 1.0),
                 _ => independent_error,
             },
             b'C' => match to {
                 b'C' => {
                     let (c_to_t, _) = compute_deamination_part();
-                    1.0 - 3.0 * independent_error - c_to_t + 4.0 * independent_error * c_to_t
+                    (4.0 * independent_error)
+                        .mul_add(c_to_t, 3.0f32.mul_add(-independent_error, 1.0) - c_to_t)
                 }
                 b'T' => {
                     let (c_to_t, _) = compute_deamination_part();
-                    independent_error + c_to_t - 4.0 * independent_error * c_to_t
+                    (4.0 * independent_error).mul_add(-c_to_t, independent_error + c_to_t)
                 }
                 _ => independent_error,
             },
             b'G' => match to {
                 b'A' => {
                     let (_, g_to_a) = compute_deamination_part();
-                    independent_error + g_to_a - 4.0 * independent_error * g_to_a
+                    (4.0 * independent_error).mul_add(-g_to_a, independent_error + g_to_a)
                 }
                 b'G' => {
                     let (_, g_to_a) = compute_deamination_part();
-                    1.0 - 3.0 * independent_error - g_to_a + 4.0 * independent_error * g_to_a
+                    (4.0 * independent_error)
+                        .mul_add(g_to_a, 3.0f32.mul_add(-independent_error, 1.0) - g_to_a)
                 }
                 _ => independent_error,
             },
             b'T' => match to {
-                b'T' => 1.0 - 3.0 * independent_error,
+                b'T' => 3.0f32.mul_add(-independent_error, 1.0),
                 _ => independent_error,
             },
             _ => independent_error,
@@ -347,7 +353,7 @@ impl SequenceDifferenceModel for VindijaPwm {
 
 impl VindijaPwm {
     pub fn new() -> Self {
-        VindijaPwm {
+        Self {
             // The following values are roughly derived with
             // the naked eye from Prüfer et al. (2017), Fig. S3.
             ppm_read_ends_symmetric_ct: [0.4, 0.25, 0.1, 0.06, 0.05, 0.04, 0.03],

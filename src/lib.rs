@@ -10,19 +10,17 @@ pub mod build_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 
     pub fn get_software_version() -> String {
-        let git_string = if let Some(git_commit_hash) = GIT_COMMIT_HASH {
+        let git_string = GIT_COMMIT_HASH.map_or_else(String::new, |git_commit_hash| {
             format!(
                 " ({}{})",
                 &git_commit_hash[..8],
-                if let Some(true) = GIT_DIRTY {
+                if GIT_DIRTY == Some(true) {
                     "-dirty"
                 } else {
                     ""
                 }
             )
-        } else {
-            String::new()
-        };
+        });
 
         format!("{PKG_VERSION}{git_string}")
     }

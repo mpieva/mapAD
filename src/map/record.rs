@@ -43,52 +43,51 @@ impl From<&sam::record::data::field::Value> for BamAuxField {
     fn from(input: &sam::record::data::field::Value) -> Self {
         use sam::record::data::field::Value;
         match input {
-            Value::Character(v) => BamAuxField::Char(u8::from(*v)),
-            Value::Int8(v) => BamAuxField::I8(*v),
-            Value::UInt8(v) => BamAuxField::U8(*v),
-            Value::Int16(v) => BamAuxField::I16(*v),
-            Value::UInt16(v) => BamAuxField::U16(*v),
-            Value::Int32(v) => BamAuxField::I32(*v),
-            Value::UInt32(v) => BamAuxField::U32(*v),
-            Value::Float(v) => BamAuxField::Float(*v),
-            //Value::Double(v) => BamTag::Double(*v),
-            Value::String(v) => BamAuxField::String(v.clone()),
-            Value::Hex(v) => BamAuxField::HexByteArray(v.clone()),
-            Value::Int8Array(v) => BamAuxField::ArrayI8(v.clone()),
-            Value::UInt8Array(v) => BamAuxField::ArrayU8(v.clone()),
-            Value::Int16Array(v) => BamAuxField::ArrayI16(v.clone()),
-            Value::UInt16Array(v) => BamAuxField::ArrayU16(v.clone()),
-            Value::Int32Array(v) => BamAuxField::ArrayI32(v.clone()),
-            Value::UInt32Array(v) => BamAuxField::ArrayU32(v.clone()),
-            Value::FloatArray(v) => BamAuxField::ArrayFloat(v.clone()),
+            Value::Character(v) => Self::Char(u8::from(*v)),
+            Value::Int8(v) => Self::I8(*v),
+            Value::UInt8(v) => Self::U8(*v),
+            Value::Int16(v) => Self::I16(*v),
+            Value::UInt16(v) => Self::U16(*v),
+            Value::Int32(v) => Self::I32(*v),
+            Value::UInt32(v) => Self::U32(*v),
+            Value::Float(v) => Self::Float(*v),
+            //Value::Double(v) => Self::Double(*v),
+            Value::String(v) => Self::String(v.clone()),
+            Value::Hex(v) => Self::HexByteArray(v.clone()),
+            Value::Int8Array(v) => Self::ArrayI8(v.clone()),
+            Value::UInt8Array(v) => Self::ArrayU8(v.clone()),
+            Value::Int16Array(v) => Self::ArrayI16(v.clone()),
+            Value::UInt16Array(v) => Self::ArrayU16(v.clone()),
+            Value::Int32Array(v) => Self::ArrayI32(v.clone()),
+            Value::UInt32Array(v) => Self::ArrayU32(v.clone()),
+            Value::FloatArray(v) => Self::ArrayFloat(v.clone()),
         }
     }
 }
 
 impl From<BamAuxField> for sam::record::data::field::Value {
     fn from(input: BamAuxField) -> Self {
-        use sam::record::data::field::Value;
         match input {
             BamAuxField::Char(v) => {
-                Value::Character(v.try_into().expect("Char is guaranteed to be ASCII"))
+                Self::Character(v.try_into().expect("Char is guaranteed to be ASCII"))
             }
-            BamAuxField::I8(v) => Value::Int8(v),
-            BamAuxField::U8(v) => Value::UInt8(v),
-            BamAuxField::I16(v) => Value::Int16(v),
-            BamAuxField::U16(v) => Value::UInt16(v),
-            BamAuxField::I32(v) => Value::Int32(v),
-            BamAuxField::U32(v) => Value::UInt32(v),
-            BamAuxField::Float(v) => Value::Float(v),
-            BamAuxField::Double(v) => Value::Float(v as f32), // FIXME
-            BamAuxField::String(v) => Value::String(v),
-            BamAuxField::HexByteArray(v) => Value::Hex(v),
-            BamAuxField::ArrayI8(v) => Value::Int8Array(v),
-            BamAuxField::ArrayU8(v) => Value::UInt8Array(v),
-            BamAuxField::ArrayI16(v) => Value::Int16Array(v),
-            BamAuxField::ArrayU16(v) => Value::UInt16Array(v),
-            BamAuxField::ArrayI32(v) => Value::Int32Array(v),
-            BamAuxField::ArrayU32(v) => Value::UInt32Array(v),
-            BamAuxField::ArrayFloat(v) => Value::FloatArray(v),
+            BamAuxField::I8(v) => Self::Int8(v),
+            BamAuxField::U8(v) => Self::UInt8(v),
+            BamAuxField::I16(v) => Self::Int16(v),
+            BamAuxField::U16(v) => Self::UInt16(v),
+            BamAuxField::I32(v) => Self::Int32(v),
+            BamAuxField::U32(v) => Self::UInt32(v),
+            BamAuxField::Float(v) => Self::Float(v),
+            BamAuxField::Double(v) => Self::Float(v as f32), // FIXME
+            BamAuxField::String(v) => Self::String(v),
+            BamAuxField::HexByteArray(v) => Self::Hex(v),
+            BamAuxField::ArrayI8(v) => Self::Int8Array(v),
+            BamAuxField::ArrayU8(v) => Self::UInt8Array(v),
+            BamAuxField::ArrayI16(v) => Self::Int16Array(v),
+            BamAuxField::ArrayU16(v) => Self::UInt16Array(v),
+            BamAuxField::ArrayI32(v) => Self::Int32Array(v),
+            BamAuxField::ArrayU32(v) => Self::UInt32Array(v),
+            BamAuxField::ArrayFloat(v) => Self::FloatArray(v),
         }
     }
 }
@@ -184,23 +183,22 @@ impl Default for EditOperation {
 
 impl From<EditOperation> for sam::record::cigar::op::Kind {
     fn from(src: EditOperation) -> Self {
-        use sam::record::cigar::op::Kind;
         match src {
-            EditOperation::Insertion(_) => Kind::Insertion,
-            EditOperation::Deletion(_, _) => Kind::Deletion,
-            EditOperation::Match(_) | EditOperation::Mismatch(_, _) => Kind::Match,
+            EditOperation::Insertion(_) => Self::Insertion,
+            EditOperation::Deletion(_, _) => Self::Deletion,
+            EditOperation::Match(_) | EditOperation::Mismatch(_, _) => Self::Match,
         }
     }
 }
 
 impl From<EditOperation> for sam::record::cigar::Op {
     fn from(src: EditOperation) -> Self {
-        use sam::record::cigar::op::{Kind, Op};
+        use sam::record::cigar::op::Kind;
         match src {
-            EditOperation::Insertion(l) => Op::new(Kind::Insertion, l.into()),
-            EditOperation::Deletion(l, _) => Op::new(Kind::Deletion, l.into()),
+            EditOperation::Insertion(l) => Self::new(Kind::Insertion, l.into()),
+            EditOperation::Deletion(l, _) => Self::new(Kind::Deletion, l.into()),
             EditOperation::Match(l) | EditOperation::Mismatch(l, _) => {
-                Op::new(Kind::Match, l.into())
+                Self::new(Kind::Match, l.into())
             }
         }
     }
@@ -248,13 +246,11 @@ impl EditOperationsTrack {
         for (i, edit_operation) in track.enumerate() {
             let edit_operation = match edit_operation {
                 EditOperation::Insertion(_) => *edit_operation,
-                EditOperation::Match(j) => {
-                    if let Some(original_symbol) = original_symbols.get(absolute_pos + i) {
+                EditOperation::Match(j) => original_symbols
+                    .get(absolute_pos + i)
+                    .map_or(*edit_operation, |original_symbol| {
                         EditOperation::Mismatch(*j, original_symbol)
-                    } else {
-                        *edit_operation
-                    }
-                }
+                    }),
                 EditOperation::Deletion(j, reference_base) => EditOperation::Deletion(
                     *j,
                     original_symbols

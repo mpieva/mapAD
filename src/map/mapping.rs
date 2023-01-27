@@ -673,7 +673,7 @@ fn estimate_mapping_quality(
     assert!(MIN_MAPQ_UNIQ <= MAX_MAPQ);
 
     let alignment_probability = {
-        let prob_best = 2_f32.powf(best_alignment.alignment_score);
+        let prob_best = best_alignment.alignment_score.exp2();
         if best_alignment_interval_size > 1 {
             // Multi-mapping
             1.0 / best_alignment_interval_size as f32
@@ -689,8 +689,10 @@ fn estimate_mapping_quality(
                     suboptimal_alignment.interval != best_alignment.interval
                 })
                 .fold(0.0, |acc, suboptimal_alignment| {
-                    acc + 2_f32.powf(suboptimal_alignment.alignment_score)
-                        * suboptimal_alignment.interval.size as f32
+                    suboptimal_alignment
+                        .alignment_score
+                        .exp2()
+                        .mul_add(suboptimal_alignment.interval.size as f32, acc)
                 });
             prob_best / (prob_best + weighted_suboptimal_alignments)
         }
@@ -709,15 +711,16 @@ fn estimate_mapping_quality(
     // the mapping quality needs to be scaled down to reflect the fact that we are less likely to
     // find suboptimal alignments within these narrowed bounds.
     if mapping_quality == MAX_MAPQ {
-        let scaled_mq = f32::from(MIN_MAPQ_UNIQ)
-            + (f32::from(MAX_MAPQ - MIN_MAPQ_UNIQ)
-                * alignment_parameters
-                    .mismatch_bound
-                    .remaining_frac_of_repr_mm(
-                        best_alignment.alignment_score,
-                        best_alignment.edit_operations.read_len(),
-                    )
-                    .min(1.0));
+        let scaled_mq = f32::from(MAX_MAPQ - MIN_MAPQ_UNIQ).mul_add(
+            alignment_parameters
+                .mismatch_bound
+                .remaining_frac_of_repr_mm(
+                    best_alignment.alignment_score,
+                    best_alignment.edit_operations.read_len(),
+                )
+                .min(1.0),
+            f32::from(MIN_MAPQ_UNIQ),
+        );
         return scaled_mq.round() as u8;
     }
 
@@ -741,16 +744,14 @@ fn create_bam_record(
 ) -> Result<sam::alignment::Record> {
     let mut bam_builder = sam::alignment::Record::builder();
 
-    let (cigar, md_tag, edit_distance) = if let Some(hit_interval) = hit_interval {
+    let (cigar, md_tag, edit_distance) = hit_interval.map_or((None, None, None), |hit_interval| {
         let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields(
             strand.expect("This is not expected to fail"),
             absolute_position.expect("to be set as `hit_interval` is `Some()`"),
             original_symbols,
         );
         (Some(cigar), Some(md_tag), Some(edit_distance))
-    } else {
-        (None, None, None)
-    };
+    });
 
     // Copy flags from input record
     let mut flags = sam::record::Flags::from(input_record.bam_flags);
@@ -777,7 +778,7 @@ fn create_bam_record(
     }
 
     // Flag read that maps to reverse strand
-    if let Some(Direction::Backward) = strand {
+    if strand == Some(Direction::Backward) {
         flags.insert(sam::record::Flags::REVERSE_COMPLEMENTED);
     } else {
         flags.remove(sam::record::Flags::REVERSE_COMPLEMENTED);
@@ -1024,10 +1025,7 @@ fn print_debug(
     intervals: &BinaryHeap<HitInterval>,
     edit_tree: &Tree<EditOperation>,
 ) {
-    let best_as = match intervals.peek() {
-        Some(v) => v.alignment_score,
-        None => 0.0,
-    };
+    let best_as = intervals.peek().map_or(0.0, |v| v.alignment_score);
 
     eprintln!(
         "{}\t{}\t{}\t{}\t{}\t{:?}",
