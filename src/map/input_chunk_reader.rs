@@ -73,7 +73,7 @@ where
     }
 }
 
-/// Convertible to TaskQueue
+/// Convertible to `TaskQueue`
 pub trait IntoTaskQueue<E, I, O, T>
 where
     E: Into<Error>,
@@ -84,8 +84,8 @@ where
     fn into_tasks(self, chunk_size: usize) -> TaskQueue<O>;
 }
 
-/// Adds ChunkIterator conversion method to every compatible Iterator. So when new input file types
-/// are implemented, it is sufficient to impl `From<T> for Record` for the additional item.
+/// Adds `ChunkIterator` conversion method to every compatible Iterator. So when new input file
+/// types are implemented, it is sufficient to impl `From<T> for Record` for the additional item.
 #[allow(clippy::type_complexity)]
 impl<E, I, T> IntoTaskQueue<E, I, Map<T, fn(std::result::Result<I, E>) -> Result<Record>>, T> for T
 where
@@ -100,7 +100,7 @@ where
         TaskQueue {
             chunk_id: 0,
             chunk_size,
-            records: self.map(|inner| inner.map(|v| v.into()).map_err(|e| e.into())),
+            records: self.map(|inner| inner.map(Into::into).map_err(Into::into)),
             requeried_tasks: Vec::new(),
         }
     }

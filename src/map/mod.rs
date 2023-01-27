@@ -30,7 +30,7 @@ pub struct AlignmentParameters {
     pub stack_limit_abort: bool,
 }
 
-/// A subset of MismatchSearchStackFrame to store hits
+/// A subset of `MismatchSearchStackFrame` to store hits
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HitInterval {
     interval: RtBiInterval,
@@ -70,7 +70,7 @@ pub enum Direction {
 impl Direction {
     /// Reverses the direction from forward to backward and vice-versa
     fn reverse(self) -> Self {
-        use self::Direction::*;
+        use self::Direction::{Backward, Forward};
         match self {
             Forward => Backward,
             Backward => Forward,
@@ -79,7 +79,7 @@ impl Direction {
 
     #[allow(dead_code)]
     fn is_forward(self) -> bool {
-        use self::Direction::*;
+        use self::Direction::{Backward, Forward};
         match self {
             Forward => true,
             Backward => false,
@@ -101,8 +101,8 @@ enum GapState {
 
 /// Stores information about partial alignments on the priority stack.
 /// There are two different measures of alignment quality:
-/// alignment_score: Initialized with 0, penalties are simply added
-/// priority: alignment_score + expected minimal amount of penalties.
+/// `alignment_score`: Initialized with 0, penalties are simply added
+/// `priority`: `alignment_score` + expected minimal amount of penalties.
 /// This is used as key for the priority stack.
 #[derive(Debug)]
 pub struct MismatchSearchStackFrame {

@@ -24,6 +24,6 @@ pub mod build_info {
             String::new()
         };
 
-        format!("{}{}", PKG_VERSION, git_string)
+        format!("{PKG_VERSION}{git_string}")
     }
 }

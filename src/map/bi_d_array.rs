@@ -61,7 +61,7 @@ impl BiDArray {
                         .next()
                         .expect("Iterator is guaranteed to have the right length")
                 })
-                .fold(0_f32, |min_penalty, penalty| min_penalty.min(penalty))
+                .fold(0_f32, f32::min)
         });
 
         // Compute a forward-D-iterator for every offset
@@ -89,7 +89,7 @@ impl BiDArray {
                         .next()
                         .expect("Iterator is guaranteed to have the right length")
                 })
-                .fold(0_f32, |min_penalty, penalty| min_penalty.min(penalty))
+                .fold(0_f32, f32::min)
         });
 
         Self {
@@ -187,7 +187,7 @@ impl BiDArray {
                                 mm_retval
                             }
                         })
-                        .fold(f32::MIN, |acc, penalty| acc.max(penalty));
+                        .fold(f32::MIN, f32::max);
                         *interval = fmd_index.init_interval();
                         *last_mismatch_pos = index as i16;
                     }
@@ -307,7 +307,7 @@ mod tests {
         );
         assert_eq!(
             bi_d_array.get(0, 6),
-            bi_d_array.d_composite[0] + bi_d_array.d_composite[bi_d_array.split + 0]
+            bi_d_array.d_composite[0] + bi_d_array.d_composite[bi_d_array.split]
         );
 
         assert_eq!(bi_d_array.get(0, pattern.len() as i16 - 1), 0.0,);

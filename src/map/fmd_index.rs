@@ -49,7 +49,7 @@ impl RtFmdIndex {
         let mut back_transform = rank_transform
             .ranks
             .keys()
-            .map(|symbol| symbol as u8)
+            .map(|symbol| u8::try_from(symbol).expect("alphabet size to be < 256"))
             .collect::<Vec<_>>();
         back_transform.sort_unstable();
 
@@ -95,7 +95,7 @@ impl RtFmdIndex {
             .swapped()
     }
 
-    /// Returns an Iterator over the alphabet to extend the RtBiInterval
+    /// Returns an Iterator over the alphabet to extend the `RtBiInterval`
     pub fn extend_iter<'a>(&'a self, interval: &'a RtBiInterval) -> FmdExtIterator<'a> {
         FmdExtIterator::new(interval, self)
     }
@@ -105,7 +105,7 @@ impl RtFmdIndex {
     }
 }
 
-/// Extension of a RtBiInterval, implemented as an Iterator over the alphabet
+/// Extension of a `RtBiInterval`, implemented as an Iterator over the alphabet
 pub struct FmdExtIterator<'a> {
     s: usize,
     l: usize,
@@ -203,6 +203,7 @@ impl RtBiInterval {
         }
     }
 
+    #[must_use]
     pub fn swapped(&self) -> Self {
         Self {
             lower: self.lower_rev,

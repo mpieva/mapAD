@@ -1,6 +1,6 @@
-/// https://chrismaclellan.com/blog/lazy-shuffled-list-generator
-/// https://en.wikipedia.org/wiki/Lehmer_random_number_generator
-/// https://en.wikipedia.org/wiki/Linear_congruential_generator
+/// <https://chrismaclellan.com/blog/lazy-shuffled-list-generator>
+/// <https://en.wikipedia.org/wiki/Lehmer_random_number_generator>
+/// <https://en.wikipedia.org/wiki/Linear_congruential_generator>
 use std::ops::Range;
 
 pub struct PrRange {
@@ -175,10 +175,10 @@ fn checked_pow_mod(mut base: usize, mut exponent: usize, modulus: usize) -> Opti
     base %= modulus;
     while exponent > 0 {
         if exponent % 2 == 1 {
-            result = (result * base) % modulus
+            result = (result * base) % modulus;
         }
         exponent >>= 1;
-        base = (base * base) % modulus
+        base = (base * base) % modulus;
     }
     Some(result)
 }

@@ -124,7 +124,7 @@ pub fn run(
                 &original_symbols,
                 &header,
                 &mut out_file,
-            )?
+            )?;
         }
         "fastq" | "fq" => {
             let reader = fastq::Reader::from_file(reads_path)?;
@@ -140,7 +140,7 @@ pub fn run(
                 &original_symbols,
                 &header,
                 &mut out_file,
-            )?
+            )?;
         }
         _ => return Err(Error::InvalidInputType),
     }
@@ -311,7 +311,7 @@ where
             .collect::<Result<Vec<_>>>()?;
 
         debug!("Write chunk of BAM records to output file");
-        for record in bam_records.iter() {
+        for record in &bam_records {
             out_file.write_record(out_header, record)?;
         }
     }
@@ -373,10 +373,10 @@ pub fn create_bam_header(
         let pg_id_count = src_header
             .programs()
             .keys()
-            .filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{}.", pg_id)))
+            .filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{pg_id}.")))
             .count();
         if pg_id_count > 0 {
-            program_builder = program_builder.set_id(format!("{}.{}", pg_id, pg_id_count))
+            program_builder = program_builder.set_id(format!("{pg_id}.{pg_id_count}"));
         }
 
         for comment in src_header.comments().iter() {
@@ -559,7 +559,7 @@ where
         debug!(
             "Hits could not be mapped to valid coordinates. Report read \"{}\" as unmapped.",
             input_record
-        )
+        );
     }
 
     // No match found, report unmapped read
@@ -700,7 +700,7 @@ fn estimate_mapping_quality(
 
     // Produce Phred score
     let mapping_quality = (-10.0 * (1.0 - alignment_probability).log10())
-        .min(MAX_MAPQ as f32)
+        .min(f32::from(MAX_MAPQ))
         .round() as u8;
 
     // When we found a best-scoring hit, we search up until `AS + mm_penalty` to find suboptimal
@@ -709,8 +709,8 @@ fn estimate_mapping_quality(
     // the mapping quality needs to be scaled down to reflect the fact that we are less likely to
     // find suboptimal alignments within these narrowed bounds.
     if mapping_quality == MAX_MAPQ {
-        let scaled_mq = MIN_MAPQ_UNIQ as f32
-            + ((MAX_MAPQ - MIN_MAPQ_UNIQ) as f32
+        let scaled_mq = f32::from(MIN_MAPQ_UNIQ)
+            + (f32::from(MAX_MAPQ - MIN_MAPQ_UNIQ)
                 * alignment_parameters
                     .mismatch_bound
                     .remaining_frac_of_repr_mm(
@@ -769,7 +769,7 @@ fn create_bam_record(
                 .ok()
                 .and_then(|pos| pos.try_into().ok())
                 .ok_or_else(|| Error::InvalidIndex("Could not compute valid coordinate".into()))?,
-        )
+        );
     } else {
         flags.insert(sam::record::Flags::UNMAPPED);
         flags.remove(sam::record::Flags::REVERSE_COMPLEMENTED);
@@ -788,7 +788,7 @@ fn create_bam_record(
         bam_builder = bam_builder.set_read_name(
             read_name
                 .try_into()
-                .map_err(|e| Error::Hts(format!("Invalid record name: \"{}\"", e)))?,
+                .map_err(|e| Error::Hts(format!("Invalid record name: \"{e}\"")))?,
         );
     }
     bam_builder = bam_builder.set_flags(flags);
@@ -810,10 +810,10 @@ fn create_bam_record(
                 bam_builder
                     .set_sequence(
                         sam::record::Sequence::try_from(input_record.sequence)
-                            .map_err(|e| Error::Hts(format!("Invalid sequence: \"{}\"", e)))?,
+                            .map_err(|e| Error::Hts(format!("Invalid sequence: \"{e}\"")))?,
                     )
                     .set_quality_scores(input_record.base_qualities.try_into().map_err(|e| {
-                        Error::Hts(format!("Invalid base quality string: \"{}\"", e))
+                        Error::Hts(format!("Invalid base quality string: \"{e}\""))
                     })?);
         }
         Some(Direction::Backward) => {
@@ -821,7 +821,7 @@ fn create_bam_record(
             bam_builder = bam_builder
                 .set_sequence(
                     sam::record::Sequence::try_from(dna::revcomp(&input_record.sequence)).map_err(
-                        |e| Error::Hts(format!("Could not create valid sequence: \"{}\"", e)),
+                        |e| Error::Hts(format!("Could not create valid sequence: \"{e}\"")),
                     )?,
                 )
                 .set_quality_scores(
@@ -832,9 +832,7 @@ fn create_bam_record(
                         .copied()
                         .collect::<Vec<_>>()
                         .try_into()
-                        .map_err(|e| {
-                            Error::Hts(format!("Invalid base quality string: \"{}\"", e))
-                        })?,
+                        .map_err(|e| Error::Hts(format!("Invalid base quality string: \"{e}\"")))?,
                 );
         }
     }
@@ -887,7 +885,7 @@ fn create_bam_record(
     if let Some(edit_distance) = edit_distance {
         aux_data.push(sam::record::data::Field::new(
             sam::record::data::field::Tag::EditDistance,
-            sam::record::data::field::Value::Int32(edit_distance as i32),
+            sam::record::data::field::Value::Int32(i32::from(edit_distance)),
         ));
     };
 
@@ -963,7 +961,7 @@ fn create_bam_record(
     bam_builder = bam_builder.set_data(
         aux_data
             .try_into()
-            .map_err(|e| Error::Hts(format!("Could not create valid auxiliary data: {}", e)))?,
+            .map_err(|e| Error::Hts(format!("Could not create valid auxiliary data: {e}")))?,
     );
 
     Ok(bam_builder.build())
@@ -1209,7 +1207,7 @@ where
         //
         {
             if !mismatch_bound.reject(insertion_score + lower_bound, pattern.len())
-                && parameters.gap_dist_ends as i16 <= j.min(pattern.len() as i16 - j)
+                && i16::from(parameters.gap_dist_ends) <= j.min(pattern.len() as i16 - j)
             {
                 check_and_push_stack_frame(
                     MismatchSearchStackFrame {
@@ -1257,7 +1255,7 @@ where
             //
             {
                 if !mismatch_bound.reject(deletion_score + lower_bound, pattern.len())
-                    && parameters.gap_dist_ends as i16 <= j.min(pattern.len() as i16 - j)
+                    && i16::from(parameters.gap_dist_ends) <= j.min(pattern.len() as i16 - j)
                 {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
@@ -1316,7 +1314,13 @@ where
         // Only search until we've found a multi-hit
         // FIXME: We can probably stop searching earlier
         if (hit_intervals.len() > 9)
-            || (hit_intervals.len() == 1 && hit_intervals.peek().unwrap().interval.size > 1)
+            || (hit_intervals.len() == 1
+                && hit_intervals
+                    .peek()
+                    .expect("item to be there")
+                    .interval
+                    .size
+                    > 1)
         {
             return hit_intervals;
         }
@@ -1325,25 +1329,24 @@ where
         if stack.len() > STACK_LIMIT as usize || edit_tree.len() > EDIT_TREE_LIMIT as usize {
             if parameters.stack_limit_abort {
                 return hit_intervals;
-            } else {
-                if !stack_size_limit_reported {
-                    trace!(
+            }
+            if !stack_size_limit_reported {
+                trace!(
                     "Stack size limit exceeded (read length: {} bp). Remove highly penalized partial alignments from stack (stack size: {}, edit tree size: {}).",
                     pattern.len(),
                     stack.len(),
                     edit_tree.len(),
                 );
-                    stack_size_limit_reported = true;
-                }
+                stack_size_limit_reported = true;
+            }
 
-                for _ in 0..(stack.len() as isize - STACK_LIMIT as isize)
-                    .max(edit_tree.len() as isize - EDIT_TREE_LIMIT as isize)
-                {
-                    // The stack should never be empty at this point, so we boldly ignore the
-                    // `None` case here
-                    if let Some(min_stack_frame) = stack.pop_min() {
-                        edit_tree.remove(min_stack_frame.edit_node_id);
-                    }
+            for _ in 0..(stack.len() as isize - STACK_LIMIT as isize)
+                .max(edit_tree.len() as isize - EDIT_TREE_LIMIT as isize)
+            {
+                // The stack should never be empty at this point, so we boldly ignore the
+                // `None` case here
+                if let Some(min_stack_frame) = stack.pop_min() {
+                    edit_tree.remove(min_stack_frame.edit_node_id);
                 }
             }
         }
@@ -1417,8 +1420,7 @@ pub mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         positions.sort();
         assert_eq!(positions, vec![2, 6, 10, 19, 23, 27]);
@@ -1472,8 +1474,7 @@ pub mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         positions.sort();
         assert_eq!(positions, vec![8]);
@@ -1527,8 +1528,7 @@ pub mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         positions.sort();
         assert_eq!(positions, vec![0, 2, 5]);
@@ -1582,8 +1582,7 @@ pub mod tests {
 
         let positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         assert_eq!(positions, vec![0]);
 
@@ -1606,8 +1605,7 @@ pub mod tests {
 
         let positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         assert_eq!(positions, vec![]);
     }
@@ -1664,8 +1662,7 @@ pub mod tests {
 
         let positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         assert!(positions.contains(&0));
 
@@ -1690,8 +1687,7 @@ pub mod tests {
 
         let positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&suffix_array))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&suffix_array))
             .collect();
         assert!(positions.is_empty());
     }
@@ -1744,8 +1740,7 @@ pub mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&sar))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&sar))
             .collect();
         positions.sort();
         assert_eq!(positions, vec![0]);
@@ -1772,8 +1767,7 @@ pub mod tests {
 
         let mut positions: Vec<usize> = intervals
             .into_iter()
-            .map(|f| f.interval.forward().occ(&sar))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&sar))
             .collect();
         positions.sort();
         assert_eq!(positions, vec![0]);
@@ -1846,7 +1840,7 @@ pub mod tests {
         };
 
         assert!(map_params_large > map_params_small);
-        assert!(!(map_params_large < map_params_small));
+        assert!(map_params_large >= map_params_small);
         assert_ne!(map_params_large, map_params_small);
     }
 
@@ -1902,8 +1896,7 @@ pub mod tests {
 
         let mut positions: Vec<usize> = intervals
             .iter()
-            .map(|f| f.interval.forward().occ(&sar))
-            .flatten()
+            .flat_map(|f| f.interval.forward().occ(&sar))
             .collect();
         positions.sort();
         assert_eq!(positions, vec![0, 62, 63]);

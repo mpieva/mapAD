@@ -18,7 +18,7 @@ use rand::{
 use crate::{
     errors::{Error, Result},
     index::{
-        versioned_index::VersionedIndexItem, FastaIdPosition, FastaIdPositions, OriginalSymbols,
+        versioned_index::Item, FastaIdPosition, FastaIdPositions, OriginalSymbols,
         SampledSuffixArrayOwned, DNA_AMINO, DNA_KETONE, DNA_NOT_A, DNA_NOT_C, DNA_NOT_G, DNA_NOT_T,
         DNA_PURINE, DNA_PYRIMIDINE, DNA_STRONG, DNA_UPPERCASE_ALPHABET, DNA_UPPERCASE_X_ALPHABET,
         DNA_WEAK,
@@ -100,8 +100,8 @@ fn index<T: Rng>(
         );
 
         info!("Save original symbols");
-        let versioned_original_symbols = VersionedIndexItem::new(original_symbols);
-        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tos", name))?);
+        let versioned_original_symbols = Item::new(original_symbols);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{name}.tos"))?);
         bincode::serialize_into(&mut writer, &versioned_original_symbols)?;
     }
 
@@ -124,8 +124,8 @@ fn index<T: Rng>(
         );
 
         info!("Save position map");
-        let versioned_id_pos_map = VersionedIndexItem::new(identifier_position_map);
-        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tpi", name))?);
+        let versioned_id_pos_map = Item::new(identifier_position_map);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{name}.tpi"))?);
         bincode::serialize_into(&mut writer, &versioned_id_pos_map)?;
     }
 
@@ -139,14 +139,16 @@ fn index<T: Rng>(
     info!("Compress reference");
     alphabet.insert(b'$');
     let rank_transform = RankTransform::new(&alphabet);
-    let alphabet = Alphabet::new(0..rank_transform.ranks.len() as u8);
+    let alphabet = Alphabet::new(
+        0..u8::try_from(rank_transform.ranks.len()).expect("alphabet size to be < 256"),
+    );
     let ref_seq = rank_transform.transform(ref_seq);
 
     {
         info!("Save \"RT\" table");
-        let versioned_rt = VersionedIndexItem::new(rank_transform);
+        let versioned_rt = Item::new(rank_transform);
         let mut writer_rank_transform =
-            snap::write::FrameEncoder::new(File::create(format!("{}.trt", name))?);
+            snap::write::FrameEncoder::new(File::create(format!("{name}.trt"))?);
         bincode::serialize_into(&mut writer_rank_transform, &versioned_rt)?;
     }
 
@@ -166,9 +168,9 @@ fn index<T: Rng>(
         );
 
         info!("Save compressed suffix array");
-        let versioned_suffix_array = VersionedIndexItem::new(owned_sampled_suffix_array);
+        let versioned_suffix_array = Item::new(owned_sampled_suffix_array);
         let mut writer_suffix_array =
-            snap::write::FrameEncoder::new(File::create(format!("{}.tsa", name))?);
+            snap::write::FrameEncoder::new(File::create(format!("{name}.tsa"))?);
         bincode::serialize_into(&mut writer_suffix_array, &versioned_suffix_array)?;
     }
 
@@ -180,22 +182,22 @@ fn index<T: Rng>(
 
     {
         info!("Save BWT");
-        let versioned_bwt = VersionedIndexItem::new(bwt);
-        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tbw", name))?);
+        let versioned_bwt = Item::new(bwt);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{name}.tbw"))?);
         bincode::serialize_into(&mut writer, &versioned_bwt)?;
     }
 
     {
         info!("Save \"C\" table");
-        let versioned_less = VersionedIndexItem::new(less);
-        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.tle", name))?);
+        let versioned_less = Item::new(less);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{name}.tle"))?);
         bincode::serialize_into(&mut writer, &versioned_less)?;
     }
 
     {
         info!("Save \"Occ\" table");
-        let versioned_occ = VersionedIndexItem::new(occ);
-        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{}.toc", name))?);
+        let versioned_occ = Item::new(occ);
+        let mut writer = snap::write::FrameEncoder::new(File::create(format!("{name}.toc"))?);
         bincode::serialize_into(&mut writer, &versioned_occ)?;
     }
 
@@ -222,8 +224,7 @@ where
             .enumerate()
             .find(|&(_j, &symbol_j)| symbol_j != symbol_i)
             // Correct length for starting at position i+1
-            .map(|(j, _symbol_j)| j + 1)
-            .unwrap_or(ref_seq.len() - i);
+            .map_or(ref_seq.len() - i, |(j, _symbol_j)| j + 1);
         // Apply closures on runs of non-alphabet symbols
         if !DNA_UPPERCASE_ALPHABET.contains(&symbol_i) {
             let run = &mut ref_seq[i..][..run_len];
@@ -304,7 +305,7 @@ mod tests {
         }
 
         {
-            let mut ref_seq = ref_seq.clone();
+            let mut ref_seq = ref_seq;
             run_apply(
                 &mut ref_seq,
                 4.try_into().unwrap(),
@@ -351,7 +352,7 @@ mod tests {
         }
 
         {
-            let mut ref_seq = ref_seq.clone();
+            let mut ref_seq = ref_seq;
             run_apply(
                 &mut ref_seq,
                 4.try_into().unwrap(),
@@ -398,7 +399,7 @@ mod tests {
         }
 
         {
-            let mut ref_seq = ref_seq.clone();
+            let mut ref_seq = ref_seq;
             run_apply(
                 &mut ref_seq,
                 4.try_into().unwrap(),
@@ -412,7 +413,7 @@ mod tests {
         let ref_seq = "GNNGATNTACANGATYYYYYTNNACANNNT".as_bytes().to_owned();
 
         {
-            let mut ref_seq = ref_seq.clone();
+            let mut ref_seq = ref_seq;
             run_apply(
                 &mut ref_seq,
                 1.try_into().unwrap(),
@@ -425,7 +426,7 @@ mod tests {
         let ref_seq = "CYNTYYNNT".as_bytes().to_owned();
 
         {
-            let mut ref_seq = ref_seq.clone();
+            let mut ref_seq = ref_seq;
             run_apply(
                 &mut ref_seq,
                 2.try_into().unwrap(),

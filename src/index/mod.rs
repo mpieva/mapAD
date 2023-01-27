@@ -11,9 +11,7 @@ use bio::data_structures::{
 use log::debug;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    errors::Result, index::versioned_index::VersionedIndexItem, map::fmd_index::RtFmdIndex,
-};
+use crate::{errors::Result, index::versioned_index::Item, map::fmd_index::RtFmdIndex};
 
 pub const DNA_UPPERCASE_ALPHABET: &[u8; 4] = b"ACGT";
 // Ambiguous base symbols (which appear in stretches) can be replaced with 'X' in the index
@@ -98,7 +96,7 @@ impl SampledSuffixArrayOwned {
             let mut vec_cap = suffix_array.len() / sampling_rate;
             // Ceil
             if suffix_array.len() % sampling_rate != 0 {
-                vec_cap += 1
+                vec_cap += 1;
             }
             Vec::with_capacity(vec_cap)
         };
@@ -212,29 +210,29 @@ impl OriginalSymbols {
 }
 
 pub fn load_suffix_array_from_path(reference_path: &str) -> Result<SampledSuffixArrayOwned> {
-    VersionedIndexItem::read_from_path(format!("{}.tsa", reference_path))?.try_take()
+    Item::read_from_path(format!("{reference_path}.tsa"))?.try_take()
 }
 
 pub fn load_id_pos_map_from_path(reference_path: &str) -> Result<FastaIdPositions> {
-    VersionedIndexItem::read_from_path(format!("{}.tpi", reference_path))?.try_take()
+    Item::read_from_path(format!("{reference_path}.tpi"))?.try_take()
 }
 
 pub fn load_original_symbols_from_path(reference_path: &str) -> Result<OriginalSymbols> {
-    VersionedIndexItem::read_from_path(format!("{}.tos", reference_path))?.try_take()
+    Item::read_from_path(format!("{reference_path}.tos"))?.try_take()
 }
 
 pub fn load_index_from_path(reference_path: &str) -> Result<RtFmdIndex> {
     debug!("Load BWT");
-    let bwt = VersionedIndexItem::read_from_path(format!("{}.tbw", reference_path))?.try_take()?;
+    let bwt = Item::read_from_path(format!("{reference_path}.tbw"))?.try_take()?;
 
     debug!("Load \"C\" table");
-    let less = VersionedIndexItem::read_from_path(format!("{}.tle", reference_path))?.try_take()?;
+    let less = Item::read_from_path(format!("{reference_path}.tle"))?.try_take()?;
 
     debug!("Load \"Occ\" table");
-    let occ = VersionedIndexItem::read_from_path(format!("{}.toc", reference_path))?.try_take()?;
+    let occ = Item::read_from_path(format!("{reference_path}.toc"))?.try_take()?;
 
     debug!("Load \"RT\" table");
-    let rt = VersionedIndexItem::read_from_path(format!("{}.trt", reference_path))?.try_take()?;
+    let rt = Item::read_from_path(format!("{reference_path}.trt"))?.try_take()?;
 
     debug!("Reconstruct index");
     Ok(RtFmdIndex::new(bwt, less, occ, rt))

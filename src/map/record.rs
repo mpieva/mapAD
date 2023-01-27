@@ -52,15 +52,15 @@ impl From<&sam::record::data::field::Value> for BamAuxField {
             Value::UInt32(v) => BamAuxField::U32(*v),
             Value::Float(v) => BamAuxField::Float(*v),
             //Value::Double(v) => BamTag::Double(*v),
-            Value::String(v) => BamAuxField::String(v.to_owned()),
-            Value::Hex(v) => BamAuxField::HexByteArray(v.to_owned()),
-            Value::Int8Array(v) => BamAuxField::ArrayI8(v.to_owned()),
-            Value::UInt8Array(v) => BamAuxField::ArrayU8(v.to_owned()),
-            Value::Int16Array(v) => BamAuxField::ArrayI16(v.to_owned()),
-            Value::UInt16Array(v) => BamAuxField::ArrayU16(v.to_owned()),
-            Value::Int32Array(v) => BamAuxField::ArrayI32(v.to_owned()),
-            Value::UInt32Array(v) => BamAuxField::ArrayU32(v.to_owned()),
-            Value::FloatArray(v) => BamAuxField::ArrayFloat(v.to_owned()),
+            Value::String(v) => BamAuxField::String(v.clone()),
+            Value::Hex(v) => BamAuxField::HexByteArray(v.clone()),
+            Value::Int8Array(v) => BamAuxField::ArrayI8(v.clone()),
+            Value::UInt8Array(v) => BamAuxField::ArrayU8(v.clone()),
+            Value::Int16Array(v) => BamAuxField::ArrayI16(v.clone()),
+            Value::UInt16Array(v) => BamAuxField::ArrayU16(v.clone()),
+            Value::Int32Array(v) => BamAuxField::ArrayI32(v.clone()),
+            Value::UInt32Array(v) => BamAuxField::ArrayU32(v.clone()),
+            Value::FloatArray(v) => BamAuxField::ArrayFloat(v.clone()),
         }
     }
 }
@@ -162,8 +162,7 @@ impl fmt::Display for Record {
         let read_name = self
             .name
             .as_ref()
-            .map(|name| name.as_ref())
-            .unwrap_or(sam::record::read_name::MISSING);
+            .map_or(sam::record::read_name::MISSING, AsRef::as_ref);
         write!(f, "{}", String::from_utf8_lossy(read_name))
     }
 }
@@ -189,8 +188,7 @@ impl From<EditOperation> for sam::record::cigar::op::Kind {
         match src {
             EditOperation::Insertion(_) => Kind::Insertion,
             EditOperation::Deletion(_, _) => Kind::Deletion,
-            EditOperation::Match(_) => Kind::Match,
-            EditOperation::Mismatch(_, _) => Kind::Match,
+            EditOperation::Match(_) | EditOperation::Mismatch(_, _) => Kind::Match,
         }
     }
 }
@@ -201,8 +199,9 @@ impl From<EditOperation> for sam::record::cigar::Op {
         match src {
             EditOperation::Insertion(l) => Op::new(Kind::Insertion, l.into()),
             EditOperation::Deletion(l, _) => Op::new(Kind::Deletion, l.into()),
-            EditOperation::Match(l) => Op::new(Kind::Match, l.into()),
-            EditOperation::Mismatch(l, _) => Op::new(Kind::Match, l.into()),
+            EditOperation::Match(l) | EditOperation::Mismatch(l, _) => {
+                Op::new(Kind::Match, l.into())
+            }
         }
     }
 }
@@ -270,7 +269,7 @@ impl EditOperationsTrack {
                 ),
             };
 
-            edit_distance = Self::add_edit_distance(&edit_operation, edit_distance);
+            edit_distance = Self::add_edit_distance(edit_operation, edit_distance);
 
             num_matches = Self::add_md_edit_operation(
                 Some(edit_operation),
@@ -374,12 +373,12 @@ impl EditOperationsTrack {
                 }
                 k = 0;
             }
-            None => md_tag.extend_from_slice(format!("{}", k).as_bytes()),
+            None => md_tag.extend_from_slice(format!("{k}").as_bytes()),
         }
         k
     }
 
-    fn add_edit_distance(edit_operation: &EditOperation, distance: u16) -> u16 {
+    fn add_edit_distance(edit_operation: EditOperation, distance: u16) -> u16 {
         if let EditOperation::Match(_) = edit_operation {
             distance
         } else {

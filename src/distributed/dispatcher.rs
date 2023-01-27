@@ -9,7 +9,7 @@ use std::{
 
 use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
 use log::{debug, info, warn};
-use mio::{net::TcpListener, *};
+use mio::{net, Events, Interest, Poll, Token};
 use noodles::sam::AlignmentWriter;
 use noodles::{bam, sam};
 use rayon::prelude::*;
@@ -197,7 +197,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
         original_symbols: &OriginalSymbols,
-        listener: &mut TcpListener,
+        listener: &mut net::TcpListener,
         out_header: &sam::Header,
         out_file: &mut bam::Writer<W>,
     ) -> Result<()>
@@ -221,143 +221,141 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         loop {
             poll.poll(&mut events, None)?;
             for event in events.iter() {
-                match event.token() {
+                if event.token() == Self::DISPATCHER_TOKEN {
                     // Workers of the world, register!
-                    Self::DISPATCHER_TOKEN => {
-                        if self.accept_connections {
-                            while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
-                                info!("Connection established ({:?})", remote_addr);
-                                max_token += 1;
-                                let remote_token = Token(max_token);
-                                poll.registry().register(
-                                    &mut remote_stream,
-                                    remote_token,
-                                    Interest::WRITABLE,
-                                )?;
-                                let connection = Connection {
-                                    stream: remote_stream,
-                                    assigned_task: None,
-                                    rx_buffer: ResultRxBuffer::new(),
-                                    tx_buffer: TaskTxBuffer::new(),
-                                };
-                                self.connections.insert(remote_token, connection);
-                            }
-                        } else {
-                            debug!("Task queue is empty: decline connection attempt");
+                    if self.accept_connections {
+                        while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
+                            info!("Connection established ({:?})", remote_addr);
+                            max_token += 1;
+                            let remote_token = Token(max_token);
+                            poll.registry().register(
+                                &mut remote_stream,
+                                remote_token,
+                                Interest::WRITABLE,
+                            )?;
+                            let connection = Connection {
+                                stream: remote_stream,
+                                assigned_task: None,
+                                rx_buffer: ResultRxBuffer::new(),
+                                tx_buffer: TaskTxBuffer::new(),
+                            };
+                            self.connections.insert(remote_token, connection);
                         }
+                    } else {
+                        debug!("Task queue is empty: decline connection attempt");
                     }
-
+                } else {
                     //
                     // Communication with existing workers
                     //
-                    _ => {
-                        // Receive results from workers
-                        if event.is_readable() {
-                            match self.read_rx_buffer(event.token()) {
-                                TransportState::Finished => {
-                                    let results = self
+                    // Receive results from workers
+                    if event.is_readable() {
+                        match self.read_rx_buffer(event.token()) {
+                            TransportState::Finished => {
+                                let results = self
+                                    .connections
+                                    .get_mut(&event.token())
+                                    .expect("This is not expected to fail")
+                                    .rx_buffer
+                                    .decode_and_reset()?;
+
+                                debug!(
+                                    "Worker {} sent results of task {}",
+                                    event.token().0,
+                                    results.chunk_id,
+                                );
+                                Self::write_results(
+                                    results.results,
+                                    suffix_array,
+                                    identifier_position_map,
+                                    original_symbols,
+                                    self.alignment_parameters,
+                                    out_header,
+                                    out_file,
+                                )?;
+                                debug!("Finished task {}", results.chunk_id,);
+
+                                // Remove completed task from assignments
+                                self.connections
+                                    .get_mut(&event.token())
+                                    .expect("This is not expected to fail")
+                                    .assigned_task = None;
+
+                                poll.registry().reregister(
+                                    &mut self
                                         .connections
                                         .get_mut(&event.token())
                                         .expect("This is not expected to fail")
-                                        .rx_buffer
-                                        .decode_and_reset()?;
-
-                                    debug!(
-                                        "Worker {} sent results of task {}",
-                                        event.token().0,
-                                        results.chunk_id,
-                                    );
-                                    self.write_results(
-                                        results.results,
-                                        suffix_array,
-                                        identifier_position_map,
-                                        original_symbols,
-                                        self.alignment_parameters,
-                                        out_header,
-                                        out_file,
-                                    )?;
-                                    debug!("Finished task {}", results.chunk_id,);
-
-                                    // Remove completed task from assignments
-                                    self.connections
-                                        .get_mut(&event.token())
-                                        .expect("This is not expected to fail")
-                                        .assigned_task = None;
-
-                                    poll.registry().reregister(
-                                        &mut self
-                                            .connections
-                                            .get_mut(&event.token())
-                                            .expect("This is not expected to fail")
-                                            .stream,
-                                        event.token(),
-                                        Interest::WRITABLE,
-                                    )?;
-                                }
-                                TransportState::Stalled => {
-                                    // We're patient!!1!
-                                }
-                                TransportState::Error(_) => {
-                                    warn!(
-                                        "Connection is no longer valid, remove worker {} from pool",
-                                        event.token().0
-                                    );
-                                    self.release_worker(event.token(), task_queue);
-                                }
-                                TransportState::Complete => {
-                                    // TransportState::Complete means the input file has been processed completely
-                                    // which workers don't know. That's why this match arm here is
-                                    unreachable!();
-                                }
+                                        .stream,
+                                    event.token(),
+                                    Interest::WRITABLE,
+                                )?;
+                            }
+                            TransportState::Stalled => {
+                                // We're patient!!1!
+                            }
+                            TransportState::Error(_) => {
+                                warn!(
+                                    "Connection is no longer valid, remove worker {} from pool",
+                                    event.token().0
+                                );
+                                self.release_worker(event.token(), task_queue);
+                            }
+                            TransportState::Complete => {
+                                // TransportState::Complete means the input file has been processed completely
+                                // which workers don't know. That's why this match arm here is
+                                unreachable!();
                             }
                         }
+                    }
 
-                        // Distribution of work
-                        if event.is_writable() {
-                            // `TransportState` is wrapped in a `Result` to indicate whether or
-                            // not there was an error reading the input file so we bubble it up.
-                            // `TransportState::Err(e)`, however, means that there was a communication
-                            // error with one of the workers which we can recover from by dropping
-                            // the connection and requerying its tasks.
-                            match self.write_tx_buffer(event.token(), task_queue)? {
-                                TransportState::Finished => {
-                                    debug!(
-                                        "Assigned and sent task {} to worker {}",
-                                        self.connections
-                                            .get(&event.token())
-                                            .expect("This is not expected to fail")
-                                            .assigned_task
-                                            .as_ref()
-                                            .expect("This is not expected to fail"),
-                                        event.token().0,
+                    // Distribution of work
+                    if event.is_writable() {
+                        // `TransportState` is wrapped in a `Result` to indicate whether or
+                        // not there was an error reading the input file so we bubble it up.
+                        // `TransportState::Err(e)`, however, means that there was a communication
+                        // error with one of the workers which we can recover from by dropping
+                        // the connection and requerying its tasks.
+                        match self.write_tx_buffer(event.token(), task_queue)? {
+                            TransportState::Finished => {
+                                debug!(
+                                    "Assigned and sent task {} to worker {}",
+                                    self.connections
+                                        .get(&event.token())
+                                        .expect("This is not expected to fail")
+                                        .assigned_task
+                                        .as_ref()
+                                        .expect("This is not expected to fail"),
+                                    event.token().0,
+                                );
+                                poll.registry().reregister(
+                                    &mut self
+                                        .connections
+                                        .get_mut(&event.token())
+                                        .expect("This is not expected to fail")
+                                        .stream,
+                                    event.token(),
+                                    Interest::READABLE,
+                                )?;
+                            }
+                            TransportState::Stalled => {
+                                // We're patient!!1!
+                            }
+                            TransportState::Error(_) => {
+                                warn!(
+                                    "Connection is no longer valid, remove worker {} from pool",
+                                    event.token().0
+                                );
+                                self.release_worker(event.token(), task_queue);
+                            }
+                            TransportState::Complete => {
+                                self.accept_connections = false;
+                                self.release_worker(event.token(), task_queue);
+                                if self.connections.is_empty() {
+                                    info!(
+                                        "All tasks have been completed, shutting down gracefully"
                                     );
-                                    poll.registry().reregister(
-                                        &mut self
-                                            .connections
-                                            .get_mut(&event.token())
-                                            .expect("This is not expected to fail")
-                                            .stream,
-                                        event.token(),
-                                        Interest::READABLE,
-                                    )?;
-                                }
-                                TransportState::Stalled => {
-                                    // We're patient!!1!
-                                }
-                                TransportState::Error(_) => {
-                                    warn!(
-                                        "Connection is no longer valid, remove worker {} from pool",
-                                        event.token().0
-                                    );
-                                    self.release_worker(event.token(), task_queue);
-                                }
-                                TransportState::Complete => {
-                                    self.accept_connections = false;
-                                    self.release_worker(event.token(), task_queue);
-                                    if self.connections.is_empty() {
-                                        info!("All tasks have been completed, shutting down gracefully");
-                                        return Ok(());
-                                    }
+                                    return Ok(());
                                 }
                             }
                         }
@@ -369,7 +367,6 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
     #[allow(clippy::too_many_arguments)]
     fn write_results<S, W>(
-        &self,
         hits: Vec<(Record, BinaryHeap<HitInterval>, Duration)>,
         suffix_array: &S,
         identifier_position_map: &FastaIdPositions,
@@ -403,15 +400,15 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .collect::<Result<Vec<_>>>()?;
 
         debug!("Write chunk of BAM records to output file");
-        for record in bam_records.iter() {
+        for record in &bam_records {
             out_file.write_alignment_record(out_header, record)?;
         }
 
         Ok(())
     }
 
-    /// Removes worker_to_be_removed from the event queue and terminates the connection.
-    /// This causes the worker_to_be_removed process to terminate.
+    /// Removes `worker_to_be_removed` from the event queue and terminates the connection.
+    /// This causes the `worker_to_be_removed` process to terminate.
     /// Also, this worker's task will be requeried.
     fn release_worker<T>(&mut self, worker_to_be_removed: Token, task_queue: &mut TaskQueue<T>)
     where

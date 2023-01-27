@@ -24,7 +24,7 @@ use mapad::{
 static ALLOC: MiMalloc = MiMalloc;
 
 fn main() {
-    handle_arguments(define_cli());
+    handle_arguments(&define_cli());
 }
 
 fn define_cli() -> ArgMatches {
@@ -56,7 +56,7 @@ fn define_cli() -> ArgMatches {
             Arg::new("num_threads")
                 .global(true)
                 .long("threads")
-                .help(format!("Maximum number of threads. If 0, {} will select the number of threads automatically.", CRATE_NAME))
+                .help(format!("Maximum number of threads. If 0, {CRATE_NAME} will select the number of threads automatically."))
                 .default_value("1")
                 .value_name("INT")
                 .value_parser(value_parser!(usize))
@@ -264,7 +264,7 @@ fn define_cli() -> ArgMatches {
         .get_matches()
 }
 
-fn handle_arguments(matches: ArgMatches) {
+fn handle_arguments(matches: &ArgMatches) {
     let mut logger_builder = SimpleLogger::new().with_level(match matches.get_count("v") {
         0 => log::LevelFilter::Info,
         1 => log::LevelFilter::Debug,

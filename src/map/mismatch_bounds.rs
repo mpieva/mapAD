@@ -11,7 +11,7 @@ pub trait MismatchBound {
     fn reject(&self, value: f32, read_length: usize) -> bool;
 
     /// If the best scoring interval has a total sum of penalties z, do not search
-    /// for hits with a minimal expected scored worse than z + representative_mismatch
+    /// for hits with a minimal expected scored worse than z + `representative_mismatch`
     /// to speed up the alignment of endogenous reads.
     fn reject_iterative(&self, value: f32, reference: f32) -> bool;
 
@@ -177,7 +177,7 @@ impl Display for Discrete {
             tmp
         };
 
-        write!(f, "{}", text)
+        write!(f, "{text}")
     }
 }
 
@@ -232,8 +232,7 @@ impl Discrete {
             ))
             .take_while(|(_k, sum)| 1.0 - *sum > poisson_threshold)
             .last()
-            .map(|(k, _sum)| k)
-            .unwrap_or(0) as f32
+            .map_or(0, |(k, _sum)| k) as f32
     }
 
     fn get(&self, read_length: usize) -> f32 {
@@ -340,7 +339,7 @@ mod tests {
 208 bp:\t8 mismatches
 244 bp:\t9 mismatches";
 
-        assert_eq!(comparison, format!("{}", mismatch_bound));
+        assert_eq!(comparison, format!("{mismatch_bound}"));
     }
 
     #[test]
@@ -369,6 +368,6 @@ mod tests {
 213 bp:\t9 mismatches
 248 bp:\t10 mismatches";
 
-        assert_eq!(comparison, format!("{}", mismatch_bound));
+        assert_eq!(comparison, format!("{mismatch_bound}"));
     }
 }

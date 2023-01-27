@@ -84,7 +84,7 @@ TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA
 >Chromosome_03
 CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGACCCAAGAATCCGTAGACTC
 TGATCGATCATGCTAAAAATCGAT";
-        writeln!(file, "{}", fasta_content).unwrap();
+        writeln!(file, "{fasta_content}").unwrap();
 
         indexing::run(test_genome_path.to_str().unwrap(), 1234).unwrap();
     }

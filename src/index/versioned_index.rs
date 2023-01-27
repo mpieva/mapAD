@@ -9,12 +9,12 @@ use crate::errors::{Error, Result};
 /// detect an incompatible on-disk index. The index data can only be extracted if the version
 /// matches exactly the currently defined `INDEX_VERSION`.
 #[derive(Serialize, Deserialize)]
-pub struct VersionedIndexItem<T> {
+pub struct Item<T> {
     version: u8,
     data: T,
 }
 
-impl<T> VersionedIndexItem<T> {
+impl<T> Item<T> {
     /// Increase this number once the on-disk index changes
     const INDEX_VERSION: u8 = 5;
 
@@ -40,7 +40,7 @@ impl<T> VersionedIndexItem<T> {
     }
 }
 
-impl<T> VersionedIndexItem<T>
+impl<T> Item<T>
 where
     T: DeserializeOwned,
 {

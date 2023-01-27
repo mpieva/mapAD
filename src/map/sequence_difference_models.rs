@@ -53,7 +53,7 @@ pub trait SequenceDifferenceModel {
             Either::Right(iterator)
         }
         .map(|&base| self.get(i, read_length, base, to, base_quality))
-        .fold(f32::MIN, |acc, v| acc.max(v))
+        .fold(f32::MIN, f32::max)
     }
 }
 
@@ -258,7 +258,7 @@ impl Display for SimpleAncientDnaModel {
 
 impl SimpleAncientDnaModel {
     fn qual2prob(encoded_base_quality: u8) -> f32 {
-        10_f32.powf(-1.0 * encoded_base_quality as f32 / 10.0) / 3.0
+        10_f32.powf(-1.0 * f32::from(encoded_base_quality) / 10.0) / 3.0
     }
 
     pub fn new(
@@ -607,7 +607,7 @@ mod tests {
         assert_approx_eq!(-3.452384, adna_model.get(4, 25, b'C', b'T', 40));
         assert_approx_eq!(-3.522311, adna_model.get(5, 25, b'C', b'T', 10));
         assert_approx_eq!(-4.525707, adna_model.get(6, 25, b'C', b'T', 40));
-        assert_approx_eq!(-4.937460, adna_model.get(7, 25, b'C', b'T', 40));
+        assert_approx_eq!(-4.937_46, adna_model.get(7, 25, b'C', b'T', 40));
         assert_approx_eq!(-5.255495, adna_model.get(8, 25, b'C', b'T', 40));
         assert_approx_eq!(-5.485218, adna_model.get(9, 25, b'C', b'T', 40));
         assert_approx_eq!(-4.284543, adna_model.get(10, 25, b'C', b'T', 10));
@@ -620,10 +620,10 @@ mod tests {
         assert_approx_eq!(-5.345414, adna_model.get(17, 25, b'C', b'T', 40));
         assert_approx_eq!(-5.004263, adna_model.get(18, 25, b'C', b'T', 40));
         assert_approx_eq!(-4.534981, adna_model.get(19, 25, b'C', b'T', 40));
-        assert_approx_eq!(-3.944710, adna_model.get(20, 25, b'C', b'T', 40));
+        assert_approx_eq!(-3.944_71, adna_model.get(20, 25, b'C', b'T', 40));
         assert_approx_eq!(-3.256952, adna_model.get(21, 25, b'C', b'T', 40));
         assert_approx_eq!(-2.500338, adna_model.get(22, 25, b'C', b'T', 40));
-        assert_approx_eq!(-1.699540, adna_model.get(23, 25, b'C', b'T', 40));
+        assert_approx_eq!(-1.699_54, adna_model.get(23, 25, b'C', b'T', 40));
         assert_approx_eq!(-0.982643, adna_model.get(24, 25, b'C', b'T', 10));
         assert_approx_eq!(-4.375222, adna_model.get(0, 25, b'G', b'A', 10));
         assert_approx_eq!(-5.927367, adna_model.get(1, 25, b'G', b'A', 40));
@@ -1013,13 +1013,13 @@ mod tests {
         assert_approx_eq!(-7.221671, adna_model.get(23, 25, b'C', b'G', 40));
         assert_approx_eq!(-4.651894, adna_model.get(24, 25, b'C', b'G', 10));
         assert_approx_eq!(-1.308743, adna_model.get(0, 25, b'C', b'T', 10));
-        assert_approx_eq!(-2.238840, adna_model.get(1, 25, b'C', b'T', 40));
-        assert_approx_eq!(-2.961360, adna_model.get(2, 25, b'C', b'T', 10));
+        assert_approx_eq!(-2.238_84, adna_model.get(1, 25, b'C', b'T', 40));
+        assert_approx_eq!(-2.961_36, adna_model.get(2, 25, b'C', b'T', 10));
         assert_approx_eq!(-4.046337, adna_model.get(3, 25, b'C', b'T', 40));
         assert_approx_eq!(-4.741751, adna_model.get(4, 25, b'C', b'T', 40));
         assert_approx_eq!(-4.138409, adna_model.get(5, 25, b'C', b'T', 10));
         assert_approx_eq!(-5.562702, adna_model.get(6, 25, b'C', b'T', 40));
-        assert_approx_eq!(-5.742640, adna_model.get(7, 25, b'C', b'T', 40));
+        assert_approx_eq!(-5.742_64, adna_model.get(7, 25, b'C', b'T', 40));
         assert_approx_eq!(-5.836668, adna_model.get(8, 25, b'C', b'T', 40));
         assert_approx_eq!(-5.883573, adna_model.get(9, 25, b'C', b'T', 40));
         assert_approx_eq!(-4.369012, adna_model.get(10, 25, b'C', b'T', 10));
@@ -1054,13 +1054,13 @@ mod tests {
         assert_approx_eq!(-5.906399, adna_model.get(14, 25, b'G', b'A', 40));
         assert_approx_eq!(-5.883573, adna_model.get(15, 25, b'G', b'A', 40));
         assert_approx_eq!(-5.836668, adna_model.get(16, 25, b'G', b'A', 40));
-        assert_approx_eq!(-5.742640, adna_model.get(17, 25, b'G', b'A', 40));
+        assert_approx_eq!(-5.742_64, adna_model.get(17, 25, b'G', b'A', 40));
         assert_approx_eq!(-5.562702, adna_model.get(18, 25, b'G', b'A', 40));
-        assert_approx_eq!(-5.244400, adna_model.get(19, 25, b'G', b'A', 40));
+        assert_approx_eq!(-5.244_4, adna_model.get(19, 25, b'G', b'A', 40));
         assert_approx_eq!(-4.741751, adna_model.get(20, 25, b'G', b'A', 40));
         assert_approx_eq!(-4.046337, adna_model.get(21, 25, b'G', b'A', 40));
         assert_approx_eq!(-3.194182, adna_model.get(22, 25, b'G', b'A', 40));
-        assert_approx_eq!(-2.238840, adna_model.get(23, 25, b'G', b'A', 40));
+        assert_approx_eq!(-2.238_84, adna_model.get(23, 25, b'G', b'A', 40));
         assert_approx_eq!(-1.308743, adna_model.get(24, 25, b'G', b'A', 10));
         assert_approx_eq!(-4.651894, adna_model.get(0, 25, b'G', b'C', 10));
         assert_approx_eq!(-7.221671, adna_model.get(1, 25, b'G', b'C', 40));
@@ -1284,7 +1284,7 @@ Central C->T / G->A: -5.25\n\
 5' C->T: -1.29 -2.48 -3.52 -4.30 -4.80 -5.05 -5.17 -5.22 -5.24 -5.25 ...\n\
 3' C->T: -1.68 -3.16 -4.27 -4.88 -5.13 -5.22 -5.24 -5.25 -5.25 -5.25 ...";
 
-        assert_eq!(sist_display, format!("{}", adna_model_sist));
+        assert_eq!(sist_display, format!("{adna_model_sist}"));
 
         let adna_model_ds = SimpleAncientDnaModel::new(
             LibraryPrep::DoubleStranded(0.4),
@@ -1299,6 +1299,6 @@ Central C->T / G->A: -5.25\n\
 5' C->T: -1.29 -2.48 -3.52 -4.30 -4.80 -5.05 -5.17 -5.22 -5.24 -5.25 ...\n\
 3' G->A: -1.29 -2.48 -3.52 -4.30 -4.80 -5.05 -5.17 -5.22 -5.24 -5.25 ...";
 
-        assert_eq!(ds_display, format!("{}", adna_model_ds));
+        assert_eq!(ds_display, format!("{adna_model_ds}"));
     }
 }
