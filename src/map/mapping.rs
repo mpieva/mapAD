@@ -1,9 +1,11 @@
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::BinaryHeap,
     env,
     fs::{File, OpenOptions},
     io::{self, Write},
+    num::NonZeroUsize,
     path::Path,
     str,
     time::{Duration, Instant},
@@ -330,7 +332,7 @@ pub fn create_bam_header(
     let mut sam_header_header = Map::<map::Header>::new(map::header::Version::new(1, 6));
     *sam_header_header.sort_order_mut() = Some(map::header::SortOrder::Unsorted);
 
-    let pg_id = CRATE_NAME;
+    let mut pg_id = Cow::from(CRATE_NAME);
 
     let mut program_builder = {
         let cmdline = {
@@ -339,7 +341,6 @@ pub fn create_bam_header(
             out
         };
         Map::<map::Program>::builder()
-            .set_id(pg_id)
             .set_name(CRATE_NAME)
             .set_version(build_info::get_software_version())
             .set_description(crate_description!())
@@ -350,8 +351,8 @@ pub fn create_bam_header(
         // We've got an header to copy some data from
 
         // @PG chain of old entries
-        for (_id, pg) in src_header.programs().iter() {
-            sam_header_builder = sam_header_builder.add_program(pg.clone());
+        for (id, pg) in src_header.programs() {
+            sam_header_builder = sam_header_builder.add_program(id, pg.clone());
         }
 
         // Append our program line to the latest end of a chain.
@@ -376,15 +377,15 @@ pub fn create_bam_header(
             .filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{pg_id}.")))
             .count();
         if pg_id_count > 0 {
-            program_builder = program_builder.set_id(format!("{pg_id}.{pg_id_count}"));
+            pg_id = Cow::from(format!("{pg_id}.{pg_id_count}"));
         }
 
         for comment in src_header.comments().iter() {
             sam_header_builder = sam_header_builder.add_comment(comment);
         }
 
-        for (_id, read_group) in src_header.read_groups().iter() {
-            sam_header_builder = sam_header_builder.add_read_group(read_group.clone());
+        for (id, read_group) in src_header.read_groups() {
+            sam_header_builder = sam_header_builder.add_read_group(id, read_group.clone());
         }
     }
 
@@ -392,19 +393,19 @@ pub fn create_bam_header(
     let program = program_builder
         .build()
         .expect("This is not expected to fail");
-    sam_header_builder = sam_header_builder.add_program(program);
+    sam_header_builder = sam_header_builder.add_program(pg_id, program);
 
     // @SQ entries
     for identifier_position in identifier_position_map.iter() {
         sam_header_builder = sam_header_builder.add_reference_sequence(
+            identifier_position.identifier.parse().map_err(|_e| {
+                Error::InvalidIndex(format!(
+                    "Could not create header. Contig name \"{}\" can not be used as @SQ ID.",
+                    identifier_position.identifier
+                ))
+            })?,
             Map::<map::ReferenceSequence>::new(
-                identifier_position.identifier.parse().map_err(|_e| {
-                    Error::InvalidIndex(format!(
-                        "Could not create header. Contig name \"{}\" can not be used as @SQ ID.",
-                        identifier_position.identifier
-                    ))
-                })?,
-                usize::try_from(identifier_position.end - identifier_position.start + 1).map_err(
+                usize::try_from(identifier_position.end - identifier_position.start + 1).and_then(NonZeroUsize::try_from).map_err(
                     |_e| {
                         Error::InvalidIndex(
                             "Could not create header. Reference genome size seems too large to be processed on this machine.".into(),
@@ -412,9 +413,6 @@ pub fn create_bam_header(
                     },
                 )?,
             )
-            .map_err(|_e| {
-                Error::InvalidIndex("Could not create header. Contig length invalid?".into())
-            })?,
         );
     }
 
@@ -867,7 +865,7 @@ fn create_bam_record(
         // Remove BWA (+ mapAD) specific auxiliary fields (avoids potential confusion)
         .filter(|(tag, _v)| !tag_filter.contains(&tag))
         .map(|(tag, value)| {
-            Ok(sam::record::data::Field::new(
+            Ok((
                 tag.as_slice()
                     .try_into()
                     .map_err(|_e| Error::ParseError("Could not read input data tag".into()))?,
@@ -877,14 +875,14 @@ fn create_bam_record(
         .collect::<Result<Vec<_>>>()?;
 
     if let Some(hit_interval) = hit_interval {
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             sam::record::data::field::Tag::AlignmentScore,
             sam::record::data::field::Value::Float(hit_interval.alignment_score),
         ));
     };
 
     if let Some(edit_distance) = edit_distance {
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             sam::record::data::field::Tag::EditDistance,
             sam::record::data::field::Value::Int32(i32::from(edit_distance)),
         ));
@@ -892,7 +890,7 @@ fn create_bam_record(
 
     // CIGAR strings and MD tags are reversed during generation
     if let Some(md_tag) = md_tag {
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             sam::record::data::field::Tag::MismatchedPositions,
             sam::record::data::field::Value::String(
                 String::from_utf8(md_tag).expect("This is not expected to fail"),
@@ -903,7 +901,7 @@ fn create_bam_record(
     // Alternative alignments (augmented BWA-style)
     if let Some(alternative_hits) = alternative_hits {
         if !alternative_hits.xa.is_empty() {
-            aux_data.push(sam::record::data::Field::new(
+            aux_data.push((
                 b"XA"
                     .as_slice()
                     .try_into()
@@ -911,14 +909,14 @@ fn create_bam_record(
                 sam::record::data::field::Value::String(alternative_hits.xa),
             ));
         }
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             b"X0"
                 .as_slice()
                 .try_into()
                 .expect("This is not expected to fail"),
             sam::record::data::field::Value::Int32(alternative_hits.x0),
         ));
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             b"X1"
                 .as_slice()
                 .try_into()
@@ -926,7 +924,7 @@ fn create_bam_record(
             sam::record::data::field::Value::Int32(alternative_hits.x1),
         ));
         if alternative_hits.x1 > 0 {
-            aux_data.push(sam::record::data::Field::new(
+            aux_data.push((
                 b"XS"
                     .as_slice()
                     .try_into()
@@ -934,7 +932,7 @@ fn create_bam_record(
                 sam::record::data::field::Value::Float(alternative_hits.xs),
             ));
         }
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             b"XT"
                 .as_slice()
                 .try_into()
@@ -950,7 +948,7 @@ fn create_bam_record(
 
     if let Some(duration) = duration {
         // Add the time that was needed for mapping the read
-        aux_data.push(sam::record::data::Field::new(
+        aux_data.push((
             b"XD"
                 .as_slice()
                 .try_into()
@@ -959,11 +957,7 @@ fn create_bam_record(
         ));
     }
 
-    bam_builder = bam_builder.set_data(
-        aux_data
-            .try_into()
-            .map_err(|e| Error::Hts(format!("Could not create valid auxiliary data: {e}")))?,
-    );
+    bam_builder = bam_builder.set_data(aux_data.into_iter().collect::<sam::record::Data>());
 
     Ok(bam_builder.build())
 }

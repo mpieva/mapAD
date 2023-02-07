@@ -256,27 +256,27 @@ where
                 md: record
                     .data()
                     .get(sam::record::data::field::Tag::MismatchedPositions)
-                    .map(|field| field.value().as_str().unwrap().into()),
+                    .map(|value| value.as_str().unwrap().into()),
                 x0: record
                     .data()
                     .get(b"X0".as_slice().try_into().unwrap())
-                    .map(|field| field.value().as_int32().unwrap()),
+                    .map(|value| value.as_int32().unwrap()),
                 x1: record
                     .data()
                     .get(b"X1".as_slice().try_into().unwrap())
-                    .map(|field| field.value().as_int32().unwrap()),
+                    .map(|value| value.as_int32().unwrap()),
                 xa: record
                     .data()
                     .get(b"XA".as_slice().try_into().unwrap())
-                    .map(|field| field.value().as_str().unwrap().to_owned()),
+                    .map(|value| value.as_str().unwrap().to_owned()),
                 xs: record
                     .data()
                     .get(b"XS".as_slice().try_into().unwrap())
-                    .map(|field| field.value().as_float().unwrap().to_owned()),
+                    .map(|value| value.as_float().unwrap().to_owned()),
                 xt: record
                     .data()
                     .get(b"XT".as_slice().try_into().unwrap())
-                    .map(|field| field.value().as_character().unwrap().into()),
+                    .map(|value| value.as_character().unwrap().into()),
             })
         })
         .collect::<io::Result<Vec<_>>>()

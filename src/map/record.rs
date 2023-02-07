@@ -120,8 +120,8 @@ impl From<sam::alignment::Record> for Record {
 
         let input_tags = input
             .data()
-            .values()
-            .map(|field| (field.tag().as_ref().to_owned(), field.value().into()))
+            .iter()
+            .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
             .collect::<Vec<_>>();
 
         let read_name = input.read_name().map(|name| {
