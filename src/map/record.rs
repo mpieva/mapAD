@@ -1,8 +1,9 @@
 use std::{collections::BTreeMap, fmt};
 
-use bio::{alphabets::dna, io::fastq};
+use bio::alphabets::dna;
 use either::Either;
 use noodles::sam;
+use noodles::{cram, fastq};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -141,10 +142,14 @@ impl From<sam::alignment::Record> for Record {
 
 impl From<fastq::Record> for Record {
     fn from(fq_record: fastq::Record) -> Self {
-        let sequence = fq_record.seq().to_ascii_uppercase();
+        let sequence = fq_record.sequence().to_ascii_uppercase();
         // Subtract offset
-        let base_qualities = fq_record.qual().iter().map(|qual| qual - 33).collect();
-        let name = fq_record.id().as_bytes().to_owned();
+        let base_qualities = fq_record
+            .quality_scores()
+            .iter()
+            .map(|qual| qual - 33)
+            .collect();
+        let name = fq_record.name().to_owned();
 
         Self {
             sequence,
@@ -152,6 +157,44 @@ impl From<fastq::Record> for Record {
             name: Some(name),
             bam_tags: Vec::new(),
             bam_flags: 0,
+        }
+    }
+}
+
+impl From<cram::Record> for Record {
+    fn from(input: cram::Record) -> Self {
+        let mut sequence = input.sequence().to_string().into_bytes();
+
+        let mut base_qualities = input
+            .quality_scores()
+            .as_ref()
+            .iter()
+            .copied()
+            .map(u8::from)
+            .collect::<Vec<_>>();
+
+        if input.flags().is_reverse_complemented() {
+            base_qualities.reverse();
+            sequence = dna::revcomp(sequence);
+        };
+
+        let input_tags = input
+            .data()
+            .iter()
+            .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
+            .collect::<Vec<_>>();
+
+        let read_name = input.read_name().map(|name| {
+            let name: &[u8] = name.as_ref();
+            name.to_vec()
+        });
+
+        Self {
+            sequence,
+            base_qualities,
+            name: read_name,
+            bam_tags: input_tags,
+            bam_flags: input.flags().bits(),
         }
     }
 }

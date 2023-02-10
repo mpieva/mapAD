@@ -1,9 +1,13 @@
 use std::{
     fmt::{Display, Formatter},
-    iter::Map,
+    fs::File,
+    io::{stdin, BufRead, BufReader, Read},
+    path::Path,
 };
 
-use log::{error, info};
+use flate2::read::MultiGzDecoder;
+use log::{debug, error, info};
+use noodles::{bam, bgzf, cram, fasta, fastq, sam};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,9 +16,170 @@ use crate::{
     map::{record::Record, AlignmentParameters},
 };
 
+pub enum InputSource {
+    Bam(
+        bam::reader::Reader<bgzf::Reader<Box<dyn Read>>>,
+        Box<sam::Header>,
+    ),
+    Cram(
+        cram::reader::Reader<Box<dyn Read>>,
+        fasta::Repository,
+        Box<sam::Header>,
+    ),
+    //Sam(sam::reader::Reader<BR>, Box<sam::Header>),
+    // .fastq and fastq.gz
+    Fastq(fastq::reader::Reader<Box<dyn BufRead>>),
+}
+
+enum Format {
+    Bam,
+    Cram,
+    //Sam,
+    Fastq,
+    FastqGz,
+}
+
+impl InputSource {
+    pub fn from_path<P>(path: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        let path = path.as_ref();
+
+        // Input file options: `.bam`, `.cram`, `.fastq.gz`, and `.fastq` as fallback
+
+        // Use `BufRead` function to peek into the file/stdin, then convert to `Read` trait object
+        // Stdin
+        let (file_handle, magic_bytes): (Box<dyn Read>, _) = if path.to_str() == Some("-") {
+            let mut stdin_guard = stdin().lock();
+            // Copying the buffer is expensive, but only done once
+            let buf_copy = stdin_guard.fill_buf()?.to_owned();
+            (Box::new(stdin_guard), buf_copy)
+        // File
+        } else {
+            let buf_copy = BufReader::new(File::open(path)?).fill_buf()?.to_owned();
+            let file_handle = File::open(path)?;
+            (Box::new(file_handle), buf_copy)
+        };
+
+        match Self::detect_format(&magic_bytes).map_err(|_e| Error::InvalidInputType)? {
+            Format::Bam => {
+                debug!("Try reading input in BAM format");
+                let mut reader = bam::Reader::new(file_handle);
+                let header = Box::new(
+                    reader
+                        .read_header()
+                        .map_err(Into::<Error>::into)
+                        .and_then(|string_header| string_header.parse().map_err(Into::into))?,
+                );
+                let _bin_inner = reader.read_reference_sequences()?;
+                let reader: bam::Reader<bgzf::Reader<Box<dyn Read>>> = reader;
+                Ok(Self::Bam(reader, header))
+            }
+            Format::Cram => {
+                debug!("Try reading input in CRAM format");
+                let mut reader = cram::Reader::new(file_handle);
+                let _definition = reader.read_file_definition()?;
+                let header = Box::new(
+                    reader
+                        .read_file_header()
+                        .map_err(Into::<Error>::into)
+                        .and_then(|string_header| string_header.parse().map_err(Into::into))?,
+                );
+                let reader: cram::Reader<Box<dyn Read>> = reader;
+                Ok(Self::Cram(reader, fasta::Repository::default(), header))
+            }
+            Format::Fastq => {
+                debug!("Try reading input in FASTQ format");
+                let reader: fastq::Reader<Box<dyn BufRead>> =
+                    fastq::Reader::new(Box::new(BufReader::new(file_handle)));
+                Ok(Self::Fastq(reader))
+            }
+            Format::FastqGz => {
+                debug!("Try reading input in gzip compressed FASTQ format");
+                let reader: fastq::Reader<Box<dyn BufRead>> =
+                    fastq::Reader::new(Box::new(BufReader::new(MultiGzDecoder::new(file_handle))));
+                Ok(Self::Fastq(reader))
+            }
+        }
+    }
+
+    // Inspired by `noodles-utils`
+    fn detect_format(src: &[u8]) -> Result<Format> {
+        const CRAM_MAGIC_NUMBER: [u8; 4] = [b'C', b'R', b'A', b'M'];
+        const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
+        const BAM_MAGIC_NUMBER: [u8; 4] = [b'B', b'A', b'M', 0x01];
+
+        if let Some(buf) = src.get(..4) {
+            if buf == CRAM_MAGIC_NUMBER {
+                return Ok(Format::Cram);
+            }
+
+            if buf[..2] == GZIP_MAGIC_NUMBER {
+                let mut reader = bgzf::Reader::new(src);
+                let mut buf = [0; 4];
+                reader.read_exact(&mut buf).ok();
+
+                return if buf == BAM_MAGIC_NUMBER {
+                    Ok(Format::Bam)
+                } else {
+                    Ok(Format::FastqGz)
+                };
+            }
+        }
+
+        Ok(Format::Fastq)
+    }
+
+    pub fn header(&self) -> Option<&sam::Header> {
+        match self {
+            Self::Bam(_, header) | Self::Cram(_, _, header) => Some(header),
+            Self::Fastq(_) => None,
+        }
+    }
+
+    pub fn task_queue(
+        &mut self,
+        chunk_size: usize,
+    ) -> TaskQueue<Box<dyn Iterator<Item = Result<Record>> + '_>> {
+        match self {
+            Self::Bam(reader, _header) => TaskQueue::new(
+                Box::new(
+                    reader
+                        .records()
+                        .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
+                ),
+                chunk_size,
+            ),
+            Self::Cram(reader, repo, header) => TaskQueue::new(
+                Box::new(
+                    reader
+                        .records(repo, header)
+                        .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
+                ),
+                chunk_size,
+            ),
+            // Self::Sam(reader, header) => TaskQueue::new(Box::new(
+            //     reader
+            //         .records(header)
+            //         .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
+            // )),
+            Self::Fastq(reader) => TaskQueue::new(
+                Box::new(
+                    reader
+                        .records()
+                        .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
+                ),
+                chunk_size,
+            ),
+        }
+    }
+}
+
 /// Keeps track of the processing state of chunks of reads
 ///
 /// Very basic error checking, reporting, and recovery happens here.
+#[derive(Default)]
 pub struct TaskQueue<T> {
     chunk_id: usize,
     chunk_size: usize,
@@ -68,41 +233,17 @@ impl<T> TaskQueue<T>
 where
     T: Iterator<Item = Result<Record>>,
 {
-    pub fn requery_task(&mut self, task_sheet: TaskSheet) {
-        self.requeried_tasks.push(task_sheet);
-    }
-}
-
-/// Convertible to `TaskQueue`
-pub trait IntoTaskQueue<E, I, O, T>
-where
-    E: Into<Error>,
-    I: Into<Record>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-    O: Iterator<Item = Result<Record>>,
-{
-    fn into_tasks(self, chunk_size: usize) -> TaskQueue<O>;
-}
-
-/// Adds `ChunkIterator` conversion method to every compatible Iterator. So when new input file
-/// types are implemented, it is sufficient to impl `From<T> for Record` for the additional item.
-#[allow(clippy::type_complexity)]
-impl<E, I, T> IntoTaskQueue<E, I, Map<T, fn(std::result::Result<I, E>) -> Result<Record>>, T> for T
-where
-    I: Into<Record>,
-    E: Into<Error>,
-    T: Iterator<Item = std::result::Result<I, E>>,
-{
-    fn into_tasks(
-        self,
-        chunk_size: usize,
-    ) -> TaskQueue<Map<T, fn(std::result::Result<I, E>) -> Result<Record>>> {
-        TaskQueue {
+    pub fn new(inner: T, chunk_size: usize) -> Self {
+        Self {
             chunk_id: 0,
             chunk_size,
-            records: self.map(|inner| inner.map(Into::into).map_err(Into::into)),
+            records: inner,
             requeried_tasks: Vec::new(),
         }
+    }
+
+    pub fn requery_task(&mut self, task_sheet: TaskSheet) {
+        self.requeried_tasks.push(task_sheet);
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     cell::RefCell,
     collections::BinaryHeap,
     env,
-    fs::{File, OpenOptions},
+    fs::OpenOptions,
     io::{self, Write},
     num::NonZeroUsize,
     path::Path,
@@ -11,9 +11,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray, io::fastq};
+use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray};
 use clap::crate_description;
-use log::{debug, info, trace, warn};
+use log::{debug, info, trace};
 use min_max_heap::MinMaxHeap;
 use noodles::{bam, sam};
 use rand::RngCore;
@@ -30,7 +30,7 @@ use crate::{
         backtrack_tree::Tree,
         bi_d_array::BiDArray,
         fmd_index::RtFmdIndex,
-        input_chunk_reader::{IntoTaskQueue, TaskQueue},
+        input_chunk_reader::{InputSource, TaskQueue},
         mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
         prrange::PrRange,
         record::{extract_edit_operations, EditOperation, Record},
@@ -54,7 +54,7 @@ pub fn run(
 ) -> Result<()> {
     let reads_path = Path::new(reads_path);
     let out_file_path = Path::new(out_file_path);
-    if !reads_path.exists() {
+    if !reads_path.exists() && reads_path.to_str() != Some("-") {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
             "The given input file could not be found",
@@ -88,64 +88,20 @@ pub fn run(
     );
 
     info!("Map reads");
-    // Static dispatch of the Record type based on the filename extension
-    match reads_path
-        .extension()
-        .ok_or(Error::InvalidInputType)?
-        .to_str()
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "The provided file name contains invalid unicode",
-            )
-        })? {
-        "bam" => {
-            let mut reader = bam::Reader::new(File::open(reads_path)?);
-
-            let src_header = reader
-                .read_header()
-                .map_err(Error::from)
-                .and_then(|header| header.parse::<sam::Header>().map_err(Error::from));
-
-            if let Err(ref e) = src_header {
-                warn!("Could not read input file header ({}). Instead, create output header from scratch. Some metadata might be lost.", e);
-            }
-
-            // Position cursor right after header
-            let _ = reader.read_reference_sequences();
-
-            let header = create_bam_header(src_header.as_ref().ok(), &identifier_position_map)?;
-            out_file.write_header(&header)?;
-            out_file.write_reference_sequences(header.reference_sequences())?;
-            run_inner(
-                reader.records().into_tasks(alignment_parameters.chunk_size),
-                &fmd_index,
-                &suffix_array,
-                alignment_parameters,
-                &identifier_position_map,
-                &original_symbols,
-                &header,
-                &mut out_file,
-            )?;
-        }
-        "fastq" | "fq" => {
-            let reader = fastq::Reader::from_file(reads_path)?;
-            let header = create_bam_header(None, &identifier_position_map)?;
-            out_file.write_header(&header)?;
-            out_file.write_reference_sequences(header.reference_sequences())?;
-            run_inner(
-                reader.records().into_tasks(alignment_parameters.chunk_size),
-                &fmd_index,
-                &suffix_array,
-                alignment_parameters,
-                &identifier_position_map,
-                &original_symbols,
-                &header,
-                &mut out_file,
-            )?;
-        }
-        _ => return Err(Error::InvalidInputType),
-    }
+    let mut input_source = InputSource::from_path(reads_path)?;
+    let out_header = create_bam_header(input_source.header(), &identifier_position_map)?;
+    out_file.write_header(&out_header)?;
+    out_file.write_reference_sequences(out_header.reference_sequences())?;
+    run_inner(
+        input_source.task_queue(alignment_parameters.chunk_size),
+        &fmd_index,
+        &suffix_array,
+        alignment_parameters,
+        &identifier_position_map,
+        &original_symbols,
+        &out_header,
+        &mut out_file,
+    )?;
 
     info!("Done");
     Ok(())

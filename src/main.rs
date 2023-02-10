@@ -99,7 +99,7 @@ fn define_cli() -> ArgMatches {
                         .required(true)
                         .short('r')
                         .long("reads")
-                        .help("BAM or FASTQ file that contains the reads to be aligned")
+                        .help("BAM/CRAM/FASTQ or FASTQ.GZ file that contains the reads to be aligned. Specify \"-\" for reading from stdin.")
                         .value_name("STRING")
                 )
                 .arg(

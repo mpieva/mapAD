@@ -1,13 +1,13 @@
 use std::{
     collections::{BinaryHeap, HashMap},
-    fs::{File, OpenOptions},
+    fs::OpenOptions,
     io::{self, Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
     time::Duration,
 };
 
-use bio::{data_structures::suffix_array::SuffixArray, io::fastq};
+use bio::data_structures::suffix_array::SuffixArray;
 use log::{debug, info, warn};
 use mio::{net, Events, Interest, Poll, Token};
 use noodles::sam::AlignmentWriter;
@@ -22,7 +22,7 @@ use crate::{
         load_suffix_array_from_path, FastaIdPositions, OriginalSymbols,
     },
     map::{
-        input_chunk_reader::{IntoTaskQueue, TaskQueue, TaskSheet},
+        input_chunk_reader::{InputSource, TaskQueue, TaskSheet},
         mapping::{create_bam_header, intervals_to_bam},
         record::Record,
         AlignmentParameters, HitInterval,
@@ -69,7 +69,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
     ) -> Result<Self> {
         let reads_path = Path::new(reads_path);
         let out_file_path = Path::new(out_file_path);
-        if !reads_path.exists() {
+        if !reads_path.exists() && reads_path.to_str() != Some("-") {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "The given input file could not be found",
@@ -123,69 +123,20 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                 .open(self.out_file_path)?,
         );
 
-        // Static dispatch of the Record type based on the filename extension
-        match self
-            .reads_path
-            .extension()
-            .ok_or(Error::InvalidInputType)?
-            .to_str()
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Cannot access the input file (file path contains invalid UTF-8 unicode)",
-                )
-            })? {
-            "bam" => {
-                let mut reader = bam::Reader::new(File::open(self.reads_path)?);
-
-                let src_header = reader
-                    .read_header()
-                    .map_err(Error::from)
-                    .and_then(|header| header.parse::<sam::Header>().map_err(Error::from));
-
-                if let Err(ref e) = src_header {
-                    warn!("Could not read input file header ({}). Instead, create output header from scratch. Some metadata might be lost.", e);
-                }
-
-                // Position cursor right after header
-                let _ = reader.read_reference_sequences();
-
-                let header = create_bam_header(src_header.as_ref().ok(), &identifier_position_map)?;
-                out_file.write_header(&header)?;
-                out_file.write_reference_sequences(header.reference_sequences())?;
-                let mut task_queue = reader
-                    .records()
-                    .into_tasks(self.alignment_parameters.chunk_size);
-                self.run_inner(
-                    &mut task_queue,
-                    &suffix_array,
-                    &identifier_position_map,
-                    &original_symbols,
-                    &mut listener,
-                    &header,
-                    &mut out_file,
-                )
-            }
-            "fastq" | "fq" => {
-                let reader = fastq::Reader::from_file(self.reads_path)?;
-                let header = create_bam_header(None, &identifier_position_map)?;
-                out_file.write_header(&header)?;
-                out_file.write_reference_sequences(header.reference_sequences())?;
-                let mut task_queue = reader
-                    .records()
-                    .into_tasks(self.alignment_parameters.chunk_size);
-                self.run_inner(
-                    &mut task_queue,
-                    &suffix_array,
-                    &identifier_position_map,
-                    &original_symbols,
-                    &mut listener,
-                    &header,
-                    &mut out_file,
-                )
-            }
-            _ => Err(Error::InvalidInputType),
-        }
+        let mut input_source = InputSource::from_path(self.reads_path)?;
+        let out_header = create_bam_header(input_source.header(), &identifier_position_map)?;
+        out_file.write_header(&out_header)?;
+        out_file.write_reference_sequences(out_header.reference_sequences())?;
+        let mut task_queue = input_source.task_queue(self.alignment_parameters.chunk_size);
+        self.run_inner(
+            &mut task_queue,
+            &suffix_array,
+            &identifier_position_map,
+            &original_symbols,
+            &mut listener,
+            &out_header,
+            &mut out_file,
+        )
     }
 
     /// This part has been extracted from the main run() function to allow static dispatch based on the

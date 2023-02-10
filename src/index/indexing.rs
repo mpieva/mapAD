@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs::File, iter, num::NonZeroUsize};
+use std::{collections::BTreeMap, fs::File, io::BufReader, iter, num::NonZeroUsize};
 
 use bio::{
     alphabets::{dna, Alphabet, RankTransform},
@@ -6,10 +6,10 @@ use bio::{
         bwt::{bwt, less, Occ},
         suffix_array::suffix_array,
     },
-    io::fasta,
 };
 use either::Either;
 use log::info;
+use noodles::fasta;
 use rand::{
     prelude::{Rng, SeedableRng, StdRng},
     seq::SliceRandom,
@@ -47,14 +47,21 @@ fn index<T: Rng>(
     rng: &mut T,
 ) -> Result<()> {
     info!("Read input reference sequence");
-    let mut ref_seq = fasta::Reader::from_file(reference_path)?
+    let mut ref_seq = fasta::Reader::new(BufReader::new(File::open(reference_path)?))
         .records()
         // `flat_map()` works by calling `into_iter` on the values returned by the closure, which
         // means that the `Result`s would get lost in the process. We use the following construct
         // to keep those.
         .flat_map(|record| match record {
             // Convert all bases to uppercase
-            Ok(record) => Either::Left(record.seq().to_ascii_uppercase().into_iter().map(Ok)),
+            Ok(record) => Either::Left(
+                record
+                    .sequence()
+                    .as_ref()
+                    .to_ascii_uppercase()
+                    .into_iter()
+                    .map(Ok),
+            ),
             Err(e) => Either::Right(iter::once(Err(e.into()))),
         })
         .collect::<Result<Vec<_>>>()?;
@@ -109,15 +116,15 @@ fn index<T: Rng>(
         info!("Map identifiers to positions");
         let mut end = 0;
         let identifier_position_map = FastaIdPositions::new(
-            fasta::Reader::from_file(reference_path)?
+            fasta::Reader::new(BufReader::new(File::open(reference_path)?))
                 .records()
                 .map(|record| {
                     let record = record.expect("Failed reading input file");
-                    end += record.seq().len() as u64;
+                    end += record.sequence().len() as u64;
                     FastaIdPosition {
-                        start: end - record.seq().len() as u64,
+                        start: end - record.sequence().len() as u64,
                         end: end - 1,
-                        identifier: record.id().to_string(),
+                        identifier: record.name().to_string(),
                     }
                 })
                 .collect::<Vec<_>>(),
