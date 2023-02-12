@@ -57,9 +57,9 @@ impl InputSource {
             (Box::new(stdin_guard), buf_copy)
         // File
         } else {
+            // Copying the buffer is expensive, but only done once
             let buf_copy = BufReader::new(File::open(path)?).fill_buf()?.to_owned();
-            let file_handle = File::open(path)?;
-            (Box::new(file_handle), buf_copy)
+            (Box::new(File::open(path)?), buf_copy)
         };
 
         match Self::detect_format(&magic_bytes).map_err(|_e| Error::InvalidInputType)? {
@@ -73,7 +73,6 @@ impl InputSource {
                         .and_then(|string_header| string_header.parse().map_err(Into::into))?,
                 );
                 let _bin_inner = reader.read_reference_sequences()?;
-                let reader: bam::Reader<bgzf::Reader<Box<dyn Read>>> = reader;
                 Ok(Self::Bam(reader, header))
             }
             Format::Cram => {
@@ -86,7 +85,6 @@ impl InputSource {
                         .map_err(Into::<Error>::into)
                         .and_then(|string_header| string_header.parse().map_err(Into::into))?,
                 );
-                let reader: cram::Reader<Box<dyn Read>> = reader;
                 Ok(Self::Cram(reader, fasta::Repository::default(), header))
             }
             Format::Fastq => {
@@ -179,7 +177,6 @@ impl InputSource {
 /// Keeps track of the processing state of chunks of reads
 ///
 /// Very basic error checking, reporting, and recovery happens here.
-#[derive(Default)]
 pub struct TaskQueue<T> {
     chunk_id: usize,
     chunk_size: usize,
