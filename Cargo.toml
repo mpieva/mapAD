@@ -35,7 +35,7 @@ criterion = "0.4"
 tempfile = "3.3"
 
 [build-dependencies]
-built = { version = "0.5", features = ["git2"] }
+built = { version = "0.6", features = ["git2"] }
 
 [[bench]]
 name = "benchmark"
