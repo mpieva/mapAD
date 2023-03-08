@@ -1260,15 +1260,17 @@ where
         }
 
         // Only search until we've found a multi-hit
-        // FIXME: We can probably stop searching earlier
+
+        // The best scoring hit is always guaranteed to be at the top of the priority queue,
+        // but the second best hit is not guaranteed to be second of the priority queue at all
+        // times. This is because with one source stack frame, we can find and store up to 9 hits!
+        // Hence, the second best hit is only guaranteed to be found with the next best
+        // second-to-last source stack frame.
         if (hit_intervals.len() > 9)
-            || (hit_intervals.len() == 1
-                && hit_intervals
-                    .peek()
-                    .expect("item to be there")
-                    .interval
-                    .size
-                    > 1)
+            || hit_intervals
+                .peek()
+                .filter(|best_hit| best_hit.interval.size > 1)
+                .is_some()
         {
             return hit_intervals;
         }
