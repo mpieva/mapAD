@@ -235,13 +235,13 @@ where
     @RG\tID:A12345\tSM:Sample1\n\
     @PG\tID:samtools\tPN:samtools\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\tVN:1.13\n\
     @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
-    assert!(&header.as_str().starts_with(header_prefix));
+    assert!(&header.starts_with(header_prefix));
 
     // Move cursor to the right place
     let _header_reference_sequences = bam_reader.read_reference_sequences().unwrap();
 
     let mut result_sample = bam_reader
-        .records()
+        .records(&header.parse().unwrap())
         .map(|maybe_record| {
             maybe_record.map(|record| BamFieldSubset {
                 name: record.read_name().cloned(),

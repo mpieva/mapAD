@@ -54,7 +54,7 @@ impl From<&sam::record::data::field::Value> for BamAuxField {
             Value::Float(v) => Self::Float(*v),
             //Value::Double(v) => Self::Double(*v),
             Value::String(v) => Self::String(v.clone()),
-            Value::Hex(v) => Self::HexByteArray(v.clone()),
+            Value::Hex(v) => Self::HexByteArray(v.to_string()),
             Value::Int8Array(v) => Self::ArrayI8(v.clone()),
             Value::UInt8Array(v) => Self::ArrayU8(v.clone()),
             Value::Int16Array(v) => Self::ArrayI16(v.clone()),
@@ -81,7 +81,9 @@ impl From<BamAuxField> for sam::record::data::field::Value {
             BamAuxField::Float(v) => Self::Float(v),
             BamAuxField::Double(v) => Self::Float(v as f32), // FIXME
             BamAuxField::String(v) => Self::String(v),
-            BamAuxField::HexByteArray(v) => Self::Hex(v),
+            BamAuxField::HexByteArray(v) => {
+                Self::Hex(v.parse().expect("this to be not used internally"))
+            }
             BamAuxField::ArrayI8(v) => Self::Int8Array(v),
             BamAuxField::ArrayU8(v) => Self::UInt8Array(v),
             BamAuxField::ArrayI16(v) => Self::Int16Array(v),

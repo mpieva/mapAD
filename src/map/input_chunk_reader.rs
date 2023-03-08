@@ -141,10 +141,10 @@ impl InputSource {
         chunk_size: usize,
     ) -> TaskQueue<Box<dyn Iterator<Item = Result<Record>> + '_>> {
         match self {
-            Self::Bam(reader, _header) => TaskQueue::new(
+            Self::Bam(reader, header) => TaskQueue::new(
                 Box::new(
                     reader
-                        .records()
+                        .records(header)
                         .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
                 ),
                 chunk_size,
