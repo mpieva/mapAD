@@ -69,7 +69,7 @@ pub enum Direction {
 
 impl Direction {
     /// Reverses the direction from forward to backward and vice-versa
-    fn reverse(self) -> Self {
+    pub fn reverse(self) -> Self {
         use self::Direction::{Backward, Forward};
         match self {
             Forward => Backward,
@@ -77,8 +77,7 @@ impl Direction {
         }
     }
 
-    #[allow(dead_code)]
-    fn is_forward(self) -> bool {
+    pub fn is_forward(self) -> bool {
         use self::Direction::{Backward, Forward};
         match self {
             Forward => true,
@@ -86,8 +85,7 @@ impl Direction {
         }
     }
 
-    #[allow(dead_code)]
-    fn is_backward(self) -> bool {
+    pub fn is_backward(self) -> bool {
         !self.is_forward()
     }
 }
@@ -107,9 +105,8 @@ enum GapState {
 #[derive(Debug)]
 pub struct MismatchSearchStackFrame {
     current_interval: RtBiInterval,
-    backward_index: i16,
-    forward_index: i16,
-    direction: Direction,
+    current_sub_alignment_start: i16,
+    current_sub_alignment_len: i16,
     gap_forwards: GapState,
     gap_backwards: GapState,
     num_gaps_open: u8,

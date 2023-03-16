@@ -114,7 +114,8 @@ TGATCGATCATGCTAAAAATCGAT";
         A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n\
         A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCTGGCGTGCTAGTCCCTCGGCG\t]]]]]]]]]]]]]]]]]]]]]]\n\
         A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACGCCAG\t]]]]]]]]]]]]]]]]]]]]]]\n\
-        A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACCCCAG\t]]]]]]]]]]]]]]]]]]]]]]";
+        A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACCCCAG\t]]]]]]]]]]]]]]]]]]]]]]\n\
+        A00795_0136_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTACGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
 
         let mut sam_reader = sam::io::Reader::new(&sam_content[..]);
         let input_sam_header = sam_reader.read_header().unwrap();
@@ -587,6 +588,31 @@ where
                 .collect::<Vec<_>>()
                 .into(),
             md: Some("4C5N11".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(b"A00795_0136_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
+            flags: 0.into(),
+            tid: Some(0_i32.try_into().unwrap()),
+            pos: Some(269.try_into().unwrap()),
+            mq: Some(20_u8.try_into().unwrap()),
+            cigar: Cigar::from_iter([
+                cigar::Op::new(cigar::op::Kind::Match, 15),
+                cigar::Op::new(cigar::op::Kind::Insertion, 1),
+                cigar::Op::new(cigar::op::Kind::Match, 13),
+            ]),
+            seq_len: 29,
+            seq: b"TTAACAATGAACTTACGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
+            md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,

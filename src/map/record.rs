@@ -465,7 +465,7 @@ impl EditOperationsTrack {
 pub fn extract_edit_operations(
     end_node: NodeId,
     edit_tree: &Tree<EditOperation>,
-    pattern_len: usize,
+    alignment_start: i16,
 ) -> EditOperationsTrack {
     // Restore outer ordering of the edit operation by the positions they carry as values.
     // Whenever there are deletions in the query, there is no simple rule to reconstruct the ordering.
@@ -489,7 +489,7 @@ pub fn extract_edit_operations(
         cigar_order_outer
             .into_iter()
             .flat_map(|(i, inner_vec)| {
-                if i < (pattern_len / 2) as u16 {
+                if i < alignment_start as u16 {
                     Either::Left(inner_vec.into_iter())
                 } else {
                     Either::Right(inner_vec.into_iter().rev())

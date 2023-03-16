@@ -890,6 +890,14 @@ fn create_bam_record(
     Ok(bam_builder.build())
 }
 
+fn get_alignment_start_pos(pattern_len: usize) -> i16 {
+    let center = pattern_len / 2;
+    center
+        .checked_sub(10)
+        .map(|val| val + center)
+        .unwrap_or(center) as i16
+}
+
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
 #[allow(clippy::too_many_arguments)]
@@ -905,6 +913,15 @@ fn check_and_push_stack_frame<MB>(
 ) where
     MB: MismatchBound,
 {
+    // println!(
+    //     "{}\tlen: {}\top: {:?}",
+    //     String::from_utf8_lossy(
+    //         &pattern[stack_frame.current_sub_alignment_start as usize..]
+    //             [..stack_frame.current_sub_alignment_len as usize]
+    //     ),
+    //     stack_frame.current_sub_alignment_len,
+    //     edit_operation,
+    // );
     // This is technically redundant. However, our benchmarks suggest
     // that having this here improves mapping speed
     if let Some(best_scoring_interval) = intervals.peek() {
@@ -924,10 +941,13 @@ fn check_and_push_stack_frame<MB>(
         .add_node(edit_operation, stack_frame.edit_node_id)
         .expect("We bound the length of `edit_tree` at `STACK_LIMIT` < `u32`");
 
-    if stack_frame.backward_index < 0 && stack_frame.forward_index > (pattern.len() as i16 - 1) {
+    if stack_frame.current_sub_alignment_len as usize == pattern.len() {
         // This route through the read graph is finished successfully, push the interval
-        let edit_operations =
-            extract_edit_operations(stack_frame.edit_node_id, edit_tree, pattern.len());
+        let edit_operations = extract_edit_operations(
+            stack_frame.edit_node_id,
+            edit_tree,
+            get_alignment_start_pos(pattern.len()),
+        );
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score,
@@ -953,8 +973,8 @@ fn print_debug(
         "{}\t{}\t{}\t{}\t{}\t{:?}",
         stack_frame.alignment_score,
         stack_frame.alignment_score,
-        stack_frame.backward_index,
-        stack_frame.forward_index,
+        stack_frame.current_sub_alignment_start,
+        stack_frame.current_sub_alignment_len,
         best_as,
         edit_tree.ancestors(stack_frame.edit_node_id).next(),
     );
@@ -977,11 +997,12 @@ where
     SDM: SequenceDifferenceModel,
     MB: MismatchBound,
 {
-    let center_of_read = pattern.len() / 2;
+    let alignment_start_pos = get_alignment_start_pos(pattern.len());
+
     let bi_d_array = BiDArray::new(
         pattern,
         base_qualities,
-        center_of_read,
+        alignment_start_pos as usize,
         parameters,
         fmd_index,
         sequence_difference_model,
@@ -997,9 +1018,8 @@ where
 
     stack.push(MismatchSearchStackFrame {
         current_interval: fmd_index.init_interval(),
-        backward_index: center_of_read as i16 - 1,
-        forward_index: center_of_read as i16,
-        direction: Direction::Forward,
+        current_sub_alignment_start: alignment_start_pos,
+        current_sub_alignment_len: 0,
         gap_backwards: GapState::Closed,
         gap_forwards: GapState::Closed,
         num_gaps_open: 0,
@@ -1012,9 +1032,6 @@ where
     while let Some(stack_frame) = stack.pop_max() {
         // Determine direction of progress for next iteration on this stack frame
         let (
-            j,
-            next_backward_index,
-            next_forward_index,
             fmd_ext_interval,
             optimal_penalty,
             next_insertion_backward,
@@ -1027,19 +1044,60 @@ where
             next_closed_gap_forward,
             num_gaps_open,
         );
-        match stack_frame.direction {
+
+        // Decide which side of the sub-alignment should be extended
+        // The exact condition (<=) makes sure everything on the starting point's left
+        // side is backward-processed, which is important for the order of edit operations.
+        let (j, direction, d_k, d_l) = if stack_frame.current_sub_alignment_start
+            <= pattern.len() as i16
+                - stack_frame.current_sub_alignment_start
+                - stack_frame.current_sub_alignment_len
+        {
+            // Forward-extend current sub-alignment
+            (
+                stack_frame.current_sub_alignment_start + stack_frame.current_sub_alignment_len,
+                Direction::Forward,
+                stack_frame.current_sub_alignment_start,
+                stack_frame.current_sub_alignment_start + stack_frame.current_sub_alignment_len,
+            )
+        } else {
+            // Backward-extend current sub-alignment
+            (
+                stack_frame.current_sub_alignment_start - 1,
+                Direction::Backward,
+                stack_frame.current_sub_alignment_start - 1,
+                stack_frame.current_sub_alignment_start + stack_frame.current_sub_alignment_len - 1,
+            )
+        };
+
+        // println!(
+        //     "=== POP === ({}, {}bp)\n{}\n=== PUSH === (j: {}, {:?} ({}-({}+{})<=?{}))",
+        //     String::from_utf8_lossy(pattern),
+        //     pattern.len(),
+        //     String::from_utf8_lossy(
+        //         &pattern[stack_frame.current_sub_alignment_start as usize..]
+        //             [..stack_frame.current_sub_alignment_len as usize]
+        //     ),
+        //     j,
+        //     direction,
+        //     pattern.len(),
+        //     stack_frame.current_sub_alignment_start,
+        //     stack_frame.current_sub_alignment_len,
+        //     stack_frame.current_sub_alignment_start,
+        // );
+
+        match direction {
             Direction::Forward => {
-                next_forward_index = stack_frame.forward_index + 1;
-                next_backward_index = stack_frame.backward_index;
-                j = stack_frame.forward_index;
                 optimal_penalty = optimal_penalties[j as usize];
                 fmd_ext_interval = stack_frame.current_interval.swapped();
+                // Gaps
                 next_insertion_backward = stack_frame.gap_backwards;
                 next_insertion_forward = GapState::Insertion;
                 next_deletion_backward = stack_frame.gap_backwards;
                 next_deletion_forward = GapState::Deletion;
                 next_closed_gap_backward = stack_frame.gap_backwards;
                 next_closed_gap_forward = GapState::Closed;
+                // Scores
                 insertion_score = if stack_frame.gap_forwards == GapState::Insertion {
                     parameters.penalty_gap_extend
                 } else {
@@ -1060,6 +1118,7 @@ where
                     ) - optimal_penalty
                         + stack_frame.alignment_score;
                 }
+                // Open gaps
                 num_gaps_open = if stack_frame.gap_forwards == GapState::Closed {
                     stack_frame.num_gaps_open + 1
                 } else {
@@ -1067,17 +1126,16 @@ where
                 };
             }
             Direction::Backward => {
-                next_forward_index = stack_frame.forward_index;
-                next_backward_index = stack_frame.backward_index - 1;
-                j = stack_frame.backward_index;
                 optimal_penalty = optimal_penalties[j as usize];
                 fmd_ext_interval = stack_frame.current_interval;
+                // Gaps
                 next_insertion_backward = GapState::Insertion;
                 next_insertion_forward = stack_frame.gap_forwards;
                 next_deletion_backward = GapState::Deletion;
                 next_deletion_forward = stack_frame.gap_forwards;
                 next_closed_gap_backward = GapState::Closed;
                 next_closed_gap_forward = stack_frame.gap_forwards;
+                // Scores
                 insertion_score = if stack_frame.gap_backwards == GapState::Insertion {
                     parameters.penalty_gap_extend
                 } else {
@@ -1098,6 +1156,7 @@ where
                     ) - optimal_penalty
                         + stack_frame.alignment_score;
                 }
+                // Open gaps
                 num_gaps_open = if stack_frame.gap_backwards == GapState::Closed {
                     stack_frame.num_gaps_open + 1
                 } else {
@@ -1107,7 +1166,7 @@ where
         };
 
         // Calculate the lower bounds for extension
-        let lower_bound = bi_d_array.get(next_backward_index, next_forward_index);
+        let lower_bound = bi_d_array.get(d_k, d_l);
 
         //print_debug(&stack_frame, &hit_intervals, edit_tree);
 
@@ -1131,9 +1190,12 @@ where
             {
                 check_and_push_stack_frame(
                     MismatchSearchStackFrame {
-                        backward_index: next_backward_index,
-                        forward_index: next_forward_index,
-                        direction: stack_frame.direction.reverse(),
+                        current_sub_alignment_start: if direction == Direction::Backward {
+                            stack_frame.current_sub_alignment_start - 1
+                        } else {
+                            stack_frame.current_sub_alignment_start
+                        },
+                        current_sub_alignment_len: stack_frame.current_sub_alignment_len + 1,
                         // Mark opened gap at the corresponding end
                         gap_backwards: next_insertion_backward,
                         gap_forwards: next_insertion_forward,
@@ -1162,7 +1224,7 @@ where
             }
 
             // Special treatment of forward extension
-            let c = match stack_frame.direction {
+            let c = match direction {
                 Direction::Forward => {
                     interval_prime = interval_prime.swapped();
                     dna::complement(fmd_index.get_rev(c))
@@ -1206,9 +1268,12 @@ where
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
                             current_interval: interval_prime,
-                            backward_index: next_backward_index,
-                            forward_index: next_forward_index,
-                            direction: stack_frame.direction.reverse(),
+                            current_sub_alignment_start: if direction == Direction::Backward {
+                                stack_frame.current_sub_alignment_start - 1
+                            } else {
+                                stack_frame.current_sub_alignment_start
+                            },
+                            current_sub_alignment_len: stack_frame.current_sub_alignment_len + 1,
                             // Mark closed gap at the corresponding end
                             gap_backwards: next_closed_gap_backward,
                             gap_forwards: next_closed_gap_forward,
@@ -1737,13 +1802,12 @@ pub mod tests {
                 lower_rev: 5,
                 size: 5,
             },
-            backward_index: 5,
-            forward_index: 5,
-            direction: Direction::Backward,
+            current_sub_alignment_start: 5,
             gap_forwards: GapState::Closed,
             gap_backwards: GapState::Closed,
             num_gaps_open: 0,
             edit_node_id: root_id,
+            current_sub_alignment_len: 5,
         };
         let map_params_small = MismatchSearchStackFrame {
             alignment_score: -20.0,
@@ -1752,13 +1816,12 @@ pub mod tests {
                 lower_rev: 5,
                 size: 5,
             },
-            backward_index: 5,
-            forward_index: 5,
-            direction: Direction::Backward,
+            current_sub_alignment_start: 5,
             gap_forwards: GapState::Closed,
             gap_backwards: GapState::Closed,
             num_gaps_open: 0,
             edit_node_id: root_id,
+            current_sub_alignment_len: 5,
         };
 
         assert!(map_params_large > map_params_small);

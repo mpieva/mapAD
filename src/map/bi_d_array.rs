@@ -121,7 +121,7 @@ impl BiDArray {
             }
         }
 
-        iter::repeat(0.0).take(initial_skip as usize).chain(
+        iter::repeat(0.0).take(initial_skip as usize + 1).chain(
             match direction {
                 Direction::Forward => Either::Left(pattern_part.iter()),
                 Direction::Backward => Either::Right(pattern_part.iter().rev()),
@@ -198,8 +198,8 @@ impl BiDArray {
     }
 
     pub fn get(&self, backward_index: i16, forward_index: i16) -> f32 {
-        debug_assert!(backward_index < forward_index);
-        debug_assert!(backward_index < self.d_composite.len() as i16);
+        debug_assert!(backward_index <= forward_index);
+        debug_assert!((backward_index as usize) < self.d_composite.len());
         debug_assert!(forward_index >= 0);
 
         debug_assert!(backward_index >= -1);
@@ -233,9 +233,7 @@ mod tests {
         map::{
             bi_d_array::BiDArray,
             mismatch_bounds::TestBound,
-            sequence_difference_models::{
-                LibraryPrep, SequenceDifferenceModel, SimpleAncientDnaModel,
-            },
+            sequence_difference_models::{SequenceDifferenceModel, TestDifferenceModel},
             AlignmentParameters,
         },
         utils::build_auxiliary_structures,
@@ -249,16 +247,11 @@ mod tests {
         let alphabet = alphabets::Alphabet::new(DNA_UPPERCASE_ALPHABET);
         let (fmd_index, _) = build_auxiliary_structures(ref_seq, alphabet);
 
-        let difference_model = SimpleAncientDnaModel::new(
-            LibraryPrep::SingleStranded {
-                five_prime_overhang: 0.3,
-                three_prime_overhang: 0.3,
-            },
-            0.001,
-            0.8,
-            0.02,
-            false,
-        );
+        let difference_model = TestDifferenceModel {
+            deam_score: -1.0,
+            mm_score: -1.0,
+            match_score: 0.0,
+        };
 
         let representative_mismatch_penalty =
             difference_model.get_representative_mismatch_penalty();
@@ -294,7 +287,7 @@ mod tests {
 
         assert_eq!(
             &*bi_d_array.d_composite,
-            &[0.0, -3.6297126, -5.4444757, 0.0, -3.8959491, -3.8959491, -9.413074]
+            &[0.0, 0.0, -1.0, 0.0, 0.0, -1.0, -1.0]
         );
 
         assert_eq!(
@@ -309,6 +302,8 @@ mod tests {
             bi_d_array.get(0, 6),
             bi_d_array.d_composite[0] + bi_d_array.d_composite[bi_d_array.split]
         );
+
+        assert_eq!(bi_d_array.get(2, 3), -2.0);
 
         assert_eq!(bi_d_array.get(0, pattern.len() as i16 - 1), 0.0,);
     }
