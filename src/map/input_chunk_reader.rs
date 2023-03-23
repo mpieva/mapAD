@@ -7,7 +7,10 @@ use std::{
 
 use flate2::read::MultiGzDecoder;
 use log::{debug, error, info};
-use noodles::{bam, bgzf, cram, fasta, fastq, sam};
+use noodles::{
+    bam, bgzf, cram, fasta, fastq,
+    sam::{self, AlignmentReader},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -66,24 +69,31 @@ impl InputSource {
             Format::Bam => {
                 debug!("Try reading input in BAM format");
                 let mut reader = bam::Reader::new(file_handle);
-                let header = Box::new(
-                    reader
+                let header = {
+                    let mut header: sam::Header = reader
                         .read_header()
                         .map_err(Into::<Error>::into)
-                        .and_then(|string_header| string_header.parse().map_err(Into::into))?,
-                );
-                let _bin_inner = reader.read_reference_sequences()?;
+                        .and_then(|string_header| string_header.parse().map_err(Into::into))?;
+                    // Replace textual representation of reference sequences with the binary one
+                    // which should be the correct source (note that some non-htslib-based tools
+                    // don't write textual headers at all)
+                    // [https://github.com/samtools/htslib/blob/c1634e743aab4822e05fbb7dc41fd6ab21ec6982/NEWS#L1347-L1354]
+                    let rust_ref_seq = header.reference_sequences_mut();
+                    rust_ref_seq.clear();
+                    for (key, value) in reader.read_reference_sequences()? {
+                        rust_ref_seq.insert(key, value);
+                    }
+                    Box::new(header)
+                };
                 Ok(Self::Bam(reader, header))
             }
             Format::Cram => {
                 debug!("Try reading input in CRAM format");
                 let mut reader = cram::Reader::new(file_handle);
-                let _definition = reader.read_file_definition()?;
                 let header = Box::new(
                     reader
-                        .read_file_header()
-                        .map_err(Into::<Error>::into)
-                        .and_then(|string_header| string_header.parse().map_err(Into::into))?,
+                        .read_alignment_header()
+                        .map_err(Into::<Error>::into)?,
                 );
                 Ok(Self::Cram(reader, fasta::Repository::default(), header))
             }
