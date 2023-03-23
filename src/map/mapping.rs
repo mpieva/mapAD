@@ -890,20 +890,13 @@ fn create_bam_record(
     Ok(bam_builder.build())
 }
 
-fn get_alignment_start_pos(pattern_len: usize) -> i16 {
-    let center = pattern_len / 2;
-    center
-        .checked_sub(10)
-        .map(|val| val + center)
-        .unwrap_or(center) as i16
-}
-
 /// Checks stop-criteria of stack frames before pushing them onto the stack.
 /// Since push operations on heaps are costly, this should accelerate the alignment.
 #[allow(clippy::too_many_arguments)]
 fn check_and_push_stack_frame<MB>(
     mut stack_frame: MismatchSearchStackFrame,
     pattern: &[u8],
+    alignment_start_pos: i16,
     edit_operation: EditOperation,
     edit_tree: &mut Tree<EditOperation>,
     stack: &mut MinMaxHeap<MismatchSearchStackFrame>,
@@ -943,11 +936,8 @@ fn check_and_push_stack_frame<MB>(
 
     if stack_frame.current_sub_alignment_len as usize == pattern.len() {
         // This route through the read graph is finished successfully, push the interval
-        let edit_operations = extract_edit_operations(
-            stack_frame.edit_node_id,
-            edit_tree,
-            get_alignment_start_pos(pattern.len()),
-        );
+        let edit_operations =
+            extract_edit_operations(stack_frame.edit_node_id, edit_tree, alignment_start_pos);
         intervals.push(HitInterval {
             interval: stack_frame.current_interval,
             alignment_score: stack_frame.alignment_score,
@@ -997,7 +987,7 @@ where
     SDM: SequenceDifferenceModel,
     MB: MismatchBound,
 {
-    let alignment_start_pos = get_alignment_start_pos(pattern.len());
+    let alignment_start_pos = sequence_difference_model.find_alignment_start(pattern.len());
 
     let bi_d_array = BiDArray::new(
         pattern,
@@ -1204,6 +1194,7 @@ where
                         ..stack_frame
                     },
                     pattern,
+                    alignment_start_pos,
                     EditOperation::Insertion(j as u16),
                     edit_tree,
                     stack,
@@ -1250,6 +1241,7 @@ where
                             ..stack_frame
                         },
                         pattern,
+                        alignment_start_pos,
                         EditOperation::Deletion(j as u16, c),
                         edit_tree,
                         stack,
@@ -1281,6 +1273,7 @@ where
                             ..stack_frame
                         },
                         pattern,
+                        alignment_start_pos,
                         if c == pattern[j as usize] {
                             EditOperation::Match(j as u16)
                         } else {

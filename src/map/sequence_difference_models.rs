@@ -55,6 +55,10 @@ pub trait SequenceDifferenceModel {
         .map(|&base| self.get(i, read_length, base, to, base_quality))
         .fold(f32::MIN, f32::max)
     }
+
+    fn find_alignment_start(&self, pattern_length: usize) -> i16 {
+        pattern_length as i16 / 2
+    }
 }
 
 /// Used to allow static dispatch. No trait objects needed! Method call speed is not negatively
@@ -106,6 +110,7 @@ pub struct SimpleAncientDnaModel {
     divergence: f32,
     use_default_base_quality: Option<f32>,
     cache: Vec<f32>,
+    three_prime_flank_offset: Option<i16>,
 }
 
 impl SequenceDifferenceModel for SimpleAncientDnaModel {
@@ -200,6 +205,15 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
         .max(f32::EPSILON)
         .log2()
     }
+
+    fn find_alignment_start(&self, pattern_length: usize) -> i16 {
+        let pattern_length = pattern_length as i16;
+        let center = pattern_length / 2;
+        self.three_prime_flank_offset
+            .map(|tp_flank_offset| pattern_length - 1 - tp_flank_offset)
+            .map(|start_pos| start_pos.max(center))
+            .unwrap_or(center)
+    }
 }
 
 impl Display for SimpleAncientDnaModel {
@@ -286,20 +300,41 @@ impl SimpleAncientDnaModel {
                 .collect::<Vec<_>>()
         };
 
-        let out = Self {
+        // Find offset position from the 3' end where deamination rates begin to be negligible
+        let three_prime_flank_offset = {
+            // Capped to an arbitrary value to avoid infinity, just in case...
+            let arbitrary_max = 32;
+            let threshold = 0.005;
+
+            let three_prime_overhang = match library_prep {
+                LibraryPrep::SingleStranded {
+                    five_prime_overhang: _,
+                    three_prime_overhang,
+                } => three_prime_overhang,
+                LibraryPrep::DoubleStranded(overhang) => overhang,
+            };
+
+            // Scan offsets
+            (0..arbitrary_max).find(|&offset| {
+                three_prime_overhang.powi(offset.into()) * ss_deamination_rate < threshold
+            })
+        };
+
+        let retval = Self {
             library_prep,
             ds_deamination_rate,
             ss_deamination_rate,
             divergence,
             use_default_base_quality,
             cache,
+            three_prime_flank_offset,
         };
 
         // Requiring `Display` as a supertrait to `SequenceDifferenceModel` would be a better
         // solution, but due to the static dispatch tricks it's not that simple.
-        info!("{}", out);
+        info!("{}", retval);
 
-        out
+        retval
     }
 }
 
