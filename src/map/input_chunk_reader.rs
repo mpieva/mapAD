@@ -62,7 +62,7 @@ impl InputSource {
             (Box::new(File::open(path)?), buf_copy)
         };
 
-        match Self::detect_format(&magic_bytes).map_err(|_e| Error::InvalidInputType)? {
+        match Self::detect_format(&magic_bytes) {
             Format::Bam => {
                 debug!("Try reading input in BAM format");
                 let mut reader = bam::Reader::new(file_handle);
@@ -103,14 +103,14 @@ impl InputSource {
     }
 
     // Inspired by `noodles-utils`
-    fn detect_format(src: &[u8]) -> Result<Format> {
+    fn detect_format(src: &[u8]) -> Format {
         const CRAM_MAGIC_NUMBER: [u8; 4] = [b'C', b'R', b'A', b'M'];
         const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
         const BAM_MAGIC_NUMBER: [u8; 4] = [b'B', b'A', b'M', 0x01];
 
         if let Some(buf) = src.get(..4) {
             if buf == CRAM_MAGIC_NUMBER {
-                return Ok(Format::Cram);
+                return Format::Cram;
             }
 
             if buf[..2] == GZIP_MAGIC_NUMBER {
@@ -119,14 +119,14 @@ impl InputSource {
                 reader.read_exact(&mut buf).ok();
 
                 return if buf == BAM_MAGIC_NUMBER {
-                    Ok(Format::Bam)
+                    Format::Bam
                 } else {
-                    Ok(Format::FastqGz)
+                    Format::FastqGz
                 };
             }
         }
 
-        Ok(Format::Fastq)
+        Format::Fastq
     }
 
     pub fn header(&self) -> Option<&sam::Header> {
@@ -157,11 +157,6 @@ impl InputSource {
                 ),
                 chunk_size,
             ),
-            // Self::Sam(reader, header) => TaskQueue::new(Box::new(
-            //     reader
-            //         .records(header)
-            //         .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
-            // )),
             Self::Fastq(reader) => TaskQueue::new(
                 Box::new(
                     reader
