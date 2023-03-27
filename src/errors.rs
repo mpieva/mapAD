@@ -24,6 +24,7 @@ pub enum Error {
     ContigBoundaryOverlap,
     InternalError,
     ArchitectureError,
+    SeqLenError(String),
 }
 
 impl fmt::Display for Error {
@@ -42,6 +43,7 @@ impl fmt::Display for Error {
             Self::ContigBoundaryOverlap => write!(f, "Mapped coordinate overlaps contig boundary"),
             Self::InternalError => write!(f, "Internal error"),
             Self::ArchitectureError => write!(f, "Host CPU architecture not suitable for the size of data {CRATE_NAME} is supposed to run on"),
+            Self::SeqLenError(name) => write!(f, "Sequence of record \"{name}\" is too long for internal representation"),
         }
     }
 }

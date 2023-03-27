@@ -141,27 +141,21 @@ impl InputSource {
     ) -> TaskQueue<Box<dyn Iterator<Item = Result<Record>> + '_>> {
         match self {
             Self::Bam(reader, header) => TaskQueue::new(
-                Box::new(
-                    reader
-                        .records(header)
-                        .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
-                ),
+                Box::new(reader.records(header).map(|maybe_record| {
+                    maybe_record.map_err(Into::into).and_then(TryInto::try_into)
+                })),
                 chunk_size,
             ),
             Self::Cram(reader, repo, header) => TaskQueue::new(
-                Box::new(
-                    reader
-                        .records(repo, header)
-                        .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
-                ),
+                Box::new(reader.records(repo, header).map(|maybe_record| {
+                    maybe_record.map_err(Into::into).and_then(TryInto::try_into)
+                })),
                 chunk_size,
             ),
             Self::Fastq(reader) => TaskQueue::new(
-                Box::new(
-                    reader
-                        .records()
-                        .map(|maybe_record| maybe_record.map(Into::into).map_err(Into::into)),
-                ),
+                Box::new(reader.records().map(|maybe_record| {
+                    maybe_record.map_err(Into::into).and_then(TryInto::try_into)
+                })),
                 chunk_size,
             ),
         }

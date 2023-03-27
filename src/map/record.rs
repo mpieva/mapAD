@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 use crate::{
+    errors::{Error, Result},
     index::OriginalSymbols,
     map::{
         backtrack_tree::{NodeId, Tree},
@@ -104,9 +105,20 @@ pub struct Record {
     pub bam_flags: u16,
 }
 
-impl From<sam::alignment::Record> for Record {
-    fn from(input: sam::alignment::Record) -> Self {
+impl TryFrom<sam::alignment::Record> for Record {
+    type Error = Error;
+
+    fn try_from(input: sam::alignment::Record) -> Result<Self> {
         let mut sequence = input.sequence().to_string().into_bytes();
+
+        if i16::try_from(sequence.len()).is_err() {
+            return Err(Error::SeqLenError(
+                input
+                    .read_name()
+                    .map(|maybe_read_name| maybe_read_name.to_string())
+                    .unwrap_or_else(|| String::from("unnamed record")),
+            ));
+        }
 
         let mut base_qualities = input
             .quality_scores()
@@ -132,19 +144,28 @@ impl From<sam::alignment::Record> for Record {
             name.to_vec()
         });
 
-        Self {
+        Ok(Self {
             sequence,
             base_qualities,
             name: read_name,
             bam_tags: input_tags,
             bam_flags: input.flags().bits(),
-        }
+        })
     }
 }
 
-impl From<fastq::Record> for Record {
-    fn from(fq_record: fastq::Record) -> Self {
+impl TryFrom<fastq::Record> for Record {
+    type Error = Error;
+
+    fn try_from(fq_record: fastq::Record) -> Result<Self> {
         let sequence = fq_record.sequence().to_ascii_uppercase();
+
+        if i16::try_from(sequence.len()).is_err() {
+            return Err(Error::SeqLenError(
+                std::str::from_utf8(fq_record.name())?.to_owned(),
+            ));
+        }
+
         // Subtract offset
         let base_qualities = fq_record
             .quality_scores()
@@ -153,19 +174,30 @@ impl From<fastq::Record> for Record {
             .collect();
         let name = fq_record.name().to_owned();
 
-        Self {
+        Ok(Self {
             sequence,
             base_qualities,
             name: Some(name),
             bam_tags: Vec::new(),
             bam_flags: 0,
-        }
+        })
     }
 }
 
-impl From<cram::Record> for Record {
-    fn from(input: cram::Record) -> Self {
+impl TryFrom<cram::Record> for Record {
+    type Error = Error;
+
+    fn try_from(input: cram::Record) -> Result<Self> {
         let mut sequence = input.sequence().to_string().into_bytes();
+
+        if i16::try_from(sequence.len()).is_err() {
+            return Err(Error::SeqLenError(
+                input
+                    .read_name()
+                    .map(|maybe_read_name| maybe_read_name.to_string())
+                    .unwrap_or_else(|| String::from("unnamed record")),
+            ));
+        }
 
         let mut base_qualities = input
             .quality_scores()
@@ -191,13 +223,13 @@ impl From<cram::Record> for Record {
             name.to_vec()
         });
 
-        Self {
+        Ok(Self {
             sequence,
             base_qualities,
             name: read_name,
             bam_tags: input_tags,
             bam_flags: input.flags().bits(),
-        }
+        })
     }
 }
 
