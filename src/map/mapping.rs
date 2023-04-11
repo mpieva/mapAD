@@ -91,7 +91,6 @@ pub fn run(
     let mut input_source = InputSource::from_path(reads_path)?;
     let out_header = create_bam_header(input_source.header(), &identifier_position_map)?;
     out_file.write_header(&out_header)?;
-    out_file.write_reference_sequences(out_header.reference_sequences())?;
     run_inner(
         input_source.task_queue(alignment_parameters.chunk_size),
         &fmd_index,

@@ -126,7 +126,6 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         let mut input_source = InputSource::from_path(self.reads_path)?;
         let out_header = create_bam_header(input_source.header(), &identifier_position_map)?;
         out_file.write_header(&out_header)?;
-        out_file.write_reference_sequences(out_header.reference_sequences())?;
         let mut task_queue = input_source.task_queue(self.alignment_parameters.chunk_size);
         self.run_inner(
             &mut task_queue,

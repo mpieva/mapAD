@@ -113,13 +113,10 @@ TGATCGATCATGCTAAAAATCGAT";
         A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACCCCAG\t]]]]]]]]]]]]]]]]]]]]]]";
 
         let mut sam_reader = sam::Reader::new(&sam_content[..]);
-        let input_sam_header = sam_reader.read_header().unwrap().parse().unwrap();
+        let input_sam_header = sam_reader.read_header().unwrap();
 
         let mut input_bam_file = bam::Writer::new(File::create(&input_bam_path).unwrap());
         input_bam_file.write_header(&input_sam_header).unwrap();
-        input_bam_file
-            .write_reference_sequences(input_sam_header.reference_sequences())
-            .unwrap();
         for sam_record in sam_reader.records(&input_sam_header) {
             let sam_record = sam_record.unwrap();
             input_bam_file
@@ -235,13 +232,10 @@ where
     @RG\tID:A12345\tSM:Sample1\n\
     @PG\tID:samtools\tPN:samtools\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\tVN:1.13\n\
     @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
-    assert!(&header.starts_with(header_prefix));
-
-    // Move cursor to the right place
-    let _header_reference_sequences = bam_reader.read_reference_sequences().unwrap();
+    assert!(&header.to_string().starts_with(header_prefix));
 
     let mut result_sample = bam_reader
-        .records(&header.parse().unwrap())
+        .records(&header)
         .map(|maybe_record| {
             maybe_record.map(|record| BamFieldSubset {
                 name: record.read_name().cloned(),
