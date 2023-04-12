@@ -54,14 +54,16 @@ impl InputSource {
         // Use `BufRead` function to peek into the file/stdin, then convert to `Read` trait object
         // Stdin
         let (file_handle, magic_bytes): (Box<dyn Read>, _) = if path.to_str() == Some("-") {
-            let mut stdin_guard = stdin().lock();
+            let mut stdin_guard = BufReader::with_capacity(65536, stdin().lock());
             // Copying the buffer is expensive, but only done once
             let buf_copy = stdin_guard.fill_buf()?.to_owned();
             (Box::new(stdin_guard), buf_copy)
         // File
         } else {
             // Copying the buffer is expensive, but only done once
-            let buf_copy = BufReader::new(File::open(path)?).fill_buf()?.to_owned();
+            let buf_copy = BufReader::with_capacity(65536, File::open(path)?)
+                .fill_buf()?
+                .to_owned();
             (Box::new(File::open(path)?), buf_copy)
         };
 
