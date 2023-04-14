@@ -36,7 +36,7 @@ impl fmt::Display for Error {
             Self::Io(err) => write!(f, "IO error: {err}"),
             Self::Utf8Error(err) => write!(f, "UTF-8 error: {err}"),
             Self::ParseError(err) => write!(f, "Parse error: {err}"),
-            Self::InvalidInputType => write!(f, "Please specify a path to a supported input file (\".bam\", \".cram\", \".fastq\", or \".fastq.gz\""),
+            Self::InvalidInputType => write!(f, "Please use a supported input file (\".bam\", \".cram\", \".fastq\", or \".fastq.gz\""),
             Self::InvalidIndex(err) => write!(f, "Index is invalid: {err}"),
             Self::IndexVersionMismatch { running, on_disk } => write!(f, "The provided index (v{on_disk}) is incompatible with version {} of {CRATE_NAME} (which expects index version v{running}). Please re-create the index.", crate_version!()),
             Self::AnyhowError(err) => write!(f, "Internal error: {err}"),

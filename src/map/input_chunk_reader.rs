@@ -51,16 +51,20 @@ impl InputSource {
 
         // Input file options: `.bam`, `.cram`, `.fastq.gz`, and `.fastq` as fallback
 
-        // Use `BufRead` function to peek into the file/stdin, then convert to `Read` trait object
+        // Use `BufRead` function to peek into the file/stdin, then convert to `Read` trait object.
+        // Copying the buffer is expensive, but only done once.
+
         // Stdin
         let (file_handle, magic_bytes): (Box<dyn Read>, _) = if path.to_str() == Some("-") {
+            // BGZIP blocks are <= 64kb, so in order to be able to peek into the file and read the
+            // magic bytes we might need a buffer that big
             let mut stdin_guard = BufReader::with_capacity(65536, stdin().lock());
-            // Copying the buffer is expensive, but only done once
             let buf_copy = stdin_guard.fill_buf()?.to_owned();
             (Box::new(stdin_guard), buf_copy)
         // File
         } else {
-            // Copying the buffer is expensive, but only done once
+            // BGZIP blocks are <= 64kb, so in order to be able to peek into the file and read the
+            // magic bytes we might need a buffer that big
             let buf_copy = BufReader::with_capacity(65536, File::open(path)?)
                 .fill_buf()?
                 .to_owned();
@@ -109,22 +113,23 @@ impl InputSource {
         const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
         const BAM_MAGIC_NUMBER: [u8; 4] = [b'B', b'A', b'M', 0x01];
 
-        if let Some(buf) = src.get(..4) {
-            if buf == CRAM_MAGIC_NUMBER {
-                return Ok(Format::Cram);
-            }
+        let buf = src.get(..4).ok_or_else(|| Error::InvalidInputType)?;
+        if buf == CRAM_MAGIC_NUMBER {
+            return Ok(Format::Cram);
+        }
 
-            if buf[..2] == GZIP_MAGIC_NUMBER {
-                let mut reader = bgzf::Reader::new(src);
-                let mut buf = [0; 4];
-                reader.read_exact(&mut buf)?;
+        if buf[..2] == GZIP_MAGIC_NUMBER {
+            let mut reader = bgzf::Reader::new(src);
+            let mut buf = [0; 4];
+            reader
+                .read_exact(&mut buf)
+                .map_err(|_e| Error::InvalidInputType)?;
 
-                return if buf == BAM_MAGIC_NUMBER {
-                    Ok(Format::Bam)
-                } else {
-                    Ok(Format::FastqGz)
-                };
-            }
+            return if buf == BAM_MAGIC_NUMBER {
+                Ok(Format::Bam)
+            } else {
+                Ok(Format::FastqGz)
+            };
         }
 
         Ok(Format::Fastq)
