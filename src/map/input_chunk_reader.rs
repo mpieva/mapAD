@@ -121,9 +121,11 @@ impl InputSource {
         if buf[..2] == GZIP_MAGIC_NUMBER {
             let mut reader = bgzf::Reader::new(src);
             let mut buf = [0; 4];
-            if let Err(_) = reader.read_exact(&mut buf) {
+
+            // Read exactly four bytes to see whether they contain the BAM magic numbers
+            if reader.read_exact(&mut buf).is_err() {
                 // We are going to ignore this error, since we probably got GZ instead of BGZF data.
-                // If that is not the case, potential errors are properly handled elsewhere.
+                // If that is not the case, potential errors are properly handled somewhere else.
             }
 
             return if buf == BAM_MAGIC_NUMBER {
