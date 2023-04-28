@@ -2,8 +2,10 @@ use std::{collections::BTreeMap, fmt};
 
 use bio::alphabets::dna;
 use either::Either;
-use noodles::sam;
-use noodles::{cram, fastq};
+use noodles::{
+    cram, fastq,
+    sam::{self, record::data::field::value::Array},
+};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -56,13 +58,13 @@ impl From<&sam::record::data::field::Value> for BamAuxField {
             //Value::Double(v) => Self::Double(*v),
             Value::String(v) => Self::String(v.clone()),
             Value::Hex(v) => Self::HexByteArray(v.to_string()),
-            Value::Int8Array(v) => Self::ArrayI8(v.clone()),
-            Value::UInt8Array(v) => Self::ArrayU8(v.clone()),
-            Value::Int16Array(v) => Self::ArrayI16(v.clone()),
-            Value::UInt16Array(v) => Self::ArrayU16(v.clone()),
-            Value::Int32Array(v) => Self::ArrayI32(v.clone()),
-            Value::UInt32Array(v) => Self::ArrayU32(v.clone()),
-            Value::FloatArray(v) => Self::ArrayFloat(v.clone()),
+            Value::Array(Array::Int8(v)) => Self::ArrayI8(v.clone()),
+            Value::Array(Array::UInt8(v)) => Self::ArrayU8(v.clone()),
+            Value::Array(Array::Int16(v)) => Self::ArrayI16(v.clone()),
+            Value::Array(Array::UInt16(v)) => Self::ArrayU16(v.clone()),
+            Value::Array(Array::Int32(v)) => Self::ArrayI32(v.clone()),
+            Value::Array(Array::UInt32(v)) => Self::ArrayU32(v.clone()),
+            Value::Array(Array::Float(v)) => Self::ArrayFloat(v.clone()),
         }
     }
 }
@@ -85,13 +87,13 @@ impl From<BamAuxField> for sam::record::data::field::Value {
             BamAuxField::HexByteArray(v) => {
                 Self::Hex(v.parse().expect("this to be not used internally"))
             }
-            BamAuxField::ArrayI8(v) => Self::Int8Array(v),
-            BamAuxField::ArrayU8(v) => Self::UInt8Array(v),
-            BamAuxField::ArrayI16(v) => Self::Int16Array(v),
-            BamAuxField::ArrayU16(v) => Self::UInt16Array(v),
-            BamAuxField::ArrayI32(v) => Self::Int32Array(v),
-            BamAuxField::ArrayU32(v) => Self::UInt32Array(v),
-            BamAuxField::ArrayFloat(v) => Self::FloatArray(v),
+            BamAuxField::ArrayI8(v) => Self::Array(Array::Int8(v)),
+            BamAuxField::ArrayU8(v) => Self::Array(Array::UInt8(v)),
+            BamAuxField::ArrayI16(v) => Self::Array(Array::Int16(v)),
+            BamAuxField::ArrayU16(v) => Self::Array(Array::UInt16(v)),
+            BamAuxField::ArrayI32(v) => Self::Array(Array::Int32(v)),
+            BamAuxField::ArrayU32(v) => Self::Array(Array::UInt32(v)),
+            BamAuxField::ArrayFloat(v) => Self::Array(Array::Float(v)),
         }
     }
 }
