@@ -249,27 +249,27 @@ where
                 qual: record.quality_scores().to_owned(),
                 md: record
                     .data()
-                    .get(sam::record::data::field::Tag::MismatchedPositions)
+                    .get(&sam::record::data::field::tag::MISMATCHED_POSITIONS)
                     .map(|value| value.as_str().unwrap().into()),
                 x0: record
                     .data()
-                    .get(b"X0".as_slice().try_into().unwrap())
+                    .get(b"X0")
                     .map(|value| value.as_int32().unwrap()),
                 x1: record
                     .data()
-                    .get(b"X1".as_slice().try_into().unwrap())
+                    .get(b"X1")
                     .map(|value| value.as_int32().unwrap()),
                 xa: record
                     .data()
-                    .get(b"XA".as_slice().try_into().unwrap())
+                    .get(b"XA")
                     .map(|value| value.as_str().unwrap().to_owned()),
                 xs: record
                     .data()
-                    .get(b"XS".as_slice().try_into().unwrap())
+                    .get(b"XS")
                     .map(|value| value.as_float().unwrap().to_owned()),
                 xt: record
                     .data()
-                    .get(b"XT".as_slice().try_into().unwrap())
+                    .get(b"XT")
                     .map(|value| value.as_character().unwrap().into()),
             })
         })

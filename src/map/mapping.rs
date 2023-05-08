@@ -831,14 +831,14 @@ fn create_bam_record(
 
     if let Some(hit_interval) = hit_interval {
         aux_data.push((
-            sam::record::data::field::Tag::AlignmentScore,
+            sam::record::data::field::tag::ALIGNMENT_SCORE,
             sam::record::data::field::Value::Float(hit_interval.alignment_score),
         ));
     };
 
     if let Some(edit_distance) = edit_distance {
         aux_data.push((
-            sam::record::data::field::Tag::EditDistance,
+            sam::record::data::field::tag::EDIT_DISTANCE,
             sam::record::data::field::Value::Int32(i32::from(edit_distance)),
         ));
     };
@@ -846,7 +846,7 @@ fn create_bam_record(
     // CIGAR strings and MD tags are reversed during generation
     if let Some(md_tag) = md_tag {
         aux_data.push((
-            sam::record::data::field::Tag::MismatchedPositions,
+            sam::record::data::field::tag::MISMATCHED_POSITIONS,
             sam::record::data::field::Value::String(
                 String::from_utf8(md_tag).expect("This is not expected to fail"),
             ),
