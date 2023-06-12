@@ -8,7 +8,7 @@ use std::{
 use flate2::read::MultiGzDecoder;
 use log::{debug, error, info};
 use noodles::{
-    bam, bgzf, cram, fasta, fastq,
+    bam, bgzf, cram, fastq,
     sam::{self, AlignmentReader},
 };
 use serde::{Deserialize, Serialize};
@@ -24,11 +24,7 @@ pub enum InputSource {
         bam::reader::Reader<bgzf::Reader<Box<dyn Read>>>,
         Box<sam::Header>,
     ),
-    Cram(
-        cram::reader::Reader<Box<dyn Read>>,
-        fasta::Repository,
-        Box<sam::Header>,
-    ),
+    Cram(cram::reader::Reader<Box<dyn Read>>, Box<sam::Header>),
     //Sam(sam::reader::Reader<BR>, Box<sam::Header>),
     // .fastq and fastq.gz
     Fastq(fastq::reader::Reader<Box<dyn BufRead>>),
@@ -90,7 +86,7 @@ impl InputSource {
                         .read_alignment_header()
                         .map_err(Into::<Error>::into)?,
                 );
-                Ok(Self::Cram(reader, fasta::Repository::default(), header))
+                Ok(Self::Cram(reader, header))
             }
             Format::Fastq => {
                 debug!("Try reading input in FASTQ format");
@@ -140,7 +136,7 @@ impl InputSource {
 
     pub fn header(&self) -> Option<&sam::Header> {
         match self {
-            Self::Bam(_, header) | Self::Cram(_, _, header) => Some(header),
+            Self::Bam(_, header) | Self::Cram(_, header) => Some(header),
             Self::Fastq(_) => None,
         }
     }
@@ -156,8 +152,8 @@ impl InputSource {
                 })),
                 chunk_size,
             ),
-            Self::Cram(reader, repo, header) => TaskQueue::new(
-                Box::new(reader.records(repo, header).map(|maybe_record| {
+            Self::Cram(reader, header) => TaskQueue::new(
+                Box::new(reader.records(header).map(|maybe_record| {
                     maybe_record.map_err(Into::into).and_then(TryInto::try_into)
                 })),
                 chunk_size,
