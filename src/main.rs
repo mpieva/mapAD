@@ -1,6 +1,6 @@
 use clap::{crate_authors, crate_description, value_parser, Arg, ArgAction, ArgMatches, Command};
 use log::{error, info, warn};
-#[cfg(all(target_env = "musl"))]
+#[cfg(target_env = "musl")]
 use mimalloc::MiMalloc;
 use simple_logger::SimpleLogger;
 use time::UtcOffset;
@@ -19,7 +19,7 @@ use mapad::{
 };
 
 // Use mimalloc only for musl target
-#[cfg(all(target_env = "musl"))]
+#[cfg(target_env = "musl")]
 #[global_allocator]
 static ALLOC: MiMalloc = MiMalloc;
 
