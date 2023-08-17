@@ -110,8 +110,8 @@ dependencies = [
 
 [[package]]
 name = "bio"
-version = "0.42.0-mapAD"
-source = "git+https://github.com/jch-13/rust-bio.git?branch=occ_small_k#12ccdd1cffc95034fe4348d64469a3477606aa09"
+version = "1.3.1"
+source = "git+https://github.com/jch-13/rust-bio.git?branch=occ_small_k#3a6d2377842ae975349f3edc8062e8a9ee362438"
 dependencies = [
  "anyhow",
  "approx",
@@ -121,6 +121,7 @@ dependencies = [
  "bytecount",
  "csv",
  "custom_derive",
+ "editdistancek",
  "enum-map",
  "fxhash",
  "getset",
@@ -523,6 +524,12 @@ dependencies = [
  "block-buffer",
  "crypto-common",
 ]
+
+[[package]]
+name = "editdistancek"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e02df23d5b1c6f9e69fa603b890378123b93073df998a21e6e33b9db0a32613"
 
 [[package]]
 name = "either"
