@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Display, Formatter},
+    fmt::{self, Display, Formatter, Write},
     iter,
 };
 
@@ -160,20 +160,24 @@ impl Display for Discrete {
                     }
                 })
                 .flatten()
-                .map(|(read_length, allowed_mismatches)| {
-                    format!(
-                        "{:>width$} bp:\t{} {}\n",
-                        read_length,
-                        allowed_mismatches,
-                        if allowed_mismatches > 1.0 + f32::EPSILON {
-                            "mismatches"
-                        } else {
-                            "mismatch"
-                        },
-                        width = width,
-                    )
-                })
-                .collect::<String>();
+                .fold(
+                    String::new(),
+                    |mut acc, (read_length, allowed_mismatches)| {
+                        let _ = writeln!(
+                            acc,
+                            "{:>width$} bp:\t{} {}",
+                            read_length,
+                            allowed_mismatches,
+                            if allowed_mismatches > 1.0 + f32::EPSILON {
+                                "mismatches"
+                            } else {
+                                "mismatch"
+                            },
+                            width = width,
+                        );
+                        acc
+                    },
+                );
             let _ = tmp.pop();
             tmp
         };

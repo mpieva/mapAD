@@ -505,7 +505,7 @@ pub fn extract_edit_operations(
         };
         cigar_order_outer
             .entry(position)
-            .or_insert_with(SmallVec::new)
+            .or_default()
             .push(edit_operation);
     }
 
