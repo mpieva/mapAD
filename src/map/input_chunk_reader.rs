@@ -9,7 +9,7 @@ use flate2::read::MultiGzDecoder;
 use log::{debug, error, info};
 use noodles::{
     bam, bgzf, cram, fastq,
-    sam::{self, AlignmentReader},
+    sam::{self, alignment::io::Read as AlignmentRead},
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,10 +21,10 @@ use crate::{
 
 pub enum InputSource {
     Bam(
-        bam::reader::Reader<bgzf::Reader<Box<dyn Read>>>,
+        bam::io::reader::Reader<bgzf::Reader<Box<dyn Read>>>,
         Box<sam::Header>,
     ),
-    Cram(cram::reader::Reader<Box<dyn Read>>, Box<sam::Header>),
+    Cram(cram::io::reader::Reader<Box<dyn Read>>, Box<sam::Header>),
     //Sam(sam::reader::Reader<BR>, Box<sam::Header>),
     // .fastq and fastq.gz
     Fastq(fastq::reader::Reader<Box<dyn BufRead>>),
@@ -70,7 +70,7 @@ impl InputSource {
         match Self::detect_format(&magic_bytes)? {
             Format::Bam => {
                 debug!("Try reading input in BAM format");
-                let mut reader = bam::Reader::new(file_handle);
+                let mut reader = bam::io::Reader::new(file_handle);
                 let header = Box::new(
                     reader
                         .read_alignment_header()
@@ -80,7 +80,7 @@ impl InputSource {
             }
             Format::Cram => {
                 debug!("Try reading input in CRAM format");
-                let mut reader = cram::Reader::new(file_handle);
+                let mut reader = cram::io::Reader::new(file_handle);
                 let header = Box::new(
                     reader
                         .read_alignment_header()
@@ -147,8 +147,10 @@ impl InputSource {
     ) -> TaskQueue<Box<dyn Iterator<Item = Result<Record>> + '_>> {
         match self {
             Self::Bam(reader, header) => TaskQueue::new(
-                Box::new(reader.records(header).map(|maybe_record| {
-                    maybe_record.map_err(Into::into).and_then(TryInto::try_into)
+                Box::new(reader.alignment_records(header).map(|maybe_record| {
+                    maybe_record
+                        .map_err(Into::into)
+                        .and_then(|record| record.as_ref().try_into())
                 })),
                 chunk_size,
             ),

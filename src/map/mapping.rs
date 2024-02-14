@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     cell::RefCell,
-    collections::BinaryHeap,
+    collections::{BTreeSet, BinaryHeap},
     env,
     fs::OpenOptions,
     io::{self, Write},
@@ -12,10 +12,14 @@ use std::{
 };
 
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray};
+use bstr::{BString, ByteSlice};
 use clap::crate_description;
 use log::{debug, info, trace};
 use min_max_heap::MinMaxHeap;
-use noodles::{bam, sam};
+use noodles::{
+    bam,
+    sam::{self, alignment::io::Write as SamWrite},
+};
 use rand::RngCore;
 use rayon::prelude::*;
 
@@ -79,7 +83,7 @@ pub fn run(
     info!("Load original symbols");
     let original_symbols = load_original_symbols_from_path(reference_path)?;
 
-    let mut out_file = bam::Writer::new(
+    let mut out_file = bam::io::Writer::new(
         OpenOptions::new()
             .read(false)
             .write(true)
@@ -117,7 +121,7 @@ fn run_inner<S, T, W>(
     identifier_position_map: &FastaIdPositions,
     original_symbols: &OriginalSymbols,
     out_header: &sam::Header,
-    out_file: &mut bam::Writer<W>,
+    out_file: &mut bam::io::Writer<W>,
 ) -> Result<()>
 where
     S: SuffixArray + Send + Sync,
@@ -252,7 +256,7 @@ where
             })
             .map_init(
                 rand::thread_rng,
-                |mut rng, (record, hit_interval, duration)| -> Result<sam::alignment::Record> {
+                |mut rng, (record, hit_interval, duration)| -> Result<sam::alignment::RecordBuf> {
                     intervals_to_bam(
                         record,
                         hit_interval,
@@ -269,7 +273,7 @@ where
 
         debug!("Write chunk of BAM records to output file");
         for record in &bam_records {
-            out_file.write_record(out_header, record)?;
+            out_file.write_alignment_record(out_header, record)?;
         }
     }
     Ok(())
@@ -285,7 +289,10 @@ pub fn create_bam_header(
 
     let mut sam_header_builder = sam::Header::builder();
     let mut sam_header_header = Map::<map::Header>::new(map::header::Version::new(1, 6));
-    *sam_header_header.sort_order_mut() = Some(map::header::SortOrder::Unsorted);
+    sam_header_header.other_fields_mut().insert(
+        map::header::tag::SORT_ORDER,
+        map::header::sort_order::UNSORTED.into(),
+    );
 
     let mut pg_id = Cow::from(CRATE_NAME);
 
@@ -296,51 +303,61 @@ pub fn create_bam_header(
             out
         };
         Map::<map::Program>::builder()
-            .set_name(CRATE_NAME)
-            .set_version(build_info::get_software_version())
-            .set_description(crate_description!())
-            .set_command_line(cmdline)
+            .insert(map::program::tag::NAME, CRATE_NAME)
+            .insert(
+                map::program::tag::VERSION,
+                build_info::get_software_version(),
+            )
+            .insert(map::program::tag::DESCRIPTION, crate_description!())
+            .insert(map::program::tag::COMMAND_LINE, cmdline)
     };
 
     if let Some(src_header) = src_header {
-        // We've got an header to copy some data from
+        // We've got a header to copy some data from
 
         // @PG chain of old entries
         for (id, pg) in src_header.programs() {
-            sam_header_builder = sam_header_builder.add_program(id, pg.clone());
+            sam_header_builder = sam_header_builder.add_program(id.as_bstr(), pg.to_owned());
         }
 
-        // Append our program line to the latest end of a chain.
-        // We assume new program entries are appended to the bottom of the header's `@PG` lines.
-        for pg_id in src_header.programs().keys().rev() {
-            // Ensure it's really the end of a chain
-            if !src_header
+        // Append our program line to an end of a @PG chain.
+        {
+            let ids = src_header.programs().keys().rev().collect::<BTreeSet<_>>();
+            let prev_ids = src_header
                 .programs()
                 .values()
-                .filter_map(|pg| pg.previous_id())
-                .any(|x| x == pg_id.as_str())
-            {
-                program_builder = program_builder.set_previous_id(pg_id);
-                break;
-            }
+                .filter_map(|b| {
+                    b.other_fields()
+                        .get(&map::program::tag::PREVIOUS_PROGRAM_ID)
+                })
+                .collect::<BTreeSet<_>>();
+
+            if let Some(end_of_pg_chain) = ids.difference(&prev_ids).next() {
+                program_builder = program_builder.insert::<&bstr::BStr>(
+                    map::program::tag::PREVIOUS_PROGRAM_ID,
+                    end_of_pg_chain.as_bstr(),
+                )
+            };
         }
 
         // Ensure @PG/ID is unique
         let pg_id_count = src_header
             .programs()
             .keys()
-            .filter(|id| id.as_str() == pg_id || id.starts_with(&format!("{pg_id}.")))
+            .filter(|id| id.as_bstr() == pg_id || id.starts_with(format!("{pg_id}.").as_bytes()))
+            .cloned()
             .count();
         if pg_id_count > 0 {
             pg_id = Cow::from(format!("{pg_id}.{pg_id_count}"));
         }
 
         for comment in src_header.comments().iter() {
-            sam_header_builder = sam_header_builder.add_comment(comment);
+            sam_header_builder = sam_header_builder.add_comment(comment.as_bstr());
         }
 
         for (id, read_group) in src_header.read_groups() {
-            sam_header_builder = sam_header_builder.add_read_group(id, read_group.clone());
+            sam_header_builder =
+                sam_header_builder.add_read_group(id.as_bstr(), read_group.clone());
         }
     }
 
@@ -348,17 +365,12 @@ pub fn create_bam_header(
     let program = program_builder
         .build()
         .expect("This is not expected to fail");
-    sam_header_builder = sam_header_builder.add_program(pg_id, program);
+    sam_header_builder = sam_header_builder.add_program(pg_id.as_ref(), program);
 
     // @SQ entries
     for identifier_position in identifier_position_map.iter() {
         sam_header_builder = sam_header_builder.add_reference_sequence(
-            identifier_position.identifier.parse().map_err(|_e| {
-                Error::InvalidIndex(format!(
-                    "Could not create header. Contig name \"{}\" can not be used as @SQ ID.",
-                    identifier_position.identifier
-                ))
-            })?,
+            identifier_position.identifier.clone(),
             Map::<map::ReferenceSequence>::new(
                 usize::try_from(identifier_position.end - identifier_position.start + 1).and_then(NonZeroUsize::try_from).map_err(
                     |_e| {
@@ -388,7 +400,7 @@ pub fn intervals_to_bam<R, S>(
     duration: Option<&Duration>,
     alignment_parameters: &AlignmentParameters,
     rng: &mut R,
-) -> Result<sam::alignment::Record>
+) -> Result<sam::alignment::RecordBuf>
 where
     R: RngCore,
     S: SuffixArray,
@@ -439,6 +451,15 @@ where
                                 i2co.absolute_pos,
                                 original_symbols,
                             );
+                            let cigar_string = {
+                                let cigar = pre_cigar
+                                    .into_iter()
+                                    .collect::<sam::alignment::record_buf::Cigar>();
+                                let mut buf = Vec::new();
+                                sam::io::writer::record::write_cigar(&mut buf, &cigar)
+                                    .expect("Generated internally. Should be correct.");
+                                buf
+                            };
                             format!(
                                 "{},{}{},{},{},{},{},{:.2};",
                                 i2co.contig_name,
@@ -447,8 +468,7 @@ where
                                     Direction::Backward => '-',
                                 },
                                 i2co.relative_pos + 1,
-                                sam::record::Cigar::try_from(pre_cigar)
-                                    .expect("Generated CIGAR string should always be valid"),
+                                String::from_utf8_lossy(&cigar_string),
                                 String::from_utf8_lossy(&md),
                                 nm,
                                 i2co.interval.interval.size,
@@ -694,8 +714,8 @@ fn create_bam_record(
     // Contains valid content for the `YA` tag
     alternative_hits: Option<AlternativeAlignments>,
     original_symbols: &OriginalSymbols,
-) -> Result<sam::alignment::Record> {
-    let mut bam_builder = sam::alignment::Record::builder();
+) -> Result<sam::alignment::RecordBuf> {
+    let mut bam_builder = sam::alignment::RecordBuf::builder();
 
     let (cigar, md_tag, edit_distance) = hit_interval.map_or((None, None, None), |hit_interval| {
         let (cigar, md_tag, edit_distance) = hit_interval.edit_operations.to_bam_fields(
@@ -707,17 +727,17 @@ fn create_bam_record(
     });
 
     // Copy flags from input record
-    let mut flags = sam::record::Flags::from(input_record.bam_flags);
+    let mut flags = sam::alignment::record::Flags::from(input_record.bam_flags);
 
     // Remove flags mapAD does not know about (yet)
-    flags.remove(sam::record::Flags::MATE_UNMAPPED);
-    flags.remove(sam::record::Flags::MATE_REVERSE_COMPLEMENTED);
-    flags.remove(sam::record::Flags::PROPERLY_ALIGNED);
-    flags.remove(sam::record::Flags::SECONDARY);
-    flags.remove(sam::record::Flags::SUPPLEMENTARY);
+    flags.remove(sam::alignment::record::Flags::MATE_UNMAPPED);
+    flags.remove(sam::alignment::record::Flags::MATE_REVERSE_COMPLEMENTED);
+    flags.remove(sam::alignment::record::Flags::PROPERLY_SEGMENTED);
+    flags.remove(sam::alignment::record::Flags::SECONDARY);
+    flags.remove(sam::alignment::record::Flags::SUPPLEMENTARY);
 
     if let Some(position) = relative_position {
-        flags.remove(sam::record::Flags::UNMAPPED);
+        flags.remove(sam::alignment::record::Flags::UNMAPPED);
         bam_builder = bam_builder.set_alignment_start(
             usize::try_from(position + 1)
                 .ok()
@@ -725,25 +745,21 @@ fn create_bam_record(
                 .ok_or_else(|| Error::InvalidIndex("Could not compute valid coordinate".into()))?,
         );
     } else {
-        flags.insert(sam::record::Flags::UNMAPPED);
-        flags.remove(sam::record::Flags::REVERSE_COMPLEMENTED);
-        flags.remove(sam::record::Flags::PROPERLY_ALIGNED);
+        flags.insert(sam::alignment::record::Flags::UNMAPPED);
+        flags.remove(sam::alignment::record::Flags::REVERSE_COMPLEMENTED);
+        flags.remove(sam::alignment::record::Flags::PROPERLY_SEGMENTED);
     }
 
     // Flag read that maps to reverse strand
     if strand == Some(Direction::Backward) {
-        flags.insert(sam::record::Flags::REVERSE_COMPLEMENTED);
+        flags.insert(sam::alignment::record::Flags::REVERSE_COMPLEMENTED);
     } else {
-        flags.remove(sam::record::Flags::REVERSE_COMPLEMENTED);
+        flags.remove(sam::alignment::record::Flags::REVERSE_COMPLEMENTED);
     }
 
     // Set mandatory properties of the BAM record
     if let Some(read_name) = input_record.name {
-        bam_builder = bam_builder.set_read_name(
-            read_name
-                .try_into()
-                .map_err(|e| Error::Hts(format!("Invalid record name: \"{e}\"")))?,
-        );
+        bam_builder = bam_builder.set_name(read_name.into());
     }
     bam_builder = bam_builder.set_flags(flags);
 
@@ -760,24 +776,18 @@ fn create_bam_record(
     // Some (not all) fields need to be reversed when the read maps to the reverse strand
     match strand {
         Some(Direction::Forward) | None => {
-            bam_builder =
-                bam_builder
-                    .set_sequence(
-                        sam::record::Sequence::try_from(input_record.sequence)
-                            .map_err(|e| Error::Hts(format!("Invalid sequence: \"{e}\"")))?,
-                    )
-                    .set_quality_scores(input_record.base_qualities.try_into().map_err(|e| {
-                        Error::Hts(format!("Invalid base quality string: \"{e}\""))
-                    })?);
+            bam_builder = bam_builder
+                .set_sequence(sam::alignment::record_buf::Sequence::from(
+                    input_record.sequence,
+                ))
+                .set_quality_scores(input_record.base_qualities.into());
         }
         Some(Direction::Backward) => {
             // CIGAR strings and MD tags are reversed during generation
             bam_builder = bam_builder
-                .set_sequence(
-                    sam::record::Sequence::try_from(dna::revcomp(&input_record.sequence)).map_err(
-                        |e| Error::Hts(format!("Could not create valid sequence: \"{e}\"")),
-                    )?,
-                )
+                .set_sequence(sam::alignment::record_buf::Sequence::from(dna::revcomp(
+                    &input_record.sequence,
+                )))
                 .set_quality_scores(
                     input_record
                         .base_qualities
@@ -785,19 +795,14 @@ fn create_bam_record(
                         .rev()
                         .copied()
                         .collect::<Vec<_>>()
-                        .try_into()
-                        .map_err(|e| Error::Hts(format!("Invalid base quality string: \"{e}\"")))?,
+                        .into(),
                 );
         }
     }
 
     // CIGAR strings and MD tags are reversed during generation
     if let Some(cigar) = cigar {
-        bam_builder = bam_builder.set_cigar(
-            cigar
-                .try_into()
-                .expect("Generated CIGAR string should always be valid"),
-        );
+        bam_builder = bam_builder.set_cigar(cigar.into());
     }
 
     if let Some(mapq) = mapq {
@@ -819,37 +824,28 @@ fn create_bam_record(
         .into_iter()
         // Remove BWA (+ mapAD) specific auxiliary fields (avoids potential confusion)
         .filter(|(tag, _v)| !tag_filter.contains(&tag))
-        .map(|(tag, value)| {
-            Ok((
-                tag.as_slice()
-                    .try_into()
-                    .map_err(|_e| Error::ParseError("Could not read input data tag".into()))?,
-                value.into(),
-            ))
-        })
+        .map(|(tag, value)| Ok((tag.into(), value.into())))
         .collect::<Result<Vec<_>>>()?;
 
     if let Some(hit_interval) = hit_interval {
         aux_data.push((
-            sam::record::data::field::tag::ALIGNMENT_SCORE,
-            sam::record::data::field::Value::Float(hit_interval.alignment_score),
+            sam::alignment::record::data::field::tag::Tag::ALIGNMENT_SCORE,
+            sam::alignment::record_buf::data::field::Value::Float(hit_interval.alignment_score),
         ));
     };
 
     if let Some(edit_distance) = edit_distance {
         aux_data.push((
-            sam::record::data::field::tag::EDIT_DISTANCE,
-            sam::record::data::field::Value::Int32(i32::from(edit_distance)),
+            sam::alignment::record::data::field::tag::Tag::EDIT_DISTANCE,
+            sam::alignment::record_buf::data::field::Value::Int32(i32::from(edit_distance)),
         ));
     };
 
     // CIGAR strings and MD tags are reversed during generation
     if let Some(md_tag) = md_tag {
         aux_data.push((
-            sam::record::data::field::tag::MISMATCHED_POSITIONS,
-            sam::record::data::field::Value::String(
-                String::from_utf8(md_tag).expect("This is not expected to fail"),
-            ),
+            sam::alignment::record::data::field::Tag::MISMATCHED_POSITIONS,
+            sam::alignment::record_buf::data::field::Value::String(BString::from(md_tag)),
         ));
     }
 
@@ -857,42 +853,27 @@ fn create_bam_record(
     if let Some(alternative_hits) = alternative_hits {
         if !alternative_hits.xa.is_empty() {
             aux_data.push((
-                b"XA"
-                    .as_slice()
-                    .try_into()
-                    .expect("This is not expected to fail"),
-                sam::record::data::field::Value::String(alternative_hits.xa),
+                (*b"XA").into(),
+                sam::alignment::record_buf::data::field::Value::String(alternative_hits.xa.into()),
             ));
         }
         aux_data.push((
-            b"X0"
-                .as_slice()
-                .try_into()
-                .expect("This is not expected to fail"),
-            sam::record::data::field::Value::Int32(alternative_hits.x0),
+            (*b"X0").into(),
+            sam::alignment::record_buf::data::field::Value::Int32(alternative_hits.x0),
         ));
         aux_data.push((
-            b"X1"
-                .as_slice()
-                .try_into()
-                .expect("This is not expected to fail"),
-            sam::record::data::field::Value::Int32(alternative_hits.x1),
+            (*b"X1").into(),
+            sam::alignment::record_buf::data::field::Value::Int32(alternative_hits.x1),
         ));
         if alternative_hits.x1 > 0 {
             aux_data.push((
-                b"XS"
-                    .as_slice()
-                    .try_into()
-                    .expect("This is not expected to fail"),
-                sam::record::data::field::Value::Float(alternative_hits.xs),
+                (*b"XS").into(),
+                sam::alignment::record_buf::data::field::Value::Float(alternative_hits.xs),
             ));
         }
         aux_data.push((
-            b"XT"
-                .as_slice()
-                .try_into()
-                .expect("This is not expected to fail"),
-            sam::record::data::field::Value::Character(
+            (*b"XT").into(),
+            sam::alignment::record_buf::data::field::Value::Character(
                 alternative_hits
                     .xt
                     .try_into()
@@ -904,15 +885,16 @@ fn create_bam_record(
     if let Some(duration) = duration {
         // Add the time that was needed for mapping the read
         aux_data.push((
-            b"XD"
-                .as_slice()
-                .try_into()
-                .expect("This is not expected to fail"),
-            sam::record::data::field::Value::Float(duration.as_secs_f32()),
+            (*b"XD").into(),
+            sam::alignment::record_buf::data::field::Value::Float(duration.as_secs_f32()),
         ));
     }
 
-    bam_builder = bam_builder.set_data(aux_data.into_iter().collect::<sam::record::Data>());
+    bam_builder = bam_builder.set_data(
+        aux_data
+            .into_iter()
+            .collect::<sam::alignment::record_buf::Data>(),
+    );
 
     Ok(bam_builder.build())
 }

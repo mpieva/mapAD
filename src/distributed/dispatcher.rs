@@ -10,8 +10,10 @@ use std::{
 use bio::data_structures::suffix_array::SuffixArray;
 use log::{debug, info, warn};
 use mio::{net, Events, Interest, Poll, Token};
-use noodles::sam::AlignmentWriter;
-use noodles::{bam, sam};
+use noodles::{
+    bam,
+    sam::{self, alignment::io::Write as AlignmentWrite},
+};
 use rayon::prelude::*;
 
 use crate::{
@@ -116,7 +118,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             &fmd_index.occ,
         );
 
-        let mut out_file = bam::Writer::new(
+        let mut out_file = bam::io::Writer::new(
             OpenOptions::new()
                 .read(false)
                 .write(true)
@@ -150,7 +152,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         original_symbols: &OriginalSymbols,
         listener: &mut net::TcpListener,
         out_header: &sam::Header,
-        out_file: &mut bam::Writer<W>,
+        out_file: &mut bam::io::Writer<W>,
     ) -> Result<()>
     where
         S: SuffixArray + Send + Sync,
@@ -324,7 +326,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         original_symbols: &OriginalSymbols,
         alignment_parameters: &AlignmentParameters,
         out_header: &sam::Header,
-        out_file: &mut bam::Writer<W>,
+        out_file: &mut bam::io::Writer<W>,
     ) -> Result<()>
     where
         S: SuffixArray + Sync,
@@ -352,7 +354,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
 
         debug!("Write chunk of BAM records to output file");
         for record in &bam_records {
-            out_file.write_alignment_record(out_header, record)?;
+            bam::io::Writer::write_alignment_record(out_file, out_header, record)?;
         }
 
         Ok(())

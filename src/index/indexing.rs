@@ -124,7 +124,7 @@ fn index<T: Rng>(
                     FastaIdPosition {
                         start: end - record.sequence().len() as u64,
                         end: end - 1,
-                        identifier: record.name().to_string(),
+                        identifier: String::from_utf8_lossy(record.name()).into(),
                     }
                 })
                 .collect::<Vec<_>>(),

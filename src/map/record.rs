@@ -1,11 +1,10 @@
 use std::{collections::BTreeMap, fmt};
 
 use bio::alphabets::dna;
+use bstr::{BString, ByteSlice};
 use either::Either;
-use noodles::{
-    cram, fastq,
-    sam::{self, record::data::field::value::Array},
-};
+use log::warn;
+use noodles::{cram, fastq, sam};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -30,8 +29,8 @@ pub enum BamAuxField {
     U32(u32),
     Float(f32),
     Double(f64),
-    String(String),
-    HexByteArray(String),
+    String(BString),
+    HexByteArray(BString),
     ArrayI8(Vec<i8>),
     ArrayU8(Vec<u8>),
     ArrayI16(Vec<i16>),
@@ -43,11 +42,11 @@ pub enum BamAuxField {
 
 // We (currently) only get references to the internal fields of `noodles::bam::Record`s,
 // so we have to copy/clone data over
-impl From<&sam::record::data::field::Value> for BamAuxField {
-    fn from(input: &sam::record::data::field::Value) -> Self {
-        use sam::record::data::field::Value;
-        match input {
-            Value::Character(v) => Self::Char(u8::from(*v)),
+impl From<&sam::alignment::record::data::field::Value<'_>> for BamAuxField {
+    fn from(value: &sam::alignment::record::data::field::Value<'_>) -> Self {
+        use sam::alignment::record::data::field::value::{Array, Value};
+        match value {
+            Value::Character(v) => Self::Char(*v),
             Value::Int8(v) => Self::I8(*v),
             Value::UInt8(v) => Self::U8(*v),
             Value::Int16(v) => Self::I16(*v),
@@ -55,26 +54,80 @@ impl From<&sam::record::data::field::Value> for BamAuxField {
             Value::Int32(v) => Self::I32(*v),
             Value::UInt32(v) => Self::U32(*v),
             Value::Float(v) => Self::Float(*v),
-            //Value::Double(v) => Self::Double(*v),
-            Value::String(v) => Self::String(v.clone()),
-            Value::Hex(v) => Self::HexByteArray(v.to_string()),
-            Value::Array(Array::Int8(v)) => Self::ArrayI8(v.clone()),
-            Value::Array(Array::UInt8(v)) => Self::ArrayU8(v.clone()),
-            Value::Array(Array::Int16(v)) => Self::ArrayI16(v.clone()),
-            Value::Array(Array::UInt16(v)) => Self::ArrayU16(v.clone()),
-            Value::Array(Array::Int32(v)) => Self::ArrayI32(v.clone()),
-            Value::Array(Array::UInt32(v)) => Self::ArrayU32(v.clone()),
-            Value::Array(Array::Float(v)) => Self::ArrayFloat(v.clone()),
+            //Value::Double(v) => Ok(Self::Double(*v)),
+            Value::String(v) => Self::String((*v).to_owned()),
+            Value::Hex(v) => Self::HexByteArray((*v).to_owned()),
+            Value::Array(Array::Int8(v)) => Self::ArrayI8(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
+            Value::Array(Array::UInt8(v)) => Self::ArrayU8(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
+            Value::Array(Array::Int16(v)) => Self::ArrayI16(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
+            Value::Array(Array::UInt16(v)) => Self::ArrayU16(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
+            Value::Array(Array::Int32(v)) => Self::ArrayI32(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
+            Value::Array(Array::UInt32(v)) => Self::ArrayU32(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
+            Value::Array(Array::Float(v)) => Self::ArrayFloat(
+                v.iter()
+                    .collect::<std::io::Result<_>>()
+                    .unwrap_or_else(|_e| {
+                        warn!("Dropped unreadable array");
+                        Vec::new()
+                    }),
+            ),
         }
     }
 }
 
-impl From<BamAuxField> for sam::record::data::field::Value {
+impl From<&sam::alignment::record_buf::data::field::Value> for BamAuxField {
+    fn from(value: &sam::alignment::record_buf::data::field::Value) -> Self {
+        value.into()
+    }
+}
+
+impl From<BamAuxField> for sam::alignment::record_buf::data::field::Value {
     fn from(input: BamAuxField) -> Self {
+        use sam::alignment::record_buf::data::field::value::Array;
         match input {
-            BamAuxField::Char(v) => {
-                Self::Character(v.try_into().expect("Char is guaranteed to be ASCII"))
-            }
+            BamAuxField::Char(v) => Self::Character(v),
             BamAuxField::I8(v) => Self::Int8(v),
             BamAuxField::U8(v) => Self::UInt8(v),
             BamAuxField::I16(v) => Self::Int16(v),
@@ -82,11 +135,12 @@ impl From<BamAuxField> for sam::record::data::field::Value {
             BamAuxField::I32(v) => Self::Int32(v),
             BamAuxField::U32(v) => Self::UInt32(v),
             BamAuxField::Float(v) => Self::Float(v),
-            BamAuxField::Double(v) => Self::Float(v as f32), // FIXME
-            BamAuxField::String(v) => Self::String(v),
-            BamAuxField::HexByteArray(v) => {
-                Self::Hex(v.parse().expect("this to be not used internally"))
+            BamAuxField::Double(v) => {
+                warn!("Lost precision: Converted 8-byte to 4-byte floating point number array");
+                Self::Float(v as f32)
             }
+            BamAuxField::String(v) => Self::String(v.as_bstr().to_owned()),
+            BamAuxField::HexByteArray(v) => Self::Hex(v.as_bstr().to_owned()),
             BamAuxField::ArrayI8(v) => Self::Array(Array::Int8(v)),
             BamAuxField::ArrayU8(v) => Self::Array(Array::UInt8(v)),
             BamAuxField::ArrayI16(v) => Self::Array(Array::Int16(v)),
@@ -107,51 +161,54 @@ pub struct Record {
     pub bam_flags: u16,
 }
 
-impl TryFrom<sam::alignment::Record> for Record {
+impl TryFrom<&dyn sam::alignment::Record> for Record {
     type Error = Error;
 
-    fn try_from(input: sam::alignment::Record) -> Result<Self> {
-        let mut sequence = input.sequence().to_string().into_bytes();
+    fn try_from(input: &dyn sam::alignment::Record) -> Result<Self> {
+        let mut sequence = input.sequence().iter().collect::<Vec<_>>();
 
+        // Reads can not be longer than `i16::MAX`
         if i16::try_from(sequence.len()).is_err() {
             return Err(Error::SeqLenError(
                 input
-                    .read_name()
-                    .map(|maybe_read_name| maybe_read_name.to_string())
+                    .name()
+                    .map(|maybe_record| {
+                        String::from_utf8_lossy(maybe_record.as_bytes()).into_owned()
+                    })
                     .unwrap_or_else(|| String::from("unnamed record")),
             ));
         }
 
-        let mut base_qualities = input
-            .quality_scores()
-            .as_ref()
-            .iter()
-            .copied()
-            .map(u8::from)
-            .collect::<Vec<_>>();
+        let mut base_qualities = input.quality_scores().as_ref().iter().collect::<Vec<_>>();
 
-        if input.flags().is_reverse_complemented() {
-            base_qualities.reverse();
-            sequence = dna::revcomp(sequence);
+        if let Ok(flags) = input.flags() {
+            if flags.is_reverse_complemented() {
+                base_qualities.reverse();
+                sequence = dna::revcomp(sequence);
+            }
+        } else {
+            warn!("Dropped unreadable flags")
         };
 
         let input_tags = input
             .data()
             .iter()
-            .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
+            .filter_map(|maybe_tv| {
+                maybe_tv
+                    .ok()
+                    .as_ref()
+                    .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
+            })
             .collect::<Vec<_>>();
 
-        let read_name = input.read_name().map(|name| {
-            let name: &[u8] = name.as_ref();
-            name.to_vec()
-        });
+        let read_name = input.name().map(|name| name.as_bytes().to_owned());
 
         Ok(Self {
             sequence,
             base_qualities,
             name: read_name,
             bam_tags: input_tags,
-            bam_flags: input.flags().bits(),
+            bam_flags: input.flags().map(|flags| flags.bits()).unwrap_or(0),
         })
     }
 }
@@ -162,9 +219,10 @@ impl TryFrom<fastq::Record> for Record {
     fn try_from(fq_record: fastq::Record) -> Result<Self> {
         let sequence = fq_record.sequence().to_ascii_uppercase();
 
+        // Reads can not be longer than `i16::MAX`
         if i16::try_from(sequence.len()).is_err() {
             return Err(Error::SeqLenError(
-                std::str::from_utf8(fq_record.name())?.to_owned(),
+                String::from_utf8_lossy(fq_record.name()).into_owned(),
             ));
         }
 
@@ -186,17 +244,22 @@ impl TryFrom<fastq::Record> for Record {
     }
 }
 
-impl TryFrom<cram::Record> for Record {
+impl TryFrom<cram::record::Record> for Record {
     type Error = Error;
 
     fn try_from(input: cram::Record) -> Result<Self> {
-        let mut sequence = input.sequence().to_string().into_bytes();
+        use sam::alignment::record::{Name, Sequence};
 
+        let mut sequence = input.sequence().iter().collect::<Vec<_>>();
+
+        // Reads can not be longer than `i16::MAX`
         if i16::try_from(sequence.len()).is_err() {
             return Err(Error::SeqLenError(
                 input
-                    .read_name()
-                    .map(|maybe_read_name| maybe_read_name.to_string())
+                    .name()
+                    .map(|maybe_record| {
+                        String::from_utf8_lossy(maybe_record.as_bytes()).into_owned()
+                    })
                     .unwrap_or_else(|| String::from("unnamed record")),
             ));
         }
@@ -220,10 +283,7 @@ impl TryFrom<cram::Record> for Record {
             .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
             .collect::<Vec<_>>();
 
-        let read_name = input.read_name().map(|name| {
-            let name: &[u8] = name.as_ref();
-            name.to_vec()
-        });
+        let read_name = input.name().map(|name| name.as_bytes().to_owned());
 
         Ok(Self {
             sequence,
@@ -237,10 +297,7 @@ impl TryFrom<cram::Record> for Record {
 
 impl fmt::Display for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let read_name = self
-            .name
-            .as_ref()
-            .map_or(sam::record::read_name::MISSING, AsRef::as_ref);
+        let read_name = self.name.as_ref().map_or(b"*".as_slice(), AsRef::as_ref);
         write!(f, "{}", String::from_utf8_lossy(read_name))
     }
 }
@@ -260,7 +317,7 @@ impl Default for EditOperation {
     }
 }
 
-impl From<EditOperation> for sam::record::cigar::op::Kind {
+impl From<EditOperation> for sam::alignment::record::cigar::op::Kind {
     fn from(src: EditOperation) -> Self {
         match src {
             EditOperation::Insertion(_) => Self::Insertion,
@@ -270,9 +327,9 @@ impl From<EditOperation> for sam::record::cigar::op::Kind {
     }
 }
 
-impl From<EditOperation> for sam::record::cigar::Op {
+impl From<EditOperation> for sam::alignment::record::cigar::Op {
     fn from(src: EditOperation) -> Self {
-        use sam::record::cigar::op::Kind;
+        use sam::alignment::record::cigar::op::Kind;
         match src {
             EditOperation::Insertion(l) => Self::new(Kind::Insertion, l.into()),
             EditOperation::Deletion(l, _) => Self::new(Kind::Deletion, l.into()),
@@ -308,8 +365,8 @@ impl EditOperationsTrack {
         strand: Direction,
         absolute_pos: usize,
         original_symbols: &OriginalSymbols,
-    ) -> (Vec<sam::record::cigar::Op>, Vec<u8>, u16) {
-        use sam::record::cigar::Op;
+    ) -> (Vec<sam::alignment::record::cigar::Op>, Vec<u8>, u16) {
+        use sam::alignment::record::cigar::Op;
         // Reconstruct the order of the remaining edit operations and condense CIGAR
         let mut num_matches: u32 = 0;
         let mut num_operations = 1;
