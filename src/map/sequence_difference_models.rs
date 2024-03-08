@@ -210,7 +210,7 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
         let pattern_length = pattern_length as i16;
         let center = pattern_length / 2;
         self.three_prime_flank_offset
-            .map(|tp_flank_offset| pattern_length - 1 - tp_flank_offset)
+            .map(|tp_flank_offset| pattern_length - tp_flank_offset)
             .map(|start_pos| start_pos.max(center))
             .unwrap_or(center)
     }
@@ -315,7 +315,7 @@ impl SimpleAncientDnaModel {
             };
 
             // Scan offsets
-            (0..arbitrary_max).find(|&offset| {
+            (1..=arbitrary_max).find(|&offset| {
                 three_prime_overhang.powi(offset.into()) * ss_deamination_rate < threshold
             })
         };
