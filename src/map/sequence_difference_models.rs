@@ -207,12 +207,7 @@ impl SequenceDifferenceModel for SimpleAncientDnaModel {
     }
 
     fn find_alignment_start(&self, pattern_length: usize) -> i16 {
-        let pattern_length = pattern_length as i16;
-        let center = pattern_length / 2;
-        self.three_prime_flank_offset
-            .map(|tp_flank_offset| pattern_length - tp_flank_offset)
-            .map(|start_pos| start_pos.max(center))
-            .unwrap_or(center)
+        pattern_length as i16
     }
 }
 
