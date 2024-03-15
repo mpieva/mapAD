@@ -641,11 +641,8 @@ fn estimate_mapping_quality(
         if best_alignment_interval_size > 1 {
             // Multi-mapping
             1.0 / best_alignment_interval_size as f32
-        } else if other_alignments.is_empty() {
-            // Unique mapping
-            1.0
         } else {
-            // Pseudo-unique mapping
+            // Unique or pseudo-unique mapping
             let weighted_suboptimal_alignments = other_alignments
                 .iter()
                 // Filtering out "same" hits e.g. caused by InDels in homopolymers
