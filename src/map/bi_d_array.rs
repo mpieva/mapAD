@@ -174,7 +174,7 @@ impl BiDArray {
                             // Don't count gap penalties where they are not allowed.
                             // Sadly this is not expected to have much of an effect.
                             if idx_mapped_to_read.min(full_pattern_length - idx_mapped_to_read - 1)
-                                > alignment_parameters.gap_dist_ends as usize
+                                >= alignment_parameters.gap_dist_ends as usize
                             {
                                 mm_retval.max(alignment_parameters.penalty_gap_extend)
                                 // The following is not needed, since we can assume
