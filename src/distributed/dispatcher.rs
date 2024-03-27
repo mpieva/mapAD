@@ -35,6 +35,7 @@ enum TransportState {
     // This operation would block
     Stalled,
     // An error has occurred
+    #[allow(dead_code)]
     Error(io::Error),
     // There are no tasks left in the queue
     Complete,
