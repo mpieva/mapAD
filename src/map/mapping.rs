@@ -33,7 +33,7 @@ use crate::{
     map::{
         backtrack_tree::Tree,
         bi_d_array::BiDArray,
-        fmd_index::RtFmdIndex,
+        fmd_index::{RtBiInterval, RtFmdIndex},
         input_chunk_reader::{InputSource, TaskQueue},
         mismatch_bounds::{MismatchBound, MismatchBoundDispatch},
         prrange::PrRange,
@@ -422,7 +422,10 @@ where
                                 .rev()
                                 // Remove duplicates (coming from e.g. InDels in homopolymers)
                                 .filter(|suboptimal_alignment| {
-                                    suboptimal_alignment.interval != best_alignment.interval
+                                    !interval_cross_check(
+                                        &best_alignment.interval,
+                                        &suboptimal_alignment.interval,
+                                    )
                                 })
                                 // Report all valid positions of each suboptimal alignment
                                 .filter_map(|suboptimal_alignment| {
@@ -476,7 +479,10 @@ where
                         x1: intervals
                             .iter()
                             .filter(|suboptimal_alignment| {
-                                suboptimal_alignment.interval != best_alignment.interval
+                                !interval_cross_check(
+                                    &best_alignment.interval,
+                                    &suboptimal_alignment.interval,
+                                )
                             })
                             .map(|suboptimal_alignment| suboptimal_alignment.interval.size)
                             .sum::<usize>()
@@ -623,6 +629,10 @@ where
         }))
 }
 
+fn interval_cross_check(a: &RtBiInterval, b: &RtBiInterval) -> bool {
+    a.size == b.size && (a.lower == b.lower || a.lower_rev == b.lower_rev)
+}
+
 /// Estimate mapping quality based on the number of hits for a particular read, its alignment score,
 /// and its base qualities
 #[allow(clippy::assertions_on_constants)]
@@ -647,7 +657,7 @@ fn estimate_mapping_quality(
                 .iter()
                 // Filtering out "same" hits e.g. caused by InDels in homopolymers
                 .filter(|suboptimal_alignment| {
-                    suboptimal_alignment.interval != best_alignment.interval
+                    !interval_cross_check(&best_alignment.interval, &suboptimal_alignment.interval)
                 })
                 .fold(0.0, |acc, suboptimal_alignment| {
                     suboptimal_alignment
