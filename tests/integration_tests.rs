@@ -8,7 +8,10 @@ use std::{
 use noodles::{
     bam,
     core::Position,
-    sam::{self, AlignmentWriter},
+    sam::{
+        self,
+        alignment::{io::Write as AlignmentWrite, record::cigar, record_buf::Cigar},
+    },
 };
 use tempfile::{tempdir, TempDir};
 
@@ -25,15 +28,15 @@ use mapad::{
 
 #[derive(Debug, Clone, PartialEq)]
 struct BamFieldSubset {
-    name: Option<sam::record::read_name::ReadName>,
-    flags: sam::record::Flags,
+    name: Option<sam::alignment::record_buf::Name>,
+    flags: sam::alignment::record::Flags,
     tid: Option<usize>,
     pos: Option<Position>,
-    mq: Option<sam::record::MappingQuality>,
-    cigar: sam::record::Cigar,
+    mq: Option<sam::alignment::record::MappingQuality>,
+    cigar: Cigar,
     seq_len: usize,
-    seq: sam::record::Sequence,
-    qual: sam::record::QualityScores,
+    seq: sam::alignment::record_buf::Sequence,
+    qual: sam::alignment::record_buf::QualityScores,
     md: Option<String>,
     x0: Option<i32>,
     x1: Option<i32>,
@@ -112,12 +115,12 @@ TGATCGATCATGCTAAAAATCGAT";
         A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACGCCAG\t]]]]]]]]]]]]]]]]]]]]]]\n\
         A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACCCCAG\t]]]]]]]]]]]]]]]]]]]]]]";
 
-        let mut sam_reader = sam::Reader::new(&sam_content[..]);
+        let mut sam_reader = sam::io::Reader::new(&sam_content[..]);
         let input_sam_header = sam_reader.read_header().unwrap();
 
-        let mut input_bam_file = bam::Writer::new(File::create(&input_bam_path).unwrap());
+        let mut input_bam_file = bam::io::Writer::new(File::create(&input_bam_path).unwrap());
         input_bam_file.write_header(&input_sam_header).unwrap();
-        for sam_record in sam_reader.records(&input_sam_header) {
+        for sam_record in sam_reader.records() {
             let sam_record = sam_record.unwrap();
             input_bam_file
                 .write_alignment_record(&input_sam_header, &sam_record)
@@ -220,7 +223,7 @@ fn check_results<P>(bam_path: P)
 where
     P: AsRef<Path>,
 {
-    let mut bam_reader = bam::Reader::new(File::open(bam_path).unwrap());
+    let mut bam_reader = bam::io::Reader::new(File::open(bam_path).unwrap());
 
     // Check header
     let header = bam_reader.read_header().unwrap();
@@ -230,15 +233,22 @@ where
     @SQ\tSN:Chromosome_02\tLN:600\n\
     @SQ\tSN:Chromosome_03\tLN:84\n\
     @RG\tID:A12345\tSM:Sample1\n\
-    @PG\tID:samtools\tPN:samtools\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\tVN:1.13\n\
+    @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
     @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
-    assert!(&header.to_string().starts_with(header_prefix));
+
+    {
+        let mut header_writer = sam::io::Writer::new(Vec::new());
+        header_writer.write_header(&header).unwrap();
+        assert!(std::str::from_utf8(header_writer.get_ref())
+            .unwrap()
+            .starts_with(header_prefix));
+    }
 
     let mut result_sample = bam_reader
-        .records(&header)
+        .record_bufs(&header)
         .map(|maybe_record| {
             maybe_record.map(|record| BamFieldSubset {
-                name: record.read_name().cloned(),
+                name: record.name().cloned(),
                 flags: record.flags().to_owned(),
                 tid: record.reference_sequence_id(),
                 pos: record.alignment_start(),
@@ -249,28 +259,47 @@ where
                 qual: record.quality_scores().to_owned(),
                 md: record
                     .data()
-                    .get(&sam::record::data::field::tag::MISMATCHED_POSITIONS)
-                    .map(|value| value.as_str().unwrap().into()),
-                x0: record
-                    .data()
-                    .get(b"X0")
-                    .map(|value| value.as_int32().unwrap()),
+                    .get(&sam::alignment::record::data::field::tag::Tag::MISMATCHED_POSITIONS)
+                    .map(|v| match v {
+                        sam::alignment::record_buf::data::field::Value::String(value) => {
+                            value.to_string()
+                        }
+                        _ => {
+                            panic!();
+                        }
+                    }),
+                x0: record.data().get(b"X0").map(|v| match v {
+                    sam::alignment::record_buf::data::field::Value::Int32(value) => *value,
+                    _ => {
+                        panic!();
+                    }
+                }),
                 x1: record
                     .data()
                     .get(b"X1")
-                    .map(|value| value.as_int32().unwrap()),
-                xa: record
-                    .data()
-                    .get(b"XA")
-                    .map(|value| value.as_str().unwrap().to_owned()),
-                xs: record
-                    .data()
-                    .get(b"XS")
-                    .map(|value| value.as_float().unwrap().to_owned()),
-                xt: record
-                    .data()
-                    .get(b"XT")
-                    .map(|value| value.as_character().unwrap().into()),
+                    .map(|value| value.as_int().map(|v| v as i32).unwrap()),
+                xa: record.data().get(b"XA").map(|v| match v {
+                    sam::alignment::record_buf::data::field::Value::String(value) => {
+                        value.to_string()
+                    }
+                    _ => {
+                        panic!();
+                    }
+                }),
+                xs: record.data().get(b"XS").map(|v| match v {
+                    sam::alignment::record_buf::data::field::Value::Float(value) => *value,
+                    _ => {
+                        panic!();
+                    }
+                }),
+                xt: record.data().get(b"XT").map(|v| match v {
+                    sam::alignment::record_buf::data::field::Value::Character(value) => {
+                        *value as char
+                    }
+                    _ => {
+                        panic!();
+                    }
+                }),
             })
         })
         .collect::<io::Result<Vec<_>>>()
@@ -278,19 +307,19 @@ where
 
     let comp = vec![
         BamFieldSubset {
-            name: Some(
-                "A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "28M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 28)]),
             seq_len: 28,
-            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTAGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
@@ -299,19 +328,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 577.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "28M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 28)]),
             seq_len: 28,
-            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTAGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
@@ -320,19 +349,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "28M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 28)]),
             seq_len: 28,
-            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTAGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
@@ -341,19 +370,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 16.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "28M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 28)]),
             seq_len: 28,
-            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTAGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
@@ -362,19 +391,23 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 16.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(20_u8.try_into().unwrap()),
-            cigar: "14M1D13M".parse().unwrap(),
+            cigar: Cigar::from_iter([
+                cigar::Op::new(cigar::op::Kind::Match, 14),
+                cigar::Op::new(cigar::op::Kind::Deletion, 1),
+                cigar::Op::new(cigar::op::Kind::Match, 13),
+            ]),
             seq_len: 27,
-            seq: "TTAACAATGAACTTGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("14^A13".into()),
             x0: Some(1),
             x1: Some(0),
@@ -383,19 +416,23 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 16.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(20_u8.try_into().unwrap()),
-            cigar: "15M1I13M".parse().unwrap(),
+            cigar: Cigar::from_iter([
+                cigar::Op::new(cigar::op::Kind::Match, 15),
+                cigar::Op::new(cigar::op::Kind::Insertion, 1),
+                cigar::Op::new(cigar::op::Kind::Match, 13),
+            ]),
             seq_len: 29,
-            seq: "TTAACAATGAACTTAAGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTAAGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
@@ -404,19 +441,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
             tid: Some(0_i32.try_into().unwrap()),
             pos: Some(269.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "28M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 28)]),
             seq_len: 28,
-            seq: "TTAACAATGAACTTAGGGAACGACCAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"TTAACAATGAACTTAGGGAACGACCAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("28".into()),
             x0: Some(1),
             x1: Some(0),
@@ -425,19 +462,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 4.into(),
             tid: None,
             pos: None,
             mq: Some(0_u8.try_into().unwrap()),
-            cigar: sam::record::Cigar::default(),
+            cigar: Cigar::default(),
             seq_len: 28,
-            seq: "GATTGGTGCACGGACGCGCGTTGAAAGG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"GATTGGTGCACGGACGCGCGTTGAAAGG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: None,
             x0: None,
             x1: None,
@@ -446,19 +483,19 @@ where
             xt: None,
         },
         BamFieldSubset {
-            name: Some(
-                "A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
             tid: Some(1),
             pos: Some(85.try_into().unwrap()),
             mq: Some(3_u8.try_into().unwrap()),
-            cigar: "6M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 6)]),
             seq_len: 6,
-            seq: "CCTCAT".parse().unwrap(),
-            qual: "]]]]]]".parse().unwrap(),
+            seq: b"CCTCAT".into(),
+            qual: b"]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("6".into()),
             x0: Some(2),
             x1: Some(0),
@@ -467,23 +504,19 @@ where
             xt: Some('R'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
             tid: Some(1),
             pos: Some(188.try_into().unwrap()),
             mq: Some(3_u8.try_into().unwrap()),
-            cigar: "42M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 42)]),
             seq_len: 42,
-            seq: "TCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT"
-                .parse()
-                .unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
-                .parse()
-                .unwrap(),
+            seq: b"TCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGAT".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("42".into()),
             x0: Some(1),
             x1: Some(2),
@@ -495,19 +528,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
             tid: Some(1),
             pos: Some(504.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "22M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 22)]),
             seq_len: 22,
-            seq: "CTGGCGTGCTAGTCCCTCGGCG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"CTGGCGTGCTAGTCCCTCGGCG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("10N11".into()),
             x0: Some(1),
             x1: Some(0),
@@ -516,19 +549,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 16.into(),
             tid: Some(1),
             pos: Some(504.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "22M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 22)]),
             seq_len: 22,
-            seq: "CTGGCGTGCTAGTCCCTCGGCG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"CTGGCGTGCTAGTCCCTCGGCG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("10N11".into()),
             x0: Some(1),
             x1: Some(0),
@@ -537,19 +570,19 @@ where
             xt: Some('U'),
         },
         BamFieldSubset {
-            name: Some(
-                "A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678"
-                    .parse()
-                    .unwrap(),
-            ),
+            name: Some(b"A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 16.into(),
             tid: Some(1),
             pos: Some(504.try_into().unwrap()),
             mq: Some(37_u8.try_into().unwrap()),
-            cigar: "22M".parse().unwrap(),
+            cigar: Cigar::from_iter([cigar::Op::new(cigar::op::Kind::Match, 22)]),
             seq_len: 22,
-            seq: "CTGGGGTGCTAGTCCCTCGGCG".parse().unwrap(),
-            qual: "]]]]]]]]]]]]]]]]]]]]]]".parse().unwrap(),
+            seq: b"CTGGGGTGCTAGTCCCTCGGCG".into(),
+            qual: b"]]]]]]]]]]]]]]]]]]]]]]"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
             md: Some("4C5N11".into()),
             x0: Some(1),
             x1: Some(0),
@@ -558,7 +591,7 @@ where
             xt: Some('U'),
         },
     ];
-    result_sample.sort_by_key(|k| k.name.clone());
+    result_sample.sort_by_key(|k| k.name.clone().map(|v| v.as_ref().to_vec()));
 
     assert_eq!(result_sample, comp);
 }

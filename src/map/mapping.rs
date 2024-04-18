@@ -1896,9 +1896,18 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 4),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Deletion, 1),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    4
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Deletion,
+                    1
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    2
+                ),
             ]
         );
 
@@ -1939,9 +1948,18 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 3),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Deletion, 2),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 3),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    3
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Deletion,
+                    2
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    3
+                ),
             ]
         );
 
@@ -1981,9 +1999,18 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 1),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    5
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Insertion,
+                    1
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    2
+                ),
             ]
         );
 
@@ -2023,9 +2050,18 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 2),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    5
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Insertion,
+                    2
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    2
+                ),
             ]
         );
 
@@ -2081,9 +2117,18 @@ pub mod tests {
         assert_eq!(
             cigar,
             vec![
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 5),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Insertion, 3),
-                sam::record::cigar::Op::new(sam::record::cigar::op::Kind::Match, 2),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    5
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Insertion,
+                    3
+                ),
+                sam::alignment::record::cigar::Op::new(
+                    sam::alignment::record::cigar::op::Kind::Match,
+                    2
+                ),
             ]
         );
     }
