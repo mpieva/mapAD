@@ -169,14 +169,10 @@ impl TryFrom<&dyn sam::alignment::Record> for Record {
 
         // Reads can not be longer than `i16::MAX`
         if i16::try_from(sequence.len()).is_err() {
-            return Err(Error::SeqLenError(
-                input
-                    .name()
-                    .map(|maybe_record| {
-                        String::from_utf8_lossy(maybe_record.as_bytes()).into_owned()
-                    })
-                    .unwrap_or_else(|| String::from("unnamed record")),
-            ));
+            return Err(Error::SeqLenError(input.name().map_or_else(
+                || String::from("unnamed record"),
+                |maybe_record| String::from_utf8_lossy(maybe_record.as_bytes()).into_owned(),
+            )));
         }
 
         let mut base_qualities = input.quality_scores().as_ref().iter().collect::<Vec<_>>();
@@ -187,7 +183,7 @@ impl TryFrom<&dyn sam::alignment::Record> for Record {
                 sequence = dna::revcomp(sequence);
             }
         } else {
-            warn!("Dropped unreadable flags")
+            warn!("Dropped unreadable flags");
         };
 
         let input_tags = input
@@ -254,14 +250,10 @@ impl TryFrom<cram::record::Record> for Record {
 
         // Reads can not be longer than `i16::MAX`
         if i16::try_from(sequence.len()).is_err() {
-            return Err(Error::SeqLenError(
-                input
-                    .name()
-                    .map(|maybe_record| {
-                        String::from_utf8_lossy(maybe_record.as_bytes()).into_owned()
-                    })
-                    .unwrap_or_else(|| String::from("unnamed record")),
-            ));
+            return Err(Error::SeqLenError(input.name().map_or_else(
+                || String::from("unnamed record"),
+                |maybe_record| String::from_utf8_lossy(maybe_record.as_bytes()).into_owned(),
+            )));
         }
 
         let mut base_qualities = input

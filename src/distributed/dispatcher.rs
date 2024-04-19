@@ -173,7 +173,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         info!("Ready to distribute work");
         loop {
             poll.poll(&mut events, None)?;
-            for event in events.iter() {
+            for event in &events {
                 if event.token() == Self::DISPATCHER_TOKEN {
                     // Workers of the world, register!
                     if self.accept_connections {

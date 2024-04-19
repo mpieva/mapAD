@@ -336,8 +336,8 @@ pub fn create_bam_header(
                 program_builder = program_builder.insert::<&bstr::BStr>(
                     map::program::tag::PREVIOUS_PROGRAM_ID,
                     end_of_pg_chain.as_bstr(),
-                )
-            };
+                );
+            }
         }
 
         // Ensure @PG/ID is unique
@@ -345,13 +345,12 @@ pub fn create_bam_header(
             .programs()
             .keys()
             .filter(|id| id.as_bstr() == pg_id || id.starts_with(format!("{pg_id}.").as_bytes()))
-            .cloned()
             .count();
         if pg_id_count > 0 {
             pg_id = Cow::from(format!("{pg_id}.{pg_id_count}"));
         }
 
-        for comment in src_header.comments().iter() {
+        for comment in src_header.comments() {
             sam_header_builder = sam_header_builder.add_comment(comment.as_bstr());
         }
 
