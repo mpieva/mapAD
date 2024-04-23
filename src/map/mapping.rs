@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     cell::RefCell,
-    collections::{BTreeSet, BinaryHeap},
+    collections::BinaryHeap,
     env,
     fs::OpenOptions,
     io::{self, Write},
@@ -294,9 +294,8 @@ pub fn create_bam_header(
         map::header::sort_order::UNSORTED.into(),
     );
 
-    let mut pg_id = Cow::from(CRATE_NAME);
-
-    let mut program_builder = {
+    let mut program_id = Cow::from(CRATE_NAME);
+    let program_builder = {
         let cmdline = {
             let mut out = env::args().fold(String::new(), |acc, part| acc + &part + " ");
             let _ = out.pop();
@@ -320,41 +319,20 @@ pub fn create_bam_header(
             sam_header_builder = sam_header_builder.add_program(id.as_bstr(), pg.to_owned());
         }
 
-        // Append our program line to an end of a @PG chain.
+        // Ensure @PG/ID is unique
         {
-            let ids = src_header
+            let pg_id_count = src_header
                 .programs()
                 .as_ref()
                 .keys()
-                .rev()
-                .collect::<BTreeSet<_>>();
-            let prev_ids = src_header
-                .programs()
-                .as_ref()
-                .values()
-                .filter_map(|b| {
-                    b.other_fields()
-                        .get(&map::program::tag::PREVIOUS_PROGRAM_ID)
+                .filter(|id| {
+                    id.as_bstr() == program_id
+                        || id.starts_with(format!("{program_id}.").as_bytes())
                 })
-                .collect::<BTreeSet<_>>();
-
-            if let Some(end_of_pg_chain) = ids.difference(&prev_ids).next() {
-                program_builder = program_builder.insert::<&bstr::BStr>(
-                    map::program::tag::PREVIOUS_PROGRAM_ID,
-                    end_of_pg_chain.as_bstr(),
-                );
+                .count();
+            if pg_id_count > 0 {
+                program_id = Cow::from(format!("{program_id}.{pg_id_count}"));
             }
-        }
-
-        // Ensure @PG/ID is unique
-        let pg_id_count = src_header
-            .programs()
-            .as_ref()
-            .keys()
-            .filter(|id| id.as_bstr() == pg_id || id.starts_with(format!("{pg_id}.").as_bytes()))
-            .count();
-        if pg_id_count > 0 {
-            pg_id = Cow::from(format!("{pg_id}.{pg_id_count}"));
         }
 
         for comment in src_header.comments() {
@@ -366,12 +344,6 @@ pub fn create_bam_header(
                 sam_header_builder.add_read_group(id.as_bstr(), read_group.clone());
         }
     }
-
-    // New @PG entry
-    let program = program_builder
-        .build()
-        .expect("This is not expected to fail");
-    sam_header_builder = sam_header_builder.add_program(pg_id.as_ref(), program);
 
     // @SQ entries
     for identifier_position in identifier_position_map.iter() {
@@ -389,10 +361,19 @@ pub fn create_bam_header(
         );
     }
 
-    // @HD entries
+    // Finalize header
     sam_header_builder = sam_header_builder.set_header(sam_header_header);
+    let mut sam_header = sam_header_builder.build();
 
-    Ok(sam_header_builder.build())
+    // Finalize and add new @PG entry
+    let program = program_builder
+        .build()
+        .expect("@PG entry is generated internally");
+    sam_header
+        .programs_mut()
+        .add(program_id.as_ref(), program)?;
+
+    Ok(sam_header)
 }
 
 /// Convert suffix array intervals to positions and BAM records
