@@ -316,15 +316,21 @@ pub fn create_bam_header(
         // We've got a header to copy some data from
 
         // @PG chain of old entries
-        for (id, pg) in src_header.programs() {
+        for (id, pg) in src_header.programs().as_ref() {
             sam_header_builder = sam_header_builder.add_program(id.as_bstr(), pg.to_owned());
         }
 
         // Append our program line to an end of a @PG chain.
         {
-            let ids = src_header.programs().keys().rev().collect::<BTreeSet<_>>();
+            let ids = src_header
+                .programs()
+                .as_ref()
+                .keys()
+                .rev()
+                .collect::<BTreeSet<_>>();
             let prev_ids = src_header
                 .programs()
+                .as_ref()
                 .values()
                 .filter_map(|b| {
                     b.other_fields()
@@ -343,6 +349,7 @@ pub fn create_bam_header(
         // Ensure @PG/ID is unique
         let pg_id_count = src_header
             .programs()
+            .as_ref()
             .keys()
             .filter(|id| id.as_bstr() == pg_id || id.starts_with(format!("{pg_id}.").as_bytes()))
             .count();
