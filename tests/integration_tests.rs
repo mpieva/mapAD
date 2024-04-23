@@ -226,17 +226,17 @@ where
     let mut bam_reader = bam::io::Reader::new(File::open(bam_path).unwrap());
 
     // Check header
-    let header = bam_reader.read_header().unwrap();
-    let header_prefix = "\
-    @HD\tVN:1.6\tSO:unsorted\n\
-    @SQ\tSN:chr1\tLN:600\n\
-    @SQ\tSN:Chromosome_02\tLN:600\n\
-    @SQ\tSN:Chromosome_03\tLN:84\n\
-    @RG\tID:A12345\tSM:Sample1\n\
-    @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
-    @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
-
     {
+        let header = bam_reader.read_header().unwrap();
+
+        let header_prefix = "\
+        @HD\tVN:1.6\tSO:unsorted\n\
+        @SQ\tSN:chr1\tLN:600\n\
+        @SQ\tSN:Chromosome_02\tLN:600\n\
+        @SQ\tSN:Chromosome_03\tLN:84\n\
+        @RG\tID:A12345\tSM:Sample1\n\
+        @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
+        @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
         let mut header_writer = sam::io::Writer::new(Vec::new());
         header_writer.write_header(&header).unwrap();
         assert!(std::str::from_utf8(header_writer.get_ref())
@@ -245,23 +245,26 @@ where
     }
 
     let mut result_sample = bam_reader
-        .record_bufs(&header)
+        .records()
         .map(|maybe_record| {
             maybe_record.map(|record| BamFieldSubset {
-                name: record.name().cloned(),
+                name: record
+                    .name()
+                    .map(|v| v.as_bytes().to_owned())
+                    .map(Into::into),
                 flags: record.flags().to_owned(),
-                tid: record.reference_sequence_id(),
-                pos: record.alignment_start(),
+                tid: record.reference_sequence_id().map(|v| v.unwrap()),
+                pos: record.alignment_start().map(|v| v.unwrap()),
                 mq: record.mapping_quality(),
-                cigar: record.cigar().to_owned(),
+                cigar: record.cigar().try_into().unwrap(),
                 seq_len: record.sequence().len(),
-                seq: record.sequence().to_owned(),
-                qual: record.quality_scores().to_owned(),
+                seq: record.sequence().iter().collect::<Vec<_>>().into(),
+                qual: record.quality_scores().into(),
                 md: record
                     .data()
                     .get(&sam::alignment::record::data::field::tag::Tag::MISMATCHED_POSITIONS)
                     .map(|v| match v {
-                        sam::alignment::record_buf::data::field::Value::String(value) => {
+                        Ok(sam::alignment::record::data::field::Value::String(value)) => {
                             value.to_string()
                         }
                         _ => {
@@ -269,7 +272,7 @@ where
                         }
                     }),
                 x0: record.data().get(b"X0").map(|v| match v {
-                    sam::alignment::record_buf::data::field::Value::Int32(value) => *value,
+                    Ok(sam::alignment::record::data::field::Value::Int32(value)) => value,
                     _ => {
                         panic!();
                     }
@@ -277,9 +280,9 @@ where
                 x1: record
                     .data()
                     .get(b"X1")
-                    .map(|value| value.as_int().map(|v| v as i32).unwrap()),
+                    .map(|value| value.unwrap().as_int().map(|v| v as i32).unwrap()),
                 xa: record.data().get(b"XA").map(|v| match v {
-                    sam::alignment::record_buf::data::field::Value::String(value) => {
+                    Ok(sam::alignment::record::data::field::Value::String(value)) => {
                         value.to_string()
                     }
                     _ => {
@@ -287,14 +290,14 @@ where
                     }
                 }),
                 xs: record.data().get(b"XS").map(|v| match v {
-                    sam::alignment::record_buf::data::field::Value::Float(value) => *value,
+                    Ok(sam::alignment::record::data::field::Value::Float(value)) => value,
                     _ => {
                         panic!();
                     }
                 }),
                 xt: record.data().get(b"XT").map(|v| match v {
-                    sam::alignment::record_buf::data::field::Value::Character(value) => {
-                        *value as char
+                    Ok(sam::alignment::record::data::field::Value::Character(value)) => {
+                        value as char
                     }
                     _ => {
                         panic!();
