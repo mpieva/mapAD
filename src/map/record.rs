@@ -177,25 +177,20 @@ impl TryFrom<&dyn sam::alignment::Record> for Record {
 
         let mut base_qualities = input.quality_scores().as_ref().iter().collect::<Vec<_>>();
 
-        if let Ok(flags) = input.flags() {
-            if flags.is_reverse_complemented() {
-                base_qualities.reverse();
-                sequence = dna::revcomp(sequence);
-            }
-        } else {
-            warn!("Dropped unreadable flags");
-        };
+        if input.flags()?.is_reverse_complemented() {
+            base_qualities.reverse();
+            sequence = dna::revcomp(sequence);
+        }
 
         let input_tags = input
             .data()
             .iter()
-            .filter_map(|maybe_tv| {
+            .map(|maybe_tv| {
                 maybe_tv
-                    .ok()
-                    .as_ref()
-                    .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
+                    .map(|(tag, value)| (tag.as_ref().to_owned(), (&value).into()))
+                    .map_err(Into::into)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         let read_name = input.name().map(|name| name.as_bytes().to_owned());
 
@@ -204,7 +199,7 @@ impl TryFrom<&dyn sam::alignment::Record> for Record {
             base_qualities,
             name: read_name,
             bam_tags: input_tags,
-            bam_flags: input.flags().map(|flags| flags.bits()).unwrap_or(0),
+            bam_flags: input.flags().map(|flags| flags.bits())?,
         })
     }
 }
