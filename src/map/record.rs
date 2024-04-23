@@ -42,77 +42,57 @@ pub enum BamAuxField {
 
 // We (currently) only get references to the internal fields of `noodles::bam::Record`s,
 // so we have to copy/clone data over
-impl From<&sam::alignment::record::data::field::Value<'_>> for BamAuxField {
-    fn from(value: &sam::alignment::record::data::field::Value<'_>) -> Self {
+impl TryFrom<&sam::alignment::record::data::field::Value<'_>> for BamAuxField {
+    type Error = Error;
+    fn try_from(value: &sam::alignment::record::data::field::Value<'_>) -> Result<Self> {
         use sam::alignment::record::data::field::value::{Array, Value};
         match value {
-            Value::Character(v) => Self::Char(*v),
-            Value::Int8(v) => Self::I8(*v),
-            Value::UInt8(v) => Self::U8(*v),
-            Value::Int16(v) => Self::I16(*v),
-            Value::UInt16(v) => Self::U16(*v),
-            Value::Int32(v) => Self::I32(*v),
-            Value::UInt32(v) => Self::U32(*v),
-            Value::Float(v) => Self::Float(*v),
+            Value::Character(v) => Ok(Self::Char(*v)),
+            Value::Int8(v) => Ok(Self::I8(*v)),
+            Value::UInt8(v) => Ok(Self::U8(*v)),
+            Value::Int16(v) => Ok(Self::I16(*v)),
+            Value::UInt16(v) => Ok(Self::U16(*v)),
+            Value::Int32(v) => Ok(Self::I32(*v)),
+            Value::UInt32(v) => Ok(Self::U32(*v)),
+            Value::Float(v) => Ok(Self::Float(*v)),
             //Value::Double(v) => Ok(Self::Double(*v)),
-            Value::String(v) => Self::String((*v).to_owned()),
-            Value::Hex(v) => Self::HexByteArray((*v).to_owned()),
-            Value::Array(Array::Int8(v)) => Self::ArrayI8(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
-            Value::Array(Array::UInt8(v)) => Self::ArrayU8(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
-            Value::Array(Array::Int16(v)) => Self::ArrayI16(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
-            Value::Array(Array::UInt16(v)) => Self::ArrayU16(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
-            Value::Array(Array::Int32(v)) => Self::ArrayI32(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
-            Value::Array(Array::UInt32(v)) => Self::ArrayU32(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
-            Value::Array(Array::Float(v)) => Self::ArrayFloat(
-                v.iter()
-                    .collect::<std::io::Result<_>>()
-                    .unwrap_or_else(|_e| {
-                        warn!("Dropped unreadable array");
-                        Vec::new()
-                    }),
-            ),
+            Value::String(v) => Ok(Self::String((*v).to_owned())),
+            Value::Hex(v) => Ok(Self::HexByteArray((*v).to_owned())),
+            Value::Array(Array::Int8(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayI8)
+                .map_err(Into::into),
+            Value::Array(Array::UInt8(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayU8)
+                .map_err(Into::into),
+            Value::Array(Array::Int16(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayI16)
+                .map_err(Into::into),
+            Value::Array(Array::UInt16(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayU16)
+                .map_err(Into::into),
+            Value::Array(Array::Int32(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayI32)
+                .map_err(Into::into),
+            Value::Array(Array::UInt32(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayU32)
+                .map_err(Into::into),
+            Value::Array(Array::Float(v)) => v
+                .iter()
+                .collect::<std::io::Result<_>>()
+                .map(Self::ArrayFloat)
+                .map_err(Into::into),
         }
     }
 }
@@ -186,9 +166,9 @@ impl TryFrom<&dyn sam::alignment::Record> for Record {
             .data()
             .iter()
             .map(|maybe_tv| {
-                maybe_tv
-                    .map(|(tag, value)| (tag.as_ref().to_owned(), (&value).into()))
-                    .map_err(Into::into)
+                maybe_tv.map_err(Into::into).and_then(|(tag, value)| {
+                    (&value).try_into().map(|v| (tag.as_ref().to_owned(), v))
+                })
             })
             .collect::<Result<Vec<_>>>()?;
 
