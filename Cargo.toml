@@ -21,12 +21,12 @@ serde = { version = "1.0", features = ["derive"] }
 snap = "1.0"
 either = "1.6"
 rayon = "1.5"
-mio = { version = "0.8", features = ["os-poll", "net"] }
+mio = { version = "1.0", features = ["os-poll", "net"] }
 min-max-heap = { git = "https://github.com/tov/min-max-heap-rs", branch = "master"}
 slab = "0.4"
 anyhow = "1.0"
 mimalloc = { version = "0.1", default-features = false }
-noodles = { version = "0.76", features = ["bam", "bgzf", "core", "cram", "fasta", "fastq", "sam"] }
+noodles = { version = "0.77", features = ["bam", "bgzf", "core", "cram", "fasta", "fastq", "sam"] }
 time = { version = "0.3", features = ["local-offset"] }
 flate2 = "1.0"
 bstr = { version = "1.9", features = ["serde"] }
