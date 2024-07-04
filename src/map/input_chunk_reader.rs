@@ -155,8 +155,10 @@ impl InputSource {
                 chunk_size,
             ),
             Self::Cram(reader, header) => TaskQueue::new(
-                Box::new(reader.records(header).map(|maybe_record| {
-                    maybe_record.map_err(Into::into).and_then(TryInto::try_into)
+                Box::new(reader.alignment_records(header).map(|maybe_record| {
+                    maybe_record
+                        .map_err(Into::into)
+                        .and_then(|record| record.as_ref().try_into())
                 })),
                 chunk_size,
             ),

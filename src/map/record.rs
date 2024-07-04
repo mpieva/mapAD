@@ -4,7 +4,7 @@ use bio::alphabets::dna;
 use bstr::{BString, ByteSlice};
 use either::Either;
 use log::warn;
-use noodles::{cram, fastq, sam};
+use noodles::{fastq, sam};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -94,12 +94,6 @@ impl TryFrom<&sam::alignment::record::data::field::Value<'_>> for BamAuxField {
                 .map(Self::ArrayFloat)
                 .map_err(Into::into),
         }
-    }
-}
-
-impl From<&sam::alignment::record_buf::data::field::Value> for BamAuxField {
-    fn from(value: &sam::alignment::record_buf::data::field::Value) -> Self {
-        value.into()
     }
 }
 
@@ -211,53 +205,6 @@ impl TryFrom<fastq::Record> for Record {
             name: Some(name),
             bam_tags: Vec::new(),
             bam_flags: 0,
-        })
-    }
-}
-
-impl TryFrom<cram::record::Record> for Record {
-    type Error = Error;
-
-    fn try_from(input: cram::Record) -> Result<Self> {
-        use sam::alignment::record::{Name, Sequence};
-
-        let mut sequence = input.sequence().iter().collect::<Vec<_>>();
-
-        // Reads can not be longer than `i16::MAX`
-        if i16::try_from(sequence.len()).is_err() {
-            return Err(Error::SeqLenError(input.name().map_or_else(
-                || String::from("unnamed record"),
-                |maybe_record| String::from_utf8_lossy(maybe_record.as_bytes()).into_owned(),
-            )));
-        }
-
-        let mut base_qualities = input
-            .quality_scores()
-            .as_ref()
-            .iter()
-            .copied()
-            .map(u8::from)
-            .collect::<Vec<_>>();
-
-        if input.flags().is_reverse_complemented() {
-            base_qualities.reverse();
-            sequence = dna::revcomp(sequence);
-        };
-
-        let input_tags = input
-            .data()
-            .iter()
-            .map(|(tag, value)| (tag.as_ref().to_owned(), value.into()))
-            .collect::<Vec<_>>();
-
-        let read_name = input.name().map(|name| name.as_bytes().to_owned());
-
-        Ok(Self {
-            sequence,
-            base_qualities,
-            name: read_name,
-            bam_tags: input_tags,
-            bam_flags: input.flags().bits(),
         })
     }
 }
