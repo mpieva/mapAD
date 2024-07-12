@@ -249,6 +249,12 @@ fn define_cli() -> ArgMatches {
                         .help("Abort alignment when stack size limit is reached instead of trying to recover.")
                         .action(ArgAction::SetTrue)
                 )
+                .arg(
+                    Arg::new("force_overwrite")
+                        .long("force_overwrite")
+                        .help(format!("Force {CRATE_NAME} to overwrite the output BAM file."))
+                        .action(ArgAction::SetTrue)
+                )
         )
         .subcommand(
             Command::new("worker")
@@ -315,6 +321,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
     let out_file_path = map_matches
         .get_one::<String>("output")
         .expect("Presence is ensured by CLI definition");
+    let force_overwrite = map_matches.get_flag("force_overwrite");
 
     let num_threads = *map_matches
         .get_one("num_threads")
@@ -335,6 +342,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
             reads_path,
             reference_path,
             out_file_path,
+            force_overwrite,
             &alignment_parameters,
         )
         .and_then(|mut dispatcher| dispatcher.run(port))
@@ -343,6 +351,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
             reads_path,
             reference_path,
             out_file_path,
+            force_overwrite,
             &alignment_parameters,
         )
     } {

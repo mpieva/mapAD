@@ -55,6 +55,7 @@ pub struct Dispatcher<'a, 'b> {
     reads_path: &'b Path,
     reference_path: &'b Path,
     out_file_path: &'b Path,
+    force_overwrite: bool,
     alignment_parameters: &'a AlignmentParameters,
     connections: HashMap<Token, Connection>,
     accept_connections: bool,
@@ -68,6 +69,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         reads_path: &'b str,
         reference_path: &'b str,
         out_file_path: &'b str,
+        force_overwrite: bool,
         alignment_parameters: &'a AlignmentParameters,
     ) -> Result<Self> {
         let reads_path = Path::new(reads_path);
@@ -83,6 +85,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             reads_path,
             reference_path: Path::new(reference_path),
             out_file_path,
+            force_overwrite,
             alignment_parameters,
             connections: HashMap::new(),
             accept_connections: true,
@@ -122,7 +125,10 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             OpenOptions::new()
                 .read(false)
                 .write(true)
-                .create_new(true)
+                // If .create_new(true) is set, .create() and .truncate() are ignored
+                .create_new(!self.force_overwrite)
+                .create(true)
+                .truncate(true)
                 .open(self.out_file_path)?,
         );
 

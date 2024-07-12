@@ -172,6 +172,7 @@ fn integration_1_local() {
         env.input_bam_path.to_str().unwrap(),
         env.test_genome_path.to_str().unwrap(),
         output_bam_path_local.to_str().unwrap(),
+        false,
         &env.alignment_parameters,
     )
     .unwrap();
@@ -196,6 +197,7 @@ fn integration_1_distributed() {
                 env.input_bam_path.to_str().unwrap(),
                 env.test_genome_path.to_str().unwrap(),
                 output_bam_path_distr_clone.to_str().unwrap(),
+                false,
                 &env.alignment_parameters,
             )
             .unwrap();

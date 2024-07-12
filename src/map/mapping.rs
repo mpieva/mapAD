@@ -54,6 +54,7 @@ pub fn run(
     reads_path: &str,
     reference_path: &str,
     out_file_path: &str,
+    force_overwrite: bool,
     alignment_parameters: &AlignmentParameters,
 ) -> Result<()> {
     let reads_path = Path::new(reads_path);
@@ -87,7 +88,10 @@ pub fn run(
         OpenOptions::new()
             .read(false)
             .write(true)
-            .create_new(true)
+            // If .create_new(true) is set, .create() and .truncate() are ignored
+            .create_new(!force_overwrite)
+            .create(true)
+            .truncate(true)
             .open(out_file_path)?,
     );
 
