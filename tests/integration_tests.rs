@@ -5,6 +5,7 @@ use std::{
     thread,
 };
 
+use bstr::BString;
 use noodles::{
     bam,
     core::Position,
@@ -28,7 +29,7 @@ use mapad::{
 
 #[derive(Debug, Clone, PartialEq)]
 struct BamFieldSubset {
-    name: Option<sam::alignment::record_buf::Name>,
+    name: Option<BString>,
     flags: sam::alignment::record::Flags,
     tid: Option<usize>,
     pos: Option<Position>,
@@ -250,10 +251,7 @@ where
         .records()
         .map(|maybe_record| {
             maybe_record.map(|record| BamFieldSubset {
-                name: record
-                    .name()
-                    .map(|v| v.as_bytes().to_owned())
-                    .map(Into::into),
+                name: record.name().map(|v| v.to_vec()).map(Into::into),
                 flags: record.flags().to_owned(),
                 tid: record.reference_sequence_id().map(|v| v.unwrap()),
                 pos: record.alignment_start().map(|v| v.unwrap()),
@@ -596,7 +594,7 @@ where
             xt: Some('U'),
         },
     ];
-    result_sample.sort_by_key(|k| k.name.clone().map(|v| v.as_ref().to_vec()));
+    result_sample.sort_by_key(|k| k.name.clone().map(|v| v.to_vec()));
 
     assert_eq!(result_sample, comp);
 }

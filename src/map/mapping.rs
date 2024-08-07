@@ -750,7 +750,7 @@ fn create_bam_record(
 
     // Set mandatory properties of the BAM record
     if let Some(read_name) = input_record.name {
-        bam_builder = bam_builder.set_name(read_name.into());
+        bam_builder = bam_builder.set_name(read_name);
     }
     bam_builder = bam_builder.set_flags(flags);
 

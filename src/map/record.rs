@@ -202,7 +202,7 @@ impl TryFrom<fastq::Record> for Record {
         Ok(Self {
             sequence,
             base_qualities,
-            name: Some(name),
+            name: Some(name.to_vec()),
             bam_tags: Vec::new(),
             bam_flags: 0,
         })
