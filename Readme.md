@@ -184,9 +184,9 @@ refers to the number of position an alignment maps to.
 
 - Unique (best alignment maps to one position): $1$
 - Pseudo-unique (best alignment maps to one position, but, with worse score, also to
-  others): $\frac{\text{AS}_\text{best}}{\text{AS}_\text{best} + \sum{\text{AS}_\text{subopt} |\text{subopt_alignment}|}}$
+  others): $\frac{\text{AS}_\text{best}}{\text{AS}_\text{best} + \sum{\text{AS}_\text{subopt} |\text{subopt}|}}$
 - Non-unique (best alignment maps to multiple
-  positions): $\frac{1}{|\text{best_alignment}|}$
+  positions): $\frac{1}{|\text{best}|}$
 
 Mapping quality is defined as the PHRED-scaled probability that an alignment is incorrect. Hence the above probabilities
 are PHRED-scaled, and, for better compatibility with `BWA`, confined to the interval
