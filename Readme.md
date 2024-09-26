@@ -80,44 +80,44 @@ FASTA (`/path/to/reference/hg19.fasta{.tbw, .tle, .toc, .tpi, .trt, .tsa}`).
 The scoring model is derived from Udo
 Stenzel's [ANFO/r-candy](https://bitbucket.org/ustenzel/r-candy) ([Green et al., 2010](https://doi.org/10.1126/science.1188021)
 ; SOM3).
-The symbols <img src="https://render.githubusercontent.com/render/math?math=f"> (5'-overhang parameter),
-<img src="https://render.githubusercontent.com/render/math?math=t"> (3'-overhang parameter),
-<img src="https://render.githubusercontent.com/render/math?math=d"> (double-stranded deamination rate),
-<img src="https://render.githubusercontent.com/render/math?math=s"> (single-stranded deamination rate),
-<img src="https://render.githubusercontent.com/render/math?math=D"> (divergence / base error rate), and
-<img src="https://render.githubusercontent.com/render/math?math=i"> (indel rate) correspond to command line options.
+The symbols $f$ (5'-overhang parameter),
+$t$ (3'-overhang parameter),
+$d$ (double-stranded deamination rate),
+$s$ (single-stranded deamination rate),
+$D$ (divergence / base error rate), and
+$i$ (indel rate) correspond to command line options.
 
 Double-stranded library preparation: The probability of a
-position <img src="https://render.githubusercontent.com/render/math?math=i \in [0 .. l - 1]">
+position $i \in [0 .. l - 1]$
 being inside an overhang is
-<img src="https://render.githubusercontent.com/render/math?math=p_{\text{fwd}} = f^{i %2B 1}"> and
-<img src="https://render.githubusercontent.com/render/math?math=p_{\text{rev}} = t^{l - i}">, respectively.
+$p_{\text{fwd}} = f^{i + 1}$ and
+$p_{\text{rev}} = t^{l - i}$, respectively.
 Single-stranded library
-preparation: <img src="https://render.githubusercontent.com/render/math?math=p_{\text{fwd}} = f^{i %2B 1} %2B t^{l - 1} - f^{i %2B 1} t^{l - 1}">
+preparation: $p_{\text{fwd}} = f^{i + 1} + t^{l - 1} - f^{i + 1} t^{l - 1}$
 ,
-<img src="https://render.githubusercontent.com/render/math?math=p_{\text{rev}} = 0">.
+$p_{\text{rev}} = 0$.
 
 Effective deamination
-probabilities: <img src="https://render.githubusercontent.com/render/math?math=p_C = s p_{\text{fwd}} %2B d(1 - p_{\text{fwd}})">
+probabilities: $p_C = s p_{\text{fwd}} + d(1 - p_{\text{fwd}})$
 ,
-<img src="https://render.githubusercontent.com/render/math?math=p_G = s p_{\text{rev}} %2B d(1 - p_{\text{rev}})">
+$p_G = s p_{\text{rev}} + d(1 - p_{\text{rev}})$
 
-Sequencing errors and evolution (<img src="https://render.githubusercontent.com/render/math?math=q"> denotes the
+Sequencing errors and evolution ($q$ denotes the
 PHRED-scaled base quality):
-<img src="https://render.githubusercontent.com/render/math?math=\epsilon = \frac{10^{-q / 10}}{3} %2B \frac{D}{3} - \frac{10^{-q / 10}}{3} \frac{D}{3}">
+$\epsilon = \frac{10^{-q / 10}}{3} + \frac{D}{3} - \frac{10^{-q / 10}}{3} \frac{D}{3}$
 
 |     |  A  |  C  |  G  |  T  |
 |:---:|:---:|:---:|:---:|:---:|
-|  A  | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon %2B p_G - 4 \epsilon p_G"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
-|  C  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon - p_C %2B 4 \epsilon p_C"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
-|  G  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon - p_G %2B 4 \epsilon p_G"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> |
-|  T  | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon %2B p_C - 4 \epsilon p_C"> | <img src="https://render.githubusercontent.com/render/math?math=\epsilon"> | <img src="https://render.githubusercontent.com/render/math?math=1 - 3 \epsilon"> |
+|  A  | $1 - 3 \epsilon$ | $\epsilon$ | $\epsilon + p_G - 4 \epsilon p_G$ | $\epsilon$ |
+|  C  | $\epsilon$ | $1 - 3 \epsilon - p_C + 4 \epsilon p_C$ | $\epsilon$ | $\epsilon$ |
+|  G  | $\epsilon$ | $\epsilon$ | $1 - 3 \epsilon - p_G + 4 \epsilon p_G$ | $\epsilon$ |
+|  T  | $\epsilon$ | $\epsilon + p_C - 4 \epsilon p_C$ | $\epsilon$ | $1 - 3 \epsilon$ |
 
-All of the above probabilities are <img src="https://render.githubusercontent.com/render/math?math=\log_2"> transformed.
+All of the above probabilities are $\log_2$ transformed.
 The optimal penalty given the base in the read, its quality, and its position is subtracted from the penalty. During
 alignment the resulting per-base scores are summed up to form alignment scores. We use affine gap-costs with a gap
 opening penalty of
-<img src="https://render.githubusercontent.com/render/math?math=\log_2(i)"> (InDel rate). The gap extension penalty is
+$\log_2(i)$ (InDel rate). The gap extension penalty is
 currently fixed to a "representative mismatch" penalty (the score of a virtual "ordinary" mismatch not caused by
 deamination or poor base quality).
 
@@ -176,21 +176,21 @@ Mapping qualities are comparable with those produced by `BWA`. However, an align
 positions in the genome would be assigned a MAPQ of 3 by `mapAD`, whereas `BWA` would assign a MAPQ of 0. To filter out
 reads mapping to multiple positions a MAPQ threshold of > 5-10 roughly corresponds to a `BWA`-specific threshold of > 0.
 
-Here, <img src="https://render.githubusercontent.com/render/math?math=AS_\text{best}"> and
-<img src="https://render.githubusercontent.com/render/math?math=AS_\text{subopt}"> refer to the non-log-transformed
-alignment scores (<img src="https://render.githubusercontent.com/render/math?math=2^\text{AS}">) of the best and a
-suboptimal alignment, respectively. <img src="https://render.githubusercontent.com/render/math?math=|\text{alignment}|">
+Here, $AS_\text{best}$ and
+$AS_\text{subopt}$ refer to the non-log-transformed
+alignment scores ($2^\text{AS}$) of the best and a
+suboptimal alignment, respectively. $|\text{alignment}|$
 refers to the number of position an alignment maps to.
 
-- Unique (best alignment maps to one position): <img src="https://render.githubusercontent.com/render/math?math=1">
+- Unique (best alignment maps to one position): $1$
 - Pseudo-unique (best alignment maps to one position, but, with worse score, also to
-  others): <img src="https://render.githubusercontent.com/render/math?math=\frac{\text{AS}_\text{best}}{\text{AS}_\text{best} %2B \sum{\text{AS}_\text{subopt} |\text{subopt_alignment}|}}">
+  others): $\frac{\text{AS}_\text{best}}{\text{AS}_\text{best} + \sum{\text{AS}_\text{subopt} |\text{subopt_alignment}|}}$
 - Non-unique (best alignment maps to multiple
-  positions): <img src="https://render.githubusercontent.com/render/math?math=\frac{1}{|\text{best_alignment}|}">
+  positions): $\frac{1}{|\text{best_alignment}|}$
 
 Mapping quality is defined as the PHRED-scaled probability that an alignment is incorrect. Hence the above probabilities
 are PHRED-scaled, and, for better compatibility with `BWA`, confined to the interval
-<img src="https://render.githubusercontent.com/render/math?math=[0..37]">.
+$[0..37]$.
 
 A recommended equivalent to a mapping quality threshold of 25 for BWA mapped data is 20 for mapAD output.
 
