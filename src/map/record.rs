@@ -149,7 +149,12 @@ impl TryFrom<&dyn sam::alignment::Record> for Record {
             )));
         }
 
-        let mut base_qualities = input.quality_scores().as_ref().iter().collect::<Vec<_>>();
+        let mut base_qualities = input
+            .quality_scores()
+            .as_ref()
+            .iter()
+            .map(|maybe_record| maybe_record.map_err(|e| e.into()))
+            .collect::<Result<Vec<_>>>()?;
 
         if input.flags()?.is_reverse_complemented() {
             base_qualities.reverse();
