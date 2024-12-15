@@ -109,7 +109,7 @@ impl InputSource {
         const GZIP_MAGIC_NUMBER: [u8; 2] = [0x1f, 0x8b];
         const BAM_MAGIC_NUMBER: [u8; 4] = [b'B', b'A', b'M', 0x01];
 
-        let buf = src.get(..4).ok_or_else(|| Error::InvalidInputType)?;
+        let buf = src.get(..4).ok_or(Error::InvalidInputType)?;
         if buf == CRAM_MAGIC_NUMBER {
             return Ok(Format::Cram);
         }

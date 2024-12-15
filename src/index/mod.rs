@@ -157,7 +157,7 @@ pub struct SampledSuffixArray<'a, 'b, 'c> {
     sentinel: u8,
 }
 
-impl<'a, 'b, 'c> SuffixArray for SampledSuffixArray<'a, 'b, 'c> {
+impl SuffixArray for SampledSuffixArray<'_, '_, '_> {
     fn get(&self, index: usize) -> Option<usize> {
         if index < self.len() {
             let mut pos = index;

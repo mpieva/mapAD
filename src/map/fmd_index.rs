@@ -114,7 +114,7 @@ pub struct FmdExtIterator<'a> {
     fmd_index: &'a RtFmdIndex,
 }
 
-impl<'a> Iterator for FmdExtIterator<'a> {
+impl Iterator for FmdExtIterator<'_> {
     type Item = (u8, RtBiInterval);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -131,7 +131,7 @@ impl<'a> Iterator for FmdExtIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for FmdExtIterator<'a> {}
+impl ExactSizeIterator for FmdExtIterator<'_> {}
 
 impl<'a> FmdExtIterator<'a> {
     fn new(interval: &'a RtBiInterval, fmd_index: &'a RtFmdIndex) -> Self {
