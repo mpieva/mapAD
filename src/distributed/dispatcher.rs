@@ -341,21 +341,18 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         debug!("Translate suffix array intervals to genomic positions");
         let bam_records = hits
             .into_par_iter()
-            .map_init(
-                rand::thread_rng,
-                |mut rng, (record, hit_interval, duration)| {
-                    intervals_to_bam(
-                        record,
-                        hit_interval,
-                        suffix_array,
-                        identifier_position_map,
-                        original_symbols,
-                        Some(&duration),
-                        alignment_parameters,
-                        &mut rng,
-                    )
-                },
-            )
+            .map_init(rand::rng, |mut rng, (record, hit_interval, duration)| {
+                intervals_to_bam(
+                    record,
+                    hit_interval,
+                    suffix_array,
+                    identifier_position_map,
+                    original_symbols,
+                    Some(&duration),
+                    alignment_parameters,
+                    &mut rng,
+                )
+            })
             .collect::<Result<Vec<_>>>()?;
 
         debug!("Write chunk of BAM records to output file");

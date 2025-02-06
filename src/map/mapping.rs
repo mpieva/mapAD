@@ -259,7 +259,7 @@ where
                 })
             })
             .map_init(
-                rand::thread_rng,
+                rand::rng,
                 |mut rng, (record, hit_interval, duration)| -> Result<sam::alignment::RecordBuf> {
                     intervals_to_bam(
                         record,

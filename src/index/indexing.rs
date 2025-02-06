@@ -12,7 +12,7 @@ use log::info;
 use noodles::fasta;
 use rand::{
     prelude::{Rng, SeedableRng, StdRng},
-    seq::SliceRandom,
+    seq::IndexedRandom,
 };
 
 use crate::{
