@@ -242,10 +242,16 @@ fn define_cli() -> ArgMatches {
                         .value_parser(value_parser!(u8))
                 )
                 .arg(
-                    Arg::new("stack_limit_abort")
-                        .long("stack_limit_abort")
-                        .help("Abort alignment when stack size limit is reached instead of trying to recover.")
-                        .action(ArgAction::SetTrue)
+                    Arg::new("search_limit_recovery")
+                        .long("search_limit_recovery")
+                        .help(format!(
+                            "Mapping of reads which are particularly difficult to align can exceed \
+                            internal search space limits. With this option enabled, {CRATE_NAME} \
+                            will try to recover from these cases by discarding low-scoring \
+                            sub-alignments instead of reporting the read as unmapped. Enabling \
+                            this option will potentially slow down the mapping."
+                        ))
+                        .action(ArgAction::SetFalse),
                 )
                 .arg(
                     Arg::new("force_overwrite")
