@@ -460,7 +460,7 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         gap_dist_ends: *arg_matches
             .get_one("gap_dist_ends")
             .expect("Presence ensured by CLI definition"),
-        stack_limit_abort: arg_matches.get_flag("stack_limit_abort"),
+        stack_limit_abort: arg_matches.get_flag("search_limit_recovery"),
         max_num_gaps_open: *arg_matches
             .get_one("max_num_gaps_open")
             .expect("Presence ensured by CLI definition"),
