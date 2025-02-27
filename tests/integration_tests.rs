@@ -87,7 +87,9 @@ ATTCTGATGACGAAGTGTATACCCTGGCGTGCTNGTCCCTCGGCGTTGGATATCCTAGAT
 TGAGAATCCTGTCGCGGGACCTCGTTTAGGAAGCGAATGGTTGCACATCCGTCTAAACTA
 >Chromosome_03
 CCAAGAATCCGTAGACTCTGATCGATCATGCTAAAAATCGACCCAAGAATCCGTAGACTC
-TGATCGATCATGCTAAAAATCGAT";
+TGATCGATCATGCTAAAAATCGAT
+>Chromosome_04
+GATCacATGGCTGCTGTATTGATACAGTGGCTGGGGCATTCAATGC";
         writeln!(file, "{fasta_content}").unwrap();
 
         indexing::run(test_genome_path.to_str().unwrap(), 1234).unwrap();
@@ -115,7 +117,10 @@ TGATCGATCATGCTAAAAATCGAT";
         A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCTGGCGTGCTAGTCCCTCGGCG\t]]]]]]]]]]]]]]]]]]]]]]\n\
         A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACGCCAG\t]]]]]]]]]]]]]]]]]]]]]]\n\
         A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tCGCCGAGGGACTAGCACCCCAG\t]]]]]]]]]]]]]]]]]]]]]]\n\
-        A00795_0136_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTACGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
+        A00795_0136_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678\t4\t*\t0\t0\t*\t*\t0\t0\tTTAACAATGAACTTACGGGAACGACCAGG\t]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n\
+        Regression_test_example_1\t4\t*\t0\t0\t*\t*\t0\t0\tGATCTATGGCTGCTGTATTGATACAGTGGCTGGGGCATTCAATGC\t]]]]]]]]]]]]]]]\\\\\\]]]]]]]]]]]]]]]]]]]]]\\]]]\\Z\n\
+        Regression_test_example_1_revcomp\t4\t*\t0\t0\t*\t*\t0\t0\tGCATTGAATGCCCCAGCCACTGTATCAATACAGCAGCCATAGATC\tZ\\]]]\\]]]]]]]]]]]]]]]]]]]]]\\\\\\]]]]]]]]]]]]]]]\n\
+        Regression_test_example_2\t4\t*\t0\t0\t*\t*\t0\t0\tGATCACATGGCTGCTGTATTGATACAGTGGCTGGGGCATTAATGC\t]]]]]]]]]]]]]]]\\\\\\]]]]]]]]]]]]]]]]]]]]]\\]]]\\Z";
 
         let mut sam_reader = sam::io::Reader::new(&sam_content[..]);
         let input_sam_header = sam_reader.read_header().unwrap();
@@ -238,6 +243,7 @@ where
         @SQ\tSN:chr1\tLN:600\n\
         @SQ\tSN:Chromosome_02\tLN:600\n\
         @SQ\tSN:Chromosome_03\tLN:84\n\
+        @SQ\tSN:Chromosome_04\tLN:46\n\
         @RG\tID:A12345\tSM:Sample1\n\
         @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
         @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
@@ -613,6 +619,81 @@ where
                 .collect::<Vec<_>>()
                 .into(),
             md: Some("28".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(b"Regression_test_example_1".into()),
+            flags: 0.into(),
+            tid: Some(3_i32.try_into().unwrap()),
+            pos: Some(1.try_into().unwrap()),
+            mq: Some(20_u8.try_into().unwrap()),
+            cigar: Cigar::from_iter([
+                cigar::Op::new(cigar::op::Kind::Match, 5),
+                cigar::Op::new(cigar::op::Kind::Deletion, 1),
+                cigar::Op::new(cigar::op::Kind::Match, 40),
+            ]),
+            seq_len: 45,
+            seq: b"GATCTATGGCTGCTGTATTGATACAGTGGCTGGGGCATTCAATGC".into(),
+            qual: b"]]]]]]]]]]]]]]]\\\\\\]]]]]]]]]]]]]]]]]]]]]\\]]]\\Z"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
+            md: Some("4A0^C40".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(b"Regression_test_example_1_revcomp".into()),
+            flags: 16.into(),
+            tid: Some(3_i32.try_into().unwrap()),
+            pos: Some(1.try_into().unwrap()),
+            mq: Some(20_u8.try_into().unwrap()),
+            cigar: Cigar::from_iter([
+                cigar::Op::new(cigar::op::Kind::Match, 5),
+                cigar::Op::new(cigar::op::Kind::Deletion, 1),
+                cigar::Op::new(cigar::op::Kind::Match, 40),
+            ]),
+            seq_len: 45,
+            seq: b"GATCTATGGCTGCTGTATTGATACAGTGGCTGGGGCATTCAATGC".into(),
+            qual: b"]]]]]]]]]]]]]]]\\\\\\]]]]]]]]]]]]]]]]]]]]]\\]]]\\Z"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
+            md: Some("4A0^C40".into()),
+            x0: Some(1),
+            x1: Some(0),
+            xa: None,
+            xs: None,
+            xt: Some('U'),
+        },
+        BamFieldSubset {
+            name: Some(b"Regression_test_example_2".into()),
+            flags: 0.into(),
+            tid: Some(3_i32.try_into().unwrap()),
+            pos: Some(1.try_into().unwrap()),
+            mq: Some(37_u8.try_into().unwrap()),
+            cigar: Cigar::from_iter([
+                cigar::Op::new(cigar::op::Kind::Match, 40),
+                cigar::Op::new(cigar::op::Kind::Deletion, 1),
+                cigar::Op::new(cigar::op::Kind::Match, 5),
+            ]),
+            seq_len: 45,
+            seq: b"GATCACATGGCTGCTGTATTGATACAGTGGCTGGGGCATTAATGC".into(),
+            qual: b"]]]]]]]]]]]]]]]\\\\\\]]]]]]]]]]]]]]]]]]]]]\\]]]\\Z"
+                .iter()
+                .map(|&encoded| encoded - 33)
+                .collect::<Vec<_>>()
+                .into(),
+            md: Some("40^C5".into()),
             x0: Some(1),
             x1: Some(0),
             xa: None,
