@@ -1234,8 +1234,21 @@ where
             // Deletion in read / insertion in reference
             //
             {
+                let dist_to_closest_end = {
+                    // Where will the deletion be placed? Since a deletion from the read does
+                    // not exist in it, it does not have a position or index. Instead, it is
+                    // virtually placed after the current head of the sub-alignment. This is
+                    // why direction matters.
+                    let dist_5_prime = match direction {
+                        Direction::Backward => j + 1,
+                        Direction::Forward => j,
+                    };
+                    let dist_3_prime = pattern.len() as i16 - dist_5_prime;
+                    dist_5_prime.min(dist_3_prime)
+                };
+
                 if !mismatch_bound.reject(deletion_score + lower_bound, pattern.len())
-                    && j.min(pattern.len() as i16 - j - 1) >= i16::from(parameters.gap_dist_ends)
+                    && dist_to_closest_end >= i16::from(parameters.gap_dist_ends)
                 {
                     check_and_push_stack_frame(
                         MismatchSearchStackFrame {
