@@ -1327,19 +1327,18 @@ where
 
         // Limit stack size
         if stack.len() > STACK_LIMIT as usize || edit_tree.len() > EDIT_TREE_LIMIT as usize {
-            if parameters.stack_limit_abort {
-                return hit_intervals;
-            }
             if !stack_size_limit_reported {
                 trace!(
-                    "Stack size limit exceeded (read length: {} bp). Remove highly penalized partial alignments from stack (stack size: {}, edit tree size: {}).",
+                    "Stack size limit exceeded (read length: {} bp, stack size: {}, edit tree size: {})",
                     pattern.len(),
                     stack.len(),
                     edit_tree.len(),
                 );
                 stack_size_limit_reported = true;
             }
-
+            if parameters.stack_limit_abort {
+                return hit_intervals;
+            }
             for _ in 0..(stack.len() as isize - STACK_LIMIT as isize)
                 .max(edit_tree.len() as isize - EDIT_TREE_LIMIT as isize)
             {
