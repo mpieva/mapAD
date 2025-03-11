@@ -242,16 +242,17 @@ fn define_cli() -> ArgMatches {
                         .value_parser(value_parser!(u8))
                 )
                 .arg(
-                    Arg::new("search_limit_recovery")
-                        .long("search_limit_recovery")
+                    Arg::new("no_search_limit_recovery")
+                        .long("no_search_limit_recovery")
                         .help(format!(
                             "Mapping of reads which are particularly difficult to align can exceed \
-                            internal search space limits. With this option enabled, {CRATE_NAME} \
-                            will try to recover from these cases by discarding low-scoring \
-                            sub-alignments instead of reporting the read as unmapped. Enabling \
-                            this option will potentially slow down the mapping."
+                            the limits of the internal search space. By default, {CRATE_NAME} \
+                            attempts to recover from these cases by discarding the lowest scoring \
+                            sub-alignments. If this flag is set, these reads are instead \
+                            immediately reported as unmapped, which slightly increases the mapping \
+                            speed at the cost of decreasing sensitivity."
                         ))
-                        .action(ArgAction::SetFalse),
+                        .action(ArgAction::SetTrue),
                 )
                 .arg(
                     Arg::new("force_overwrite")
@@ -460,7 +461,7 @@ fn build_alignment_parameters(arg_matches: &ArgMatches) -> AlignmentParameters {
         gap_dist_ends: *arg_matches
             .get_one("gap_dist_ends")
             .expect("Presence ensured by CLI definition"),
-        stack_limit_abort: arg_matches.get_flag("search_limit_recovery"),
+        stack_limit_abort: arg_matches.get_flag("no_search_limit_recovery"),
         max_num_gaps_open: *arg_matches
             .get_one("max_num_gaps_open")
             .expect("Presence ensured by CLI definition"),
