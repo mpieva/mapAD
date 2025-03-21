@@ -257,7 +257,8 @@ fn define_cli() -> ArgMatches {
                 .arg(
                     Arg::new("force_overwrite")
                         .long("force_overwrite")
-                        .help(format!("Force {CRATE_NAME} to overwrite the output BAM file."))
+                        .help(format!("Force {CRATE_NAME} to overwrite the output BAM file if \
+                        it already exists."))
                         .action(ArgAction::SetTrue)
                 )
         )
