@@ -44,6 +44,7 @@ struct BamFieldSubset {
     xa: Option<String>,
     xs: Option<f32>,
     xt: Option<char>,
+    read_group: Option<String>,
 }
 
 #[derive(Debug)]
@@ -181,10 +182,36 @@ fn integration_1_local() {
         output_bam_path_local.to_str().unwrap(),
         false,
         &env.alignment_parameters,
+        None,
     )
     .unwrap();
 
     check_results(&output_bam_path_local);
+}
+
+#[test]
+fn integration_1_rg() {
+    let env = prepare();
+    let output_bam_path_rg = env.temp_dir.path().join("output_reads_rg.bam");
+
+    let read_groups = "@RG\tID:RG01"
+        .parse()
+        .map(|header: sam::Header| header.read_groups().to_owned())
+        .unwrap()
+        .pop()
+        .unwrap();
+
+    mapping::run(
+        env.input_bam_path.to_str().unwrap(),
+        env.test_genome_path.to_str().unwrap(),
+        output_bam_path_rg.to_str().unwrap(),
+        false,
+        &env.alignment_parameters,
+        Some(read_groups),
+    )
+    .unwrap();
+
+    check_results_rg(&output_bam_path_rg);
 }
 
 /// This test is disabled by default since it is flaky. Sometimes one of the workers can not
@@ -206,6 +233,7 @@ fn integration_1_distributed() {
                 output_bam_path_distr_clone.to_str().unwrap(),
                 false,
                 &env.alignment_parameters,
+                None,
             )
             .unwrap();
             dispatcher.run(port).unwrap();
@@ -310,12 +338,131 @@ where
                         panic!();
                     }
                 }),
+                read_group: record.data().get(b"RG").map(|v| match v {
+                    Ok(sam::alignment::record::data::field::Value::String(value)) => {
+                        value.to_string()
+                    }
+                    _ => {
+                        panic!();
+                    }
+                }),
             })
         })
         .collect::<io::Result<Vec<_>>>()
         .unwrap();
 
-    let comp = vec![
+    let comp = shared_expectation();
+    result_sample.sort_by_key(|k| k.name.clone().map(|v| v.to_vec()));
+
+    assert_eq!(result_sample, comp);
+}
+
+fn check_results_rg<P>(bam_path: P)
+where
+    P: AsRef<Path>,
+{
+    let mut bam_reader = bam::io::Reader::new(File::open(bam_path).unwrap());
+
+    // Check header
+    {
+        let header = bam_reader.read_header().unwrap();
+
+        let header_prefix = "\
+        @HD\tVN:1.6\tSO:unsorted\n\
+        @SQ\tSN:chr1\tLN:600\n\
+        @SQ\tSN:Chromosome_02\tLN:600\n\
+        @SQ\tSN:Chromosome_03\tLN:84\n\
+        @SQ\tSN:Chromosome_04\tLN:46\n\
+        @RG\tID:RG01\n\
+        @PG\tID:samtools\tPN:samtools\tVN:1.13\tCL:samtools view -h interesting_specimen.bam -o input_reads.bam\n\
+        @PG\tID:mapAD\tPN:mapAD\tCL:mapad map\tPP:samtools\tDS:An aDNA aware short-read mapper";
+        let mut header_writer = sam::io::Writer::new(Vec::new());
+        header_writer.write_header(&header).unwrap();
+        assert!(std::str::from_utf8(header_writer.get_ref())
+            .unwrap()
+            .starts_with(header_prefix));
+    }
+
+    let mut result_sample = bam_reader
+        .records()
+        .map(|maybe_record| {
+            maybe_record.map(|record| BamFieldSubset {
+                name: record.name().map(|v| v.to_vec()).map(Into::into),
+                flags: record.flags().to_owned(),
+                tid: record.reference_sequence_id().map(|v| v.unwrap()),
+                pos: record.alignment_start().map(|v| v.unwrap()),
+                mq: record.mapping_quality(),
+                cigar: record.cigar().try_into().unwrap(),
+                seq_len: record.sequence().len(),
+                seq: record.sequence().iter().collect::<Vec<_>>().into(),
+                qual: record.quality_scores().into(),
+                md: record
+                    .data()
+                    .get(&sam::alignment::record::data::field::tag::Tag::MISMATCHED_POSITIONS)
+                    .map(|v| match v {
+                        Ok(sam::alignment::record::data::field::Value::String(value)) => {
+                            value.to_string()
+                        }
+                        _ => {
+                            panic!();
+                        }
+                    }),
+                x0: record.data().get(b"X0").map(|v| match v {
+                    Ok(sam::alignment::record::data::field::Value::Int32(value)) => value,
+                    _ => {
+                        panic!();
+                    }
+                }),
+                x1: record
+                    .data()
+                    .get(b"X1")
+                    .map(|value| value.unwrap().as_int().map(|v| v as i32).unwrap()),
+                xa: record.data().get(b"XA").map(|v| match v {
+                    Ok(sam::alignment::record::data::field::Value::String(value)) => {
+                        value.to_string()
+                    }
+                    _ => {
+                        panic!();
+                    }
+                }),
+                xs: record.data().get(b"XS").map(|v| match v {
+                    Ok(sam::alignment::record::data::field::Value::Float(value)) => value,
+                    _ => {
+                        panic!();
+                    }
+                }),
+                xt: record.data().get(b"XT").map(|v| match v {
+                    Ok(sam::alignment::record::data::field::Value::Character(value)) => {
+                        value as char
+                    }
+                    _ => {
+                        panic!();
+                    }
+                }),
+                read_group: record.data().get(b"RG").map(|v| match v {
+                    Ok(sam::alignment::record::data::field::Value::String(value)) => {
+                        value.to_string()
+                    }
+                    _ => {
+                        panic!();
+                    }
+                }),
+            })
+        })
+        .collect::<io::Result<Vec<_>>>()
+        .unwrap();
+
+    let mut comp = shared_expectation();
+    for record in comp.iter_mut() {
+        record.read_group = Some("RG01".into());
+    }
+    result_sample.sort_by_key(|k| k.name.clone().map(|v| v.to_vec()));
+
+    assert_eq!(result_sample, comp);
+}
+
+fn shared_expectation() -> Vec<BamFieldSubset> {
+    vec![
         BamFieldSubset {
             name: Some(b"A00123_0123_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
             flags: 0.into(),
@@ -336,6 +483,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00234_0124_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -357,6 +505,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00345_0125_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -378,6 +527,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00456_0126_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -399,6 +549,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00567_0127_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -424,6 +575,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00678_0128_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -449,6 +601,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00789_0129_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -470,6 +623,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: Some("A12345".to_string()),
         },
         BamFieldSubset {
             name: Some(b"A00789_0130_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -491,6 +645,7 @@ where
             xa: None,
             xs: None,
             xt: None,
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"A00791_0131_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -512,6 +667,7 @@ where
             xa: Some("Chromosome_02,+139,6M,6,0,2,0.00;".into()),
             xs: None,
             xt: Some('R'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"A00792_0132_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -536,6 +692,7 @@ where
             ),
             xs: Some(-0.7209588),
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"A00793_0133_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -557,6 +714,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"A00794_0134_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -578,6 +736,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"A00795_0135_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -599,6 +758,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"A00795_0136_ABC12XXXXX_ABcd_AB_CC_DE:1:2345:1234:5678".into()),
@@ -624,6 +784,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"Regression_test_example_1".into()),
@@ -649,6 +810,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"Regression_test_example_1_revcomp".into()),
@@ -674,6 +836,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
         BamFieldSubset {
             name: Some(b"Regression_test_example_2".into()),
@@ -699,9 +862,7 @@ where
             xa: None,
             xs: None,
             xt: Some('U'),
+            read_group: None,
         },
-    ];
-    result_sample.sort_by_key(|k| k.name.clone().map(|v| v.to_vec()));
-
-    assert_eq!(result_sample, comp);
+    ]
 }

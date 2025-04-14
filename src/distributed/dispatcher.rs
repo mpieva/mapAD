@@ -8,11 +8,16 @@ use std::{
 };
 
 use bio::data_structures::suffix_array::SuffixArray;
+use bstr::{BStr, BString, ByteSlice};
 use log::{debug, info, warn};
 use mio::{net, Events, Interest, Poll, Token};
 use noodles::{
     bam,
-    sam::{self, alignment::io::Write as AlignmentWrite},
+    sam::{
+        self,
+        alignment::io::Write as AlignmentWrite,
+        header::record::value::map::{Map, ReadGroup},
+    },
 };
 use rayon::prelude::*;
 
@@ -56,6 +61,7 @@ pub struct Dispatcher<'a, 'b> {
     reference_path: &'b Path,
     out_file_path: &'b Path,
     force_overwrite: bool,
+    read_group: Option<(BString, Map<ReadGroup>)>,
     alignment_parameters: &'a AlignmentParameters,
     connections: HashMap<Token, Connection>,
     accept_connections: bool,
@@ -71,6 +77,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         out_file_path: &'b str,
         force_overwrite: bool,
         alignment_parameters: &'a AlignmentParameters,
+        read_group: Option<(BString, Map<ReadGroup>)>,
     ) -> Result<Self> {
         let reads_path = Path::new(reads_path);
         let out_file_path = Path::new(out_file_path);
@@ -87,6 +94,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             out_file_path,
             force_overwrite,
             alignment_parameters,
+            read_group,
             connections: HashMap::new(),
             accept_connections: true,
         })
@@ -133,7 +141,11 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         );
 
         let mut input_source = InputSource::from_path(self.reads_path)?;
-        let out_header = create_bam_header(input_source.header(), &identifier_position_map)?;
+        let out_header = create_bam_header(
+            input_source.header(),
+            &identifier_position_map,
+            self.read_group.clone(),
+        )?;
         out_file.write_header(&out_header)?;
         let mut task_queue = input_source.task_queue(self.alignment_parameters.chunk_size);
         self.run_inner(
@@ -229,6 +241,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                                     identifier_position_map,
                                     original_symbols,
                                     self.alignment_parameters,
+                                    self.read_group.as_ref().map(|(id, _map)| id.as_bstr()),
                                     out_header,
                                     out_file,
                                 )?;
@@ -331,6 +344,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
         identifier_position_map: &FastaIdPositions,
         original_symbols: &OriginalSymbols,
         alignment_parameters: &AlignmentParameters,
+        read_group: Option<&BStr>,
         out_header: &sam::Header,
         out_file: &mut bam::io::Writer<W>,
     ) -> Result<()>
@@ -350,6 +364,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     original_symbols,
                     Some(&duration),
                     alignment_parameters,
+                    read_group,
                     &mut rng,
                 )
             })

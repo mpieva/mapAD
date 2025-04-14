@@ -1,5 +1,7 @@
+use bstr::BString;
 use clap::{crate_authors, crate_description, value_parser, Arg, ArgAction, ArgMatches, Command};
 use log::{error, info, warn};
+use noodles::sam::{self, header::record::value::map::Map, header::record::value::map::ReadGroup};
 use simple_logger::SimpleLogger;
 use time::UtcOffset;
 
@@ -35,6 +37,21 @@ fn define_cli() -> ArgMatches {
             .ok()
             .and_then(|value| (0.0..=1.0).contains(&value).then_some(value))
             .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::ValueValidation))
+    }
+
+    fn parse_validate_read_group(raw_arg: &str) -> Result<(BString, Map<ReadGroup>), clap::Error> {
+        let mut read_groups = raw_arg
+            .replace(r"\t", "\t")
+            .parse()
+            .map(|header: sam::Header| header.read_groups().to_owned())
+            .map_err(|_e| clap::Error::new(clap::error::ErrorKind::ValueValidation))?;
+        if read_groups.len() != 1 {
+            return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
+        }
+        let rg = read_groups
+            .pop()
+            .expect("As per the above check, there is exactly one RG");
+        Ok(rg)
     }
 
     Command::new(CRATE_NAME)
@@ -261,6 +278,15 @@ fn define_cli() -> ArgMatches {
                         it already exists."))
                         .action(ArgAction::SetTrue)
                 )
+                .arg(
+                    Arg::new("read_group")
+                        .short('R')
+                        .long("read_group")
+                        .help("Read group SAM header line. The given read group ID will be \
+                        added to every read in the output file. \
+                        Example: '@RG\tID:identifier1\tSM:sample2'.")
+                        .value_parser(parse_validate_read_group)
+                )
         )
         .subcommand(
             Command::new("worker")
@@ -328,6 +354,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
         .get_one::<String>("output")
         .expect("Presence is ensured by CLI definition");
     let force_overwrite = map_matches.get_flag("force_overwrite");
+    let read_group = map_matches.get_one("read_group").cloned();
 
     let num_threads = *map_matches
         .get_one("num_threads")
@@ -350,6 +377,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
             out_file_path,
             force_overwrite,
             &alignment_parameters,
+            read_group,
         )
         .and_then(|mut dispatcher| dispatcher.run(port))
     } else {
@@ -359,6 +387,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
             out_file_path,
             force_overwrite,
             &alignment_parameters,
+            read_group,
         )
     } {
         error!("{}", e);

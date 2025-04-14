@@ -12,13 +12,17 @@ use std::{
 };
 
 use bio::{alphabets::dna, data_structures::suffix_array::SuffixArray};
-use bstr::{BString, ByteSlice};
+use bstr::{BStr, BString, ByteSlice};
 use clap::crate_description;
 use log::{debug, info, trace};
 use min_max_heap::MinMaxHeap;
 use noodles::{
     bam,
-    sam::{self, alignment::io::Write as SamWrite},
+    sam::{
+        self,
+        alignment::io::Write as SamWrite,
+        header::record::value::map::{Map, ReadGroup},
+    },
 };
 use rand::RngCore;
 use rayon::prelude::*;
@@ -56,6 +60,7 @@ pub fn run(
     out_file_path: &str,
     force_overwrite: bool,
     alignment_parameters: &AlignmentParameters,
+    read_group: Option<(BString, Map<ReadGroup>)>,
 ) -> Result<()> {
     let reads_path = Path::new(reads_path);
     let out_file_path = Path::new(out_file_path);
@@ -97,7 +102,11 @@ pub fn run(
 
     info!("Map reads");
     let mut input_source = InputSource::from_path(reads_path)?;
-    let out_header = create_bam_header(input_source.header(), &identifier_position_map)?;
+    let out_header = create_bam_header(
+        input_source.header(),
+        &identifier_position_map,
+        read_group.clone(),
+    )?;
     out_file.write_header(&out_header)?;
     run_inner(
         input_source.task_queue(alignment_parameters.chunk_size),
@@ -107,6 +116,7 @@ pub fn run(
         &identifier_position_map,
         &original_symbols,
         &out_header,
+        read_group.as_ref().map(|(id, _map)| id.as_bstr()),
         &mut out_file,
     )?;
 
@@ -125,6 +135,7 @@ fn run_inner<S, T, W>(
     identifier_position_map: &FastaIdPositions,
     original_symbols: &OriginalSymbols,
     out_header: &sam::Header,
+    read_group: Option<&BStr>,
     out_file: &mut bam::io::Writer<W>,
 ) -> Result<()>
 where
@@ -269,6 +280,7 @@ where
                         original_symbols,
                         Some(&duration),
                         alignment_parameters,
+                        read_group,
                         &mut rng,
                     )
                 },
@@ -288,6 +300,7 @@ where
 pub fn create_bam_header(
     src_header: Option<&sam::Header>,
     identifier_position_map: &FastaIdPositions,
+    read_group: Option<(BString, Map<ReadGroup>)>,
 ) -> Result<sam::Header> {
     use sam::header::record::value::map::{self, Map};
 
@@ -343,9 +356,13 @@ pub fn create_bam_header(
             sam_header_builder = sam_header_builder.add_comment(comment.as_bstr());
         }
 
-        for (id, read_group) in src_header.read_groups() {
-            sam_header_builder =
-                sam_header_builder.add_read_group(id.as_bstr(), read_group.clone());
+        if let Some((id, map)) = read_group {
+            sam_header_builder = sam_header_builder.add_read_group(id, map);
+        } else {
+            for (id, read_group) in src_header.read_groups() {
+                sam_header_builder =
+                    sam_header_builder.add_read_group(id.as_bstr(), read_group.clone());
+            }
         }
     }
 
@@ -390,6 +407,7 @@ pub fn intervals_to_bam<R, S>(
     original_symbols: &OriginalSymbols,
     duration: Option<&Duration>,
     alignment_parameters: &AlignmentParameters,
+    read_group: Option<&BStr>,
     rng: &mut R,
 ) -> Result<sam::alignment::RecordBuf>
 where
@@ -517,6 +535,7 @@ where
                     duration,
                     Some(alternative_hits),
                     original_symbols,
+                    read_group,
                 );
             }
             None => {
@@ -544,6 +563,7 @@ where
         duration,
         None,
         original_symbols,
+        read_group,
     )
 }
 
@@ -712,6 +732,7 @@ fn create_bam_record(
     // Contains valid content for the `YA` tag
     alternative_hits: Option<AlternativeAlignments>,
     original_symbols: &OriginalSymbols,
+    read_group: Option<&BStr>,
 ) -> Result<sam::alignment::RecordBuf> {
     let mut bam_builder = sam::alignment::RecordBuf::builder();
 
@@ -822,8 +843,17 @@ fn create_bam_record(
         .into_iter()
         // Remove BWA (+ mapAD) specific auxiliary fields (avoids potential confusion)
         .filter(|(tag, _v)| !tag_filter.contains(&tag))
+        // Don't copy input read group if one is given via cmdline
+        .filter(|(tag, _v)| !(tag == b"RG" && read_group.is_some()))
         .map(|(tag, value)| Ok((tag.into(), value.into())))
         .collect::<Result<Vec<_>>>()?;
+
+    if let Some(read_group) = read_group {
+        aux_data.push((
+            sam::alignment::record::data::field::tag::Tag::READ_GROUP,
+            sam::alignment::record_buf::data::field::Value::String(read_group.to_owned()),
+        ));
+    }
 
     if let Some(hit_interval) = hit_interval {
         aux_data.push((
