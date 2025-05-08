@@ -1,3 +1,6 @@
+[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/mapad/README.html)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15268295.svg)](https://doi.org/10.5281/zenodo.15268295)
+
 # mapAD
 
 This is another attempt to write a _fast enough_ experimental ancient DNA damage aware short read mapper.
