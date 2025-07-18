@@ -273,7 +273,7 @@ impl Display for SimpleAncientDnaModel {
 
 impl SimpleAncientDnaModel {
     fn qual2prob(encoded_base_quality: u8) -> f32 {
-        10_f32.powf(-1.0 * f32::from(encoded_base_quality) / 10.0) / 3.0
+        10_f32.powf(-f32::from(encoded_base_quality) / 10.0) / 3.0
     }
 
     pub fn new(
@@ -327,7 +327,7 @@ impl SimpleAncientDnaModel {
 
         // Requiring `Display` as a supertrait to `SequenceDifferenceModel` would be a better
         // solution, but due to the static dispatch tricks it's not that simple.
-        info!("{}", retval);
+        info!("{retval}");
 
         retval
     }

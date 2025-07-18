@@ -190,7 +190,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(task) = self.requeried_tasks.pop() {
-            info!("Retrying previously failed task {}", task);
+            info!("Retrying previously failed task {task}");
             return Some(task);
         }
 
@@ -199,7 +199,7 @@ where
             .by_ref()
             .filter_map(|record| {
                 if let Err(ref e) = record {
-                    error!("Skip record due to an error: {}", e);
+                    error!("Skip record due to an error: {e}");
                 }
                 record.ok()
             })
@@ -207,7 +207,7 @@ where
                 let length_check_ok = record.sequence.len() == record.base_qualities.len();
                 if !length_check_ok {
                     error!(
-                        "Skip record \"{}\" due to different length of sequence and quality strings", record
+                        "Skip record \"{record}\" due to different length of sequence and quality strings"
                     );
                 }
                 length_check_ok

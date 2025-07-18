@@ -546,8 +546,7 @@ where
 
     if hits_found {
         debug!(
-            "Hits could not be mapped to valid coordinates. Report read \"{}\" as unmapped.",
-            input_record
+            "Hits could not be mapped to valid coordinates. Report read \"{input_record}\" as unmapped."
         );
     }
 

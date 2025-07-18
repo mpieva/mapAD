@@ -196,7 +196,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
                     // Workers of the world, register!
                     if self.accept_connections {
                         while let Ok((mut remote_stream, remote_addr)) = listener.accept() {
-                            info!("Connection established ({:?})", remote_addr);
+                            info!("Connection established ({remote_addr:?})");
                             max_token += 1;
                             let remote_token = Token(max_token);
                             poll.registry().register(
@@ -392,7 +392,7 @@ impl<'a, 'b> Dispatcher<'a, 'b> {
             .assigned_task
             .take()
         {
-            warn!("Requery task {} of failed worker", assigned_task);
+            warn!("Requery task {assigned_task} of failed worker");
             task_queue.requery_task(assigned_task);
         }
         self.connections
