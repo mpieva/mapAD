@@ -340,6 +340,7 @@ fn start_indexer(arg_matches: &ArgMatches, seed: u64) {
 
     if let Err(e) = indexing::run(reference_path, seed) {
         error!("{}", e);
+        std::process::exit(1);
     }
 }
 
@@ -391,6 +392,7 @@ fn start_mapper(map_matches: &ArgMatches, _seed: u64) {
         )
     } {
         error!("{}", e);
+        std::process::exit(1);
     }
 }
 
@@ -412,6 +414,7 @@ fn start_worker(arg_matches: &ArgMatches, _seed: u64) {
 
     if let Err(e) = worker::Worker::new(host, port).and_then(|mut worker| worker.run()) {
         error!("{}", e);
+        std::process::exit(1);
     }
 }
 
